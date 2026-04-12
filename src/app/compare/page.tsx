@@ -10,11 +10,14 @@ import { KillsBarChart, TierPieChart } from '@/components/Charts';
 interface Comparison {
   governor: { id: string; governorId: string; name: string };
   deltas: Record<string, string>;
+  snapshotA: Record<string, string>;
+  snapshotB: Record<string, string>;
   warriorScore: {
-    killScore: number;
-    deadScore: number;
-    powerBonus: number;
+    actualDkp: number;
+    expectedKp: number;
+    kdRatio: number;
     totalScore: number;
+    isDeadweight: boolean;
     tier: WarriorTier;
     rank: number;
   } | null;
@@ -47,6 +50,7 @@ function CompareContent() {
   const [sortField, setSortField] = useState('rank');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [search, setSearch] = useState('');
+  const [publishing, setPublishing] = useState(false);
 
   useEffect(() => {
     fetch('/api/events').then((r) => r.json()).then((d) => setEvents(d.events || []));
@@ -82,9 +86,9 @@ function CompareContent() {
 
   const exportCSV = () => {
     if (!result) return;
-    const headers = 'Rank,Governor,ID,Power Δ,Kill Pts Δ,T4 Kills Δ,T5 Kills Δ,Deads Δ,Warrior Score,Tier\n';
+    const headers = 'Rank,Governor,ID,Start Power,Power Δ,Actual DKP,Expected DKP,K/D Ratio,Score %,Tier,Deadweight\n';
     const rows = sortedComparisons.map((c) =>
-      `${c.warriorScore?.rank || '-'},${c.governor.name},${c.governor.governorId},${c.deltas.power},${c.deltas.killPoints},${c.deltas.t4Kills},${c.deltas.t5Kills},${c.deltas.deads},${c.warriorScore?.totalScore || 0},${c.warriorScore?.tier || '-'}`
+      `${c.warriorScore?.rank || '-'},${c.governor.name},${c.governor.governorId},${c.snapshotA.power},${c.deltas.power},${c.warriorScore?.actualDkp || 0},${c.warriorScore?.expectedKp || 0},${c.warriorScore?.kdRatio || 0},${c.warriorScore?.totalScore || 0},${c.warriorScore?.tier || '-'},${c.warriorScore?.isDeadweight ? 'YES' : 'NO'}`
     ).join('\n');
     const blob = new Blob([headers + rows], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
@@ -93,6 +97,33 @@ function CompareContent() {
     a.download = `comparison_${result.eventA.name}_vs_${result.eventB.name}.csv`.replace(/\s+/g, '_');
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const publishToDiscord = async () => {
+    if (!result) return;
+    setPublishing(true);
+    try {
+      const res = await fetch('/api/discord/publish-leaderboard', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          eventA: result.eventA,
+          eventB: result.eventB,
+          summary: result.summary,
+          leaderboard: sortedComparisons,
+        }),
+      });
+      if (res.ok) {
+        alert('Leaderboard pushed to Discord successfully! 🚀');
+      } else {
+        const d = await res.json();
+        alert(`Failed: ${d.error || 'Server error.'}`);
+      }
+    } catch {
+      alert('Network error.');
+    } finally {
+      setPublishing(false);
+    }
   };
 
   return (
@@ -202,6 +233,14 @@ function CompareContent() {
                 <span className="search-icon">🔍</span>
                 <input placeholder="Search..." value={search} onChange={(e) => setSearch(e.target.value)} />
               </div>
+              <button 
+                className="btn btn-primary btn-sm btn-discord" 
+                onClick={publishToDiscord} 
+                disabled={publishing}
+                style={{ background: '#5865F2' }}
+              >
+                {publishing ? 'Publishing...' : '🤖 Publish to Discord'}
+              </button>
               <button className="btn btn-secondary btn-sm" onClick={exportCSV}>📤 Export CSV</button>
             </div>
           </div>
@@ -213,11 +252,10 @@ function CompareContent() {
                   <th onClick={() => toggleSort('rank')}>Rank{sortArrow('rank')}</th>
                   <th>Governor</th>
                   <th onClick={() => toggleSort('power')}>Power Δ{sortArrow('power')}</th>
-                  <th onClick={() => toggleSort('killPoints')}>Kill Pts Δ{sortArrow('killPoints')}</th>
-                  <th onClick={() => toggleSort('t4Kills')}>T4 Δ{sortArrow('t4Kills')}</th>
-                  <th onClick={() => toggleSort('t5Kills')}>T5 Δ{sortArrow('t5Kills')}</th>
-                  <th onClick={() => toggleSort('deads')}>Deads Δ{sortArrow('deads')}</th>
-                  <th onClick={() => toggleSort('score')}>Score{sortArrow('score')}</th>
+                  <th>Target DKP</th>
+                  <th>Actual DKP</th>
+                  <th>K/D Ratio</th>
+                  <th onClick={() => toggleSort('score')}>Score %{sortArrow('score')}</th>
                   <th>Tier</th>
                 </tr>
               </thead>
@@ -228,20 +266,20 @@ function CompareContent() {
                     <tr key={c.governor.id}>
                       <td className="text-muted">{ws?.rank || '-'}</td>
                       <td>
-                        <strong>{c.governor.name}</strong>
-                        <div className="text-muted text-sm">ID: {c.governor.governorId}</div>
+                        <strong>{c.governor.name}</strong> 
+                        {ws?.isDeadweight && <span title="Potential Deadweight / Zeroed" style={{marginLeft: 5, fontSize: '1.2em'}}>☠️</span>}
+                        <div className="text-muted text-sm">ID: {c.governor.governorId} | Start: {formatDelta(c.snapshotA.power)}</div>
                       </td>
                       <td className={`num ${Number(c.deltas.power) >= 0 ? 'delta-positive' : 'delta-negative'}`}>
                         {formatDelta(c.deltas.power)}
                       </td>
-                      <td className={`num ${Number(c.deltas.killPoints) >= 0 ? 'delta-positive' : 'delta-negative'}`}>
-                        {formatDelta(c.deltas.killPoints)}
+                      <td className="num text-muted">{formatDelta(ws?.expectedKp || 0)}</td>
+                      <td className={`num ${ws && ws.actualDkp >= ws.expectedKp ? 'text-gold' : 'delta-negative'}`}>
+                        {formatDelta(ws?.actualDkp || 0)}
                       </td>
-                      <td className="num delta-positive">{formatDelta(c.deltas.t4Kills)}</td>
-                      <td className="num delta-positive">{formatDelta(c.deltas.t5Kills)}</td>
-                      <td className="num delta-positive">{formatDelta(c.deltas.deads)}</td>
+                      <td className="num">{ws?.kdRatio || 0}</td>
                       <td className="num" style={{ color: ws ? getTierConfig(ws.tier).color : 'inherit' }}>
-                        {ws?.totalScore || '—'}
+                        {ws?.totalScore || '—'}%
                       </td>
                       <td>{ws && <TierBadge tier={ws.tier} size="sm" showLabel={false} />}</td>
                     </tr>

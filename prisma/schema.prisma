@@ -61,3 +61,14 @@ model Snapshot {
   @@index([eventId])
   @@index([governorId])
 }
+
+model KingdomSettings {
+  id                String   @id @default("default")
+  t4Weight          Float    @default(0.5)
+  t5Weight          Float    @default(1.0)
+  deadWeight        Float    @default(5.0)
+  kpPerPowerRatio   Float    @default(0.3) // Expect 300k KP per 1M power
+  deadPerPowerRatio Float    @default(0.02) // Expect 20k Deads per 1M power
+  discordWebhook    String?
+  updatedAt         DateTime @updatedAt
+}

@@ -10,6 +10,7 @@ const links = [
   { href: '/events', label: 'Events', icon: '📅' },
   { href: '/compare', label: 'Compare', icon: '⚔️' },
   { href: '/governors', label: 'Governors', icon: '👥' },
+  { href: '/settings', label: 'Settings', icon: '⚙️' },
 ];
 
 export default function Navbar() {

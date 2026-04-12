@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
-import { calculateWarriorScores, SnapshotDelta } from '@/lib/warrior-score';
+import { calculateAdvancedDkp, SnapshotDelta } from '@/lib/warrior-score';
 
 export async function GET(request: NextRequest) {
   try {
@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const [eventA, eventB, snapshotsA, snapshotsB] = await Promise.all([
+    const [eventA, eventB, snapshotsA, snapshotsB, settings] = await Promise.all([
       prisma.event.findUnique({ where: { id: eventAId } }),
       prisma.event.findUnique({ where: { id: eventBId } }),
       prisma.snapshot.findMany({
@@ -27,7 +27,16 @@ export async function GET(request: NextRequest) {
         where: { eventId: eventBId },
         include: { governor: true },
       }),
+      prisma.kingdomSettings.findUnique({ where: { id: 'default' } }),
     ]);
+
+    const config = settings || {
+      t4Weight: 0.5,
+      t5Weight: 1.0,
+      deadWeight: 5.0,
+      kpPerPowerRatio: 0.3,
+      deadPerPowerRatio: 0.02,
+    };
 
     if (!eventA || !eventB) {
       return NextResponse.json(
@@ -88,6 +97,7 @@ export async function GET(request: NextRequest) {
         warriorDeltas.push({
           governorId: snapA.governor.id,
           governorName: snapB.governor.name || snapA.governor.name,
+          startPower: snapA.power,
           killPointsDelta: snapB.killPoints - snapA.killPoints,
           t4KillsDelta: snapB.t4Kills - snapA.t4Kills,
           t5KillsDelta: snapB.t5Kills - snapA.t5Kills,
@@ -109,20 +119,22 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Calculate warrior scores
-    const warriorScores = calculateWarriorScores(warriorDeltas);
+    // Calculate new DKP scores
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const warriorScores = calculateAdvancedDkp(warriorDeltas, config as any);
 
-    // Build comparison results with warrior scores merged
+    // Build comparison results with advanced scores merged
     const comparisons = matched.map((m) => {
       const ws = warriorScores.find((w) => w.governorId === m.governor.id);
       return {
         ...m,
         warriorScore: ws
           ? {
-              killScore: ws.killScore,
-              deadScore: ws.deadScore,
-              powerBonus: ws.powerBonus,
+              actualDkp: ws.actualDkp,
+              expectedKp: ws.expectedKp,
+              kdRatio: ws.kdRatio,
               totalScore: ws.warriorScore,
+              isDeadweight: ws.isDeadweight,
               tier: ws.tier,
               rank: ws.rank,
             }

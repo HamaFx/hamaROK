@@ -1,8 +1,17 @@
 export type WarriorTier = 'War Legend' | 'Elite Warrior' | 'Frontline Fighter' | 'Support Role' | 'Inactive';
 
+export interface DkpConfig {
+  t4Weight: number;
+  t5Weight: number;
+  deadWeight: number;
+  kpPerPowerRatio: number;
+  deadPerPowerRatio: number;
+}
+
 export interface SnapshotDelta {
   governorId: string;
   governorName: string;
+  startPower: bigint;
   killPointsDelta: bigint;
   t4KillsDelta: bigint;
   t5KillsDelta: bigint;
@@ -13,10 +22,11 @@ export interface SnapshotDelta {
 export interface WarriorResult {
   governorId: string;
   governorName: string;
-  killScore: number;
-  deadScore: number;
-  powerBonus: number;
+  expectedKp: number;
+  actualDkp: number;
+  kdRatio: number;
   warriorScore: number;
+  isDeadweight: boolean;
   tier: WarriorTier;
   rank: number;
 }
@@ -28,40 +38,53 @@ export interface TierConfig {
   bgClass: string;
 }
 
-export function calculateWarriorScores(deltas: SnapshotDelta[]): WarriorResult[] {
+export function calculateAdvancedDkp(deltas: SnapshotDelta[], config: DkpConfig): WarriorResult[] {
   if (deltas.length === 0) return [];
 
-  // Step 1: Calculate weighted kill values
-  const withWeighted = deltas.map((d) => ({
-    ...d,
-    weightedKill: Number(d.t4KillsDelta) * 2 + Number(d.t5KillsDelta) * 5,
-  }));
+  const results: WarriorResult[] = deltas.map((d) => {
+    // 1. Calculate Expected Targets based on Start Power
+    const startPowerMillions = Number(d.startPower) / 1000000;
+    const expectedKp = startPowerMillions * config.kpPerPowerRatio * 1000000;
+    
+    // 2. Calculate Actual DKP Contribution Match
+    const t4KillsStr = Number(d.t4KillsDelta);
+    const t5KillsStr = Number(d.t5KillsDelta);
+    const deadsStr = Number(d.deadsDelta);
+    
+    const actualDkp = (t4KillsStr * config.t4Weight) + (t5KillsStr * config.t5Weight) + (deadsStr * config.deadWeight);
+    
+    // 3. Warrior Score (Percent of Expectation Met)
+    let percentMet = 0;
+    if (expectedKp > 0) {
+       percentMet = (actualDkp / expectedKp) * 100;
+    } else {
+       percentMet = actualDkp > 0 ? 100 : 0;
+    }
 
-  // Step 2: Find max values for normalization
-  const maxKill = Math.max(...withWeighted.map((d) => Math.max(d.weightedKill, 0)), 1);
-  const maxDead = Math.max(...deltas.map((d) => Math.max(Number(d.deadsDelta), 0)), 1);
+    // Cap score at 120 so overperformers don't break charts
+    const warriorScore = Math.min(Math.round(percentMet * 10) / 10, 120);
 
-  // Step 3: Calculate scores
-  const results: WarriorResult[] = withWeighted.map((d) => {
-    const killScore = Math.max(0, (d.weightedKill / maxKill) * 100);
-    const deadScore = Math.max(0, (Number(d.deadsDelta) / maxDead) * 100);
-    const powerBonus = Number(d.powerDelta) < 0 ? 5.0 : 0.0;
-    const rawScore = killScore * 0.55 + deadScore * 0.4 + powerBonus;
-    const warriorScore = Math.min(Math.round(rawScore * 10) / 10, 100);
+    // 4. K/D Ratio
+    const totalKills = t4KillsStr + t5KillsStr;
+    const kdRatio = deadsStr > 0 ? (totalKills / deadsStr) : totalKills;
+
+    // 5. Deadweight Flag: Dropped > 2M power with < 100,000 DKP (Meaning getting zeroed while offline)
+    const isDeadweight = (Number(d.powerDelta) < -2000000) && (actualDkp < 100000);
 
     return {
       governorId: d.governorId,
       governorName: d.governorName,
-      killScore: Math.round(killScore * 10) / 10,
-      deadScore: Math.round(deadScore * 10) / 10,
-      powerBonus,
+      expectedKp: Math.round(expectedKp),
+      actualDkp: Math.round(actualDkp),
+      kdRatio: Math.round(kdRatio * 100) / 100,
       warriorScore,
-      tier: getWarriorTier(warriorScore),
+      isDeadweight,
+      tier: isDeadweight ? 'Inactive' : getWarriorTier(warriorScore),
       rank: 0,
     };
   });
 
-  // Step 4: Sort and assign ranks
+  // Sort and assign ranks
   results.sort((a, b) => b.warriorScore - a.warriorScore);
   results.forEach((r, i) => (r.rank = i + 1));
 
@@ -69,10 +92,10 @@ export function calculateWarriorScores(deltas: SnapshotDelta[]): WarriorResult[]
 }
 
 export function getWarriorTier(score: number): WarriorTier {
-  if (score >= 90) return 'War Legend';
-  if (score >= 70) return 'Elite Warrior';
+  if (score >= 100) return 'War Legend';
+  if (score >= 80) return 'Elite Warrior';
   if (score >= 50) return 'Frontline Fighter';
-  if (score >= 30) return 'Support Role';
+  if (score >= 20) return 'Support Role';
   return 'Inactive';
 }
 
