@@ -23,6 +23,8 @@ export interface WarriorResult {
   governorId: string;
   governorName: string;
   expectedKp: number;
+  expectedDeads: number;
+  expectedDkp: number;
   actualDkp: number;
   kdRatio: number;
   warriorScore: number;
@@ -45,18 +47,23 @@ export function calculateAdvancedDkp(deltas: SnapshotDelta[], config: DkpConfig)
     // 1. Calculate Expected Targets based on Start Power
     const startPowerMillions = Number(d.startPower) / 1000000;
     const expectedKp = startPowerMillions * config.kpPerPowerRatio * 1000000;
+    const expectedDeads = startPowerMillions * config.deadPerPowerRatio * 1000000;
+    const expectedDkp = expectedKp + expectedDeads * config.deadWeight;
     
     // 2. Calculate Actual DKP Contribution Match
-    const t4KillsStr = Number(d.t4KillsDelta);
-    const t5KillsStr = Number(d.t5KillsDelta);
-    const deadsStr = Number(d.deadsDelta);
+    const t4KillsDelta = Number(d.t4KillsDelta);
+    const t5KillsDelta = Number(d.t5KillsDelta);
+    const deadsDelta = Number(d.deadsDelta);
     
-    const actualDkp = (t4KillsStr * config.t4Weight) + (t5KillsStr * config.t5Weight) + (deadsStr * config.deadWeight);
+    const actualDkp =
+      t4KillsDelta * config.t4Weight +
+      t5KillsDelta * config.t5Weight +
+      deadsDelta * config.deadWeight;
     
     // 3. Warrior Score (Percent of Expectation Met)
     let percentMet = 0;
-    if (expectedKp > 0) {
-       percentMet = (actualDkp / expectedKp) * 100;
+    if (expectedDkp > 0) {
+       percentMet = (actualDkp / expectedDkp) * 100;
     } else {
        percentMet = actualDkp > 0 ? 100 : 0;
     }
@@ -65,8 +72,8 @@ export function calculateAdvancedDkp(deltas: SnapshotDelta[], config: DkpConfig)
     const warriorScore = Math.min(Math.round(percentMet * 10) / 10, 120);
 
     // 4. K/D Ratio
-    const totalKills = t4KillsStr + t5KillsStr;
-    const kdRatio = deadsStr > 0 ? (totalKills / deadsStr) : totalKills;
+    const totalKills = t4KillsDelta + t5KillsDelta;
+    const kdRatio = deadsDelta > 0 ? (totalKills / deadsDelta) : totalKills;
 
     // 5. Deadweight Flag: Dropped > 2M power with < 100,000 DKP (Meaning getting zeroed while offline)
     const isDeadweight = (Number(d.powerDelta) < -2000000) && (actualDkp < 100000);
@@ -75,6 +82,8 @@ export function calculateAdvancedDkp(deltas: SnapshotDelta[], config: DkpConfig)
       governorId: d.governorId,
       governorName: d.governorName,
       expectedKp: Math.round(expectedKp),
+      expectedDeads: Math.round(expectedDeads),
+      expectedDkp: Math.round(expectedDkp),
       actualDkp: Math.round(actualDkp),
       kdRatio: Math.round(kdRatio * 100) / 100,
       warriorScore,

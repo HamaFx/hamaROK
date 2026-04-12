@@ -10,6 +10,13 @@ export interface CropRegion {
   height: number; // percentage of image height (0-1)
 }
 
+export interface PreprocessOptions {
+  invert?: boolean;
+  threshold?: number;
+  scale?: number;
+  contrast?: number;
+}
+
 // Region templates for the "Governor More Info" screen
 // These are percentage-based coordinates for resolution independence
 export const CROP_REGIONS: Record<string, CropRegion> = {
@@ -59,7 +66,15 @@ export function cropRegion(
 /**
  * Full preprocessing pipeline: Grayscale → Invert → Binarize → Scale 2x
  */
-export function preprocessForOCR(sourceCanvas: HTMLCanvasElement): HTMLCanvasElement {
+export function preprocessForOCR(
+  sourceCanvas: HTMLCanvasElement,
+  options: PreprocessOptions = {}
+): HTMLCanvasElement {
+  const invert = options.invert ?? true;
+  const threshold = options.threshold ?? 120;
+  const scale = options.scale ?? 2;
+  const contrast = options.contrast ?? 1;
+
   const canvas = document.createElement('canvas');
   canvas.width = sourceCanvas.width;
   canvas.height = sourceCanvas.height;
@@ -72,10 +87,14 @@ export function preprocessForOCR(sourceCanvas: HTMLCanvasElement): HTMLCanvasEle
   for (let i = 0; i < data.length; i += 4) {
     // Grayscale
     const gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
+    const contrasted = Math.max(
+      0,
+      Math.min(255, (gray - 128) * contrast + 128)
+    );
     // Invert (RoK uses light text on dark background)
-    const inverted = 255 - gray;
+    const normalized = invert ? 255 - contrasted : contrasted;
     // Binarize with threshold
-    const val = inverted > 120 ? 255 : 0;
+    const val = normalized > threshold ? 255 : 0;
     data[i] = data[i + 1] = data[i + 2] = val;
   }
 
@@ -83,8 +102,8 @@ export function preprocessForOCR(sourceCanvas: HTMLCanvasElement): HTMLCanvasEle
 
   // Scale 2x for better OCR recognition
   const scaled = document.createElement('canvas');
-  scaled.width = canvas.width * 2;
-  scaled.height = canvas.height * 2;
+  scaled.width = Math.max(1, Math.round(canvas.width * scale));
+  scaled.height = Math.max(1, Math.round(canvas.height * scale));
   const sCtx = scaled.getContext('2d')!;
   sCtx.imageSmoothingEnabled = false;
   sCtx.drawImage(canvas, 0, 0, scaled.width, scaled.height);

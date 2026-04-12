@@ -1,0 +1,100 @@
+[
+  {
+    "id": "default-16-9-governor-a",
+    "templateId": "default-16-9",
+    "minAverageConfidence": 78,
+    "fields": {
+      "governorId": {
+        "expected": "123456789",
+        "actual": "123456789",
+        "confidence": 88,
+        "minConfidence": 80
+      },
+      "governorName": {
+        "expected": "Ares Prime",
+        "actual": "Ares Prime",
+        "confidence": 82,
+        "minConfidence": 72
+      },
+      "power": {
+        "expected": "152300000",
+        "actual": "152300000",
+        "confidence": 91,
+        "minConfidence": 80
+      },
+      "killPoints": {
+        "expected": "480000000",
+        "actual": "480000000",
+        "confidence": 85,
+        "minConfidence": 78
+      },
+      "t4Kills": {
+        "expected": "12000000",
+        "actual": "12000000",
+        "confidence": 84,
+        "minConfidence": 75
+      },
+      "t5Kills": {
+        "expected": "5300000",
+        "actual": "5300000",
+        "confidence": 83,
+        "minConfidence": 75
+      },
+      "deads": {
+        "expected": "750000",
+        "actual": "750000",
+        "confidence": 81,
+        "minConfidence": 72
+      }
+    }
+  },
+  {
+    "id": "mobile-20-9-governor-b",
+    "templateId": "mobile-20-9",
+    "minAverageConfidence": 72,
+    "fields": {
+      "governorId": {
+        "expected": "987654321",
+        "actual": "987654321",
+        "confidence": 80,
+        "minConfidence": 72
+      },
+      "governorName": {
+        "expected": "Nova Shield",
+        "actual": "Nova Shield",
+        "confidence": 74,
+        "minConfidence": 66
+      },
+      "power": {
+        "expected": "99300000",
+        "actual": "99300000",
+        "confidence": 79,
+        "minConfidence": 70
+      },
+      "killPoints": {
+        "expected": "201000000",
+        "actual": "201000000",
+        "confidence": 76,
+        "minConfidence": 68
+      },
+      "t4Kills": {
+        "expected": "7000000",
+        "actual": "7000000",
+        "confidence": 71,
+        "minConfidence": 65
+      },
+      "t5Kills": {
+        "expected": "3100000",
+        "actual": "3100000",
+        "confidence": 70,
+        "minConfidence": 65
+      },
+      "deads": {
+        "expected": "420000",
+        "actual": "420000",
+        "confidence": 73,
+        "minConfidence": 66
+      }
+    }
+  }
+]

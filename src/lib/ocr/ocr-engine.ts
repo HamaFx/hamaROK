@@ -4,17 +4,32 @@
  */
 import { createWorker, Worker } from 'tesseract.js';
 import {
-  CROP_REGIONS,
   loadImage,
   cropRegion,
   preprocessForOCR,
   canvasToDataUrl,
 } from './image-preprocessor';
+import { detectOcrTemplate } from './templates';
+
+interface OcrPassTrace {
+  threshold: number;
+  scale: number;
+  contrast: number;
+  psm: '6' | '7';
+  confidence: number;
+  text: string;
+}
 
 export interface OcrFieldResult {
   value: string;
   confidence: number;
   croppedImage: string; // base64 data URL of the cropped region
+  trace?: {
+    templateId: string;
+    selectedPass: number;
+    passes: OcrPassTrace[];
+    fallbackUsed: boolean;
+  };
 }
 
 export interface OcrScreenshotResult {
@@ -26,7 +41,21 @@ export interface OcrScreenshotResult {
   t5Kills: OcrFieldResult;
   deads: OcrFieldResult;
   averageConfidence: number;
+  templateId: string;
+  normalizationTrace: Record<string, OcrPassTrace[]>;
 }
+
+export interface OcrFallbackResult {
+  value: string;
+  confidence: number;
+}
+
+export type OcrFallbackHandler = (args: {
+  fieldKey: string;
+  croppedImage: string;
+  currentValue: string;
+  currentConfidence: number;
+}) => Promise<OcrFallbackResult | null>;
 
 let worker: Worker | null = null;
 
@@ -39,15 +68,12 @@ export async function initializeWorker(): Promise<Worker> {
   return worker;
 }
 
-/**
- * Recognize a number from a preprocessed canvas
- */
-async function recognizeNumber(canvas: HTMLCanvasElement): Promise<{ text: string; confidence: number }> {
+async function recognizeNumberWithPsm(
+  canvas: HTMLCanvasElement
+): Promise<{ text: string; confidence: number }> {
   const w = await initializeWorker();
   await w.setParameters({
     tessedit_char_whitelist: '0123456789,. ',
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    tessedit_pageseg_mode: '7' as any,
   });
   const { data } = await w.recognize(canvas);
   return {
@@ -56,15 +82,12 @@ async function recognizeNumber(canvas: HTMLCanvasElement): Promise<{ text: strin
   };
 }
 
-/**
- * Recognize text (governor name) from a preprocessed canvas
- */
-async function recognizeText(canvas: HTMLCanvasElement): Promise<{ text: string; confidence: number }> {
+async function recognizeTextWithPsm(
+  canvas: HTMLCanvasElement
+): Promise<{ text: string; confidence: number }> {
   const w = await initializeWorker();
   await w.setParameters({
     tessedit_char_whitelist: '',
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    tessedit_pageseg_mode: '7' as any,
   });
   const { data } = await w.recognize(canvas);
   return {
@@ -79,21 +102,90 @@ async function recognizeText(canvas: HTMLCanvasElement): Promise<{ text: string;
 async function processField(
   img: HTMLImageElement,
   regionKey: string,
-  isNumeric: boolean
+  isNumeric: boolean,
+  regions: Record<string, { x: number; y: number; width: number; height: number }>,
+  templateId: string,
+  fallback?: OcrFallbackHandler
 ): Promise<OcrFieldResult> {
-  const region = CROP_REGIONS[regionKey];
+  const region = regions[regionKey];
   const cropped = cropRegion(img, region);
   const croppedImage = canvasToDataUrl(cropped);
-  const processed = preprocessForOCR(cropped);
 
-  const result = isNumeric
-    ? await recognizeNumber(processed)
-    : await recognizeText(processed);
+  const passes: Array<{
+    threshold: number;
+    scale: number;
+    contrast: number;
+    psm: '6' | '7';
+  }> = isNumeric
+    ? [
+        { threshold: 105, scale: 2, contrast: 1.15, psm: '7' },
+        { threshold: 120, scale: 2.2, contrast: 1.35, psm: '7' },
+        { threshold: 140, scale: 2.4, contrast: 1.5, psm: '6' },
+      ]
+    : [
+        { threshold: 110, scale: 2, contrast: 1.1, psm: '7' },
+        { threshold: 135, scale: 2.2, contrast: 1.3, psm: '6' },
+      ];
+
+  const passResults: OcrPassTrace[] = [];
+  let bestValue = '';
+  let bestConfidence = -1;
+  let selectedPass = 0;
+
+  for (let i = 0; i < passes.length; i++) {
+    const pass = passes[i];
+    const processed = preprocessForOCR(cropped, {
+      invert: true,
+      threshold: pass.threshold,
+      scale: pass.scale,
+      contrast: pass.contrast,
+    });
+
+    const result = isNumeric
+      ? await recognizeNumberWithPsm(processed)
+      : await recognizeTextWithPsm(processed);
+
+    passResults.push({
+      ...pass,
+      text: result.text,
+      confidence: result.confidence,
+    });
+
+    if (result.confidence > bestConfidence) {
+      bestConfidence = result.confidence;
+      bestValue = result.text;
+      selectedPass = i;
+    }
+  }
+
+  let finalValue = bestValue;
+  let finalConfidence = bestConfidence;
+  let fallbackUsed = false;
+
+  if (fallback && bestConfidence < 70) {
+    const fallbackResult = await fallback({
+      fieldKey: regionKey,
+      croppedImage,
+      currentValue: bestValue,
+      currentConfidence: bestConfidence,
+    });
+    if (fallbackResult && fallbackResult.confidence > finalConfidence) {
+      finalValue = fallbackResult.value;
+      finalConfidence = fallbackResult.confidence;
+      fallbackUsed = true;
+    }
+  }
 
   return {
-    value: result.text,
-    confidence: result.confidence,
+    value: finalValue,
+    confidence: finalConfidence,
     croppedImage,
+    trace: {
+      templateId,
+      selectedPass,
+      passes: passResults,
+      fallbackUsed,
+    },
   };
 }
 
@@ -102,9 +194,11 @@ async function processField(
  */
 export async function processScreenshot(
   file: File,
-  onProgress?: (field: string, index: number, total: number) => void
+  onProgress?: (field: string, index: number, total: number) => void,
+  fallback?: OcrFallbackHandler
 ): Promise<OcrScreenshotResult> {
   const img = await loadImage(file);
+  const template = detectOcrTemplate(img.naturalWidth, img.naturalHeight);
   const fields = [
     { key: 'governorId', numeric: true },
     { key: 'governorName', numeric: false },
@@ -116,12 +210,21 @@ export async function processScreenshot(
   ];
 
   const results: Record<string, OcrFieldResult> = {};
+  const normalizationTrace: Record<string, OcrPassTrace[]> = {};
   let totalConfidence = 0;
 
   for (let i = 0; i < fields.length; i++) {
     const { key, numeric } = fields[i];
     onProgress?.(key, i, fields.length);
-    results[key] = await processField(img, key, numeric);
+    results[key] = await processField(
+      img,
+      key,
+      numeric,
+      template.regions,
+      template.id,
+      fallback
+    );
+    normalizationTrace[key] = results[key].trace?.passes ?? [];
     totalConfidence += results[key].confidence;
   }
 
@@ -137,6 +240,8 @@ export async function processScreenshot(
     t5Kills: results.t5Kills,
     deads: results.deads,
     averageConfidence: totalConfidence / fields.length,
+    templateId: template.id,
+    normalizationTrace,
   };
 }
 

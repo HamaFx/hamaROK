@@ -50,11 +50,34 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const event = await prisma.event.findUnique({
+      where: { id: eventId },
+      select: { id: true, workspaceId: true },
+    });
+
+    if (!event) {
+      return NextResponse.json(
+        { error: { code: 'NOT_FOUND', message: 'Event not found' } },
+        { status: 404 }
+      );
+    }
+
+    const workspaceId = event.workspaceId ?? null;
+
     // Upsert governor
     const governor = await prisma.governor.upsert({
       where: { governorId: String(govGameId) },
-      update: { name: String(governorName), alliance: alliance || '' },
-      create: { governorId: String(govGameId), name: String(governorName), alliance: alliance || '' },
+      update: {
+        name: String(governorName),
+        alliance: alliance || '',
+        ...(workspaceId ? { workspaceId } : {}),
+      },
+      create: {
+        governorId: String(govGameId),
+        name: String(governorName),
+        alliance: alliance || '',
+        workspaceId,
+      },
     });
 
     // Upsert snapshot
@@ -66,6 +89,7 @@ export async function POST(request: NextRequest) {
         t4Kills: BigInt(String(t4Kills).replace(/[^0-9]/g, '') || '0'),
         t5Kills: BigInt(String(t5Kills).replace(/[^0-9]/g, '') || '0'),
         deads: BigInt(String(deads).replace(/[^0-9]/g, '') || '0'),
+        workspaceId,
         screenshotUrl: screenshotUrl || null,
         ocrConfidence: ocrConfidence || 0,
         verified: verified ?? false,
@@ -73,6 +97,7 @@ export async function POST(request: NextRequest) {
       create: {
         eventId,
         governorId: governor.id,
+        workspaceId,
         power: BigInt(String(power).replace(/[^0-9]/g, '') || '0'),
         killPoints: BigInt(String(killPoints).replace(/[^0-9]/g, '') || '0'),
         t4Kills: BigInt(String(t4Kills).replace(/[^0-9]/g, '') || '0'),

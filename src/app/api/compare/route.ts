@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
-import { calculateAdvancedDkp, SnapshotDelta } from '@/lib/warrior-score';
+import { calculateAdvancedDkp, DkpConfig, SnapshotDelta } from '@/lib/warrior-score';
 
 export async function GET(request: NextRequest) {
   try {
@@ -30,7 +30,15 @@ export async function GET(request: NextRequest) {
       prisma.kingdomSettings.findUnique({ where: { id: 'default' } }),
     ]);
 
-    const config = settings || {
+    const config: DkpConfig = settings
+      ? {
+          t4Weight: settings.t4Weight,
+          t5Weight: settings.t5Weight,
+          deadWeight: settings.deadWeight,
+          kpPerPowerRatio: settings.kpPerPowerRatio,
+          deadPerPowerRatio: settings.deadPerPowerRatio,
+        }
+      : {
       t4Weight: 0.5,
       t5Weight: 1.0,
       deadWeight: 5.0,
@@ -120,8 +128,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Calculate new DKP scores
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const warriorScores = calculateAdvancedDkp(warriorDeltas, config as any);
+    const warriorScores = calculateAdvancedDkp(warriorDeltas, config);
 
     // Build comparison results with advanced scores merged
     const comparisons = matched.map((m) => {
@@ -132,6 +139,8 @@ export async function GET(request: NextRequest) {
           ? {
               actualDkp: ws.actualDkp,
               expectedKp: ws.expectedKp,
+              expectedDeads: ws.expectedDeads,
+              expectedDkp: ws.expectedDkp,
               kdRatio: ws.kdRatio,
               totalScore: ws.warriorScore,
               isDeadweight: ws.isDeadweight,

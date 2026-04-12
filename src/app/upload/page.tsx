@@ -2,7 +2,7 @@
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { EVENT_TYPE_LABELS } from '@/lib/utils';
-import { cleanNumericOcr } from '@/lib/ocr/validators';
+import { cleanNumericOcr, validateGovernorData, ValidationResult } from '@/lib/ocr/validators';
 
 interface OcrEntry {
   id: string;
@@ -10,7 +10,19 @@ interface OcrEntry {
   status: 'pending' | 'processing' | 'done' | 'error';
   values: Record<string, string>;
   confidences: Record<string, number>;
+  validation: ValidationResult[];
+  templateId?: string;
+  averageConfidence?: number;
   confirmed: boolean;
+  rawFields?: Record<
+    string,
+    {
+      value: string;
+      confidence: number;
+      croppedImage?: string;
+      trace?: unknown;
+    }
+  >;
 }
 
 interface EventOption {
@@ -29,8 +41,34 @@ export default function UploadPage() {
   const [, setProcessing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveResult, setSaveResult] = useState<{ saved: number; updated: number; errors: number } | null>(null);
+  const [workspaceId, setWorkspaceId] = useState('');
+  const [accessToken, setAccessToken] = useState('');
+  const [useReviewQueue, setUseReviewQueue] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
+
+  const computeValidation = useCallback(
+    (values: Record<string, string>, confidences: Record<string, number>) =>
+      validateGovernorData({
+        governorId: values.governorId || '',
+        name: values.governorName || '',
+        power: values.power || '',
+        killPoints: values.killPoints || '',
+        t4Kills: values.t4Kills || '',
+        t5Kills: values.t5Kills || '',
+        deads: values.deads || '',
+        confidences: {
+          governorId: confidences.governorId || 0,
+          name: confidences.name || 0,
+          power: confidences.power || 0,
+          killPoints: confidences.killPoints || 0,
+          t4Kills: confidences.t4Kills || 0,
+          t5Kills: confidences.t5Kills || 0,
+          deads: confidences.deads || 0,
+        },
+      }),
+    []
+  );
 
   // Fetch events
   useEffect(() => {
@@ -39,6 +77,22 @@ export default function UploadPage() {
       .then((d) => setEvents(d.events || []))
       .catch(console.error);
   }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    setWorkspaceId(localStorage.getItem('workspaceId') || '');
+    setAccessToken(localStorage.getItem('workspaceToken') || '');
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (workspaceId) localStorage.setItem('workspaceId', workspaceId);
+  }, [workspaceId]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (accessToken) localStorage.setItem('workspaceToken', accessToken);
+  }, [accessToken]);
 
   // Handle file selection
   const handleFiles = useCallback(async (files: File[]) => {
@@ -60,6 +114,9 @@ export default function UploadPage() {
         deads: '',
       },
       confidences: {},
+      validation: [],
+      templateId: undefined,
+      averageConfidence: undefined,
       confirmed: false,
     }));
 
@@ -76,30 +133,45 @@ export default function UploadPage() {
         // Dynamic import to avoid SSR issues
         const { processScreenshot } = await import('@/lib/ocr/ocr-engine');
         const result = await processScreenshot(imageFiles[i]);
+        const values = {
+          governorId: cleanNumericOcr(result.governorId.value),
+          governorName: result.governorName.value,
+          power: cleanNumericOcr(result.power.value),
+          killPoints: cleanNumericOcr(result.killPoints.value),
+          t4Kills: cleanNumericOcr(result.t4Kills.value),
+          t5Kills: cleanNumericOcr(result.t5Kills.value),
+          deads: cleanNumericOcr(result.deads.value),
+        };
+        const confidences = {
+          governorId: result.governorId.confidence,
+          name: result.governorName.confidence,
+          power: result.power.confidence,
+          killPoints: result.killPoints.confidence,
+          t4Kills: result.t4Kills.confidence,
+          t5Kills: result.t5Kills.confidence,
+          deads: result.deads.confidence,
+        };
+        const validation = computeValidation(values, confidences);
 
         setEntries((prev) =>
           prev.map((e) =>
             e.id === entryId
-              ? {
+                ? {
                   ...e,
                   status: 'done',
-                  values: {
-                    governorId: cleanNumericOcr(result.governorId.value),
-                    governorName: result.governorName.value,
-                    power: cleanNumericOcr(result.power.value),
-                    killPoints: cleanNumericOcr(result.killPoints.value),
-                    t4Kills: cleanNumericOcr(result.t4Kills.value),
-                    t5Kills: cleanNumericOcr(result.t5Kills.value),
-                    deads: cleanNumericOcr(result.deads.value),
-                  },
-                  confidences: {
-                    governorId: result.governorId.confidence,
-                    name: result.governorName.confidence,
-                    power: result.power.confidence,
-                    killPoints: result.killPoints.confidence,
-                    t4Kills: result.t4Kills.confidence,
-                    t5Kills: result.t5Kills.confidence,
-                    deads: result.deads.confidence,
+                  values,
+                  confidences,
+                  validation,
+                  templateId: result.templateId,
+                  averageConfidence: result.averageConfidence,
+                  rawFields: {
+                    governorId: result.governorId,
+                    governorName: result.governorName,
+                    power: result.power,
+                    killPoints: result.killPoints,
+                    t4Kills: result.t4Kills,
+                    t5Kills: result.t5Kills,
+                    deads: result.deads,
                   },
                 }
               : e
@@ -114,7 +186,7 @@ export default function UploadPage() {
     }
 
     setProcessing(false);
-  }, []);
+  }, [computeValidation]);
 
   // Drag and drop
   const onDragOver = (e: React.DragEvent) => { e.preventDefault(); setIsDragging(true); };
@@ -129,9 +201,15 @@ export default function UploadPage() {
   // Update a value
   const updateValue = (entryId: string, field: string, value: string) => {
     setEntries((prev) =>
-      prev.map((e) =>
-        e.id === entryId ? { ...e, values: { ...e.values, [field]: value } } : e
-      )
+      prev.map((e) => {
+        if (e.id !== entryId) return e;
+        const nextValues = { ...e.values, [field]: value };
+        return {
+          ...e,
+          values: nextValues,
+          validation: computeValidation(nextValues, e.confidences),
+        };
+      })
     );
   };
 
@@ -166,6 +244,96 @@ export default function UploadPage() {
     }
   };
 
+  const submitToReviewQueue = async (confirmed: OcrEntry[]) => {
+    if (!workspaceId || !accessToken) {
+      throw new Error('Workspace ID and access token are required for review queue mode.');
+    }
+
+    const scanJobRes = await fetch('/api/v2/scan-jobs', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-access-token': accessToken,
+      },
+      body: JSON.stringify({
+        workspaceId,
+        eventId: selectedEventId,
+        source: 'MANUAL_UPLOAD',
+        totalFiles: confirmed.length,
+        notes: `Uploaded from UI batch at ${new Date().toISOString()}`,
+        idempotencyKey: `upload-${selectedEventId}-${Date.now()}`,
+      }),
+    });
+
+    const scanPayload = await scanJobRes.json();
+    if (!scanJobRes.ok) {
+      throw new Error(scanPayload?.error?.message || 'Failed to create scan job.');
+    }
+
+    const scanJobId = scanPayload?.data?.id as string;
+    if (!scanJobId) {
+      throw new Error('Scan job creation returned no id.');
+    }
+
+    for (const entry of confirmed) {
+      const overallConfidence = (entry.averageConfidence || 0) / 100;
+      const validation = entry.validation.map((v) => ({
+        field: v.field,
+        value: v.value,
+        isValid: v.isValid,
+        confidence: v.confidence,
+        warning: v.warning,
+        severity: v.severity,
+      }));
+
+      const fields = entry.rawFields || {
+        governorId: { value: entry.values.governorId, confidence: entry.confidences.governorId || 0 },
+        governorName: { value: entry.values.governorName, confidence: entry.confidences.name || 0 },
+        power: { value: entry.values.power, confidence: entry.confidences.power || 0 },
+        killPoints: { value: entry.values.killPoints, confidence: entry.confidences.killPoints || 0 },
+        t4Kills: { value: entry.values.t4Kills, confidence: entry.confidences.t4Kills || 0 },
+        t5Kills: { value: entry.values.t5Kills, confidence: entry.confidences.t5Kills || 0 },
+        deads: { value: entry.values.deads, confidence: entry.confidences.deads || 0 },
+      };
+
+      const extractionRes = await fetch(`/api/v2/scan-jobs/${scanJobId}/extractions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-access-token': accessToken,
+        },
+        body: JSON.stringify({
+          provider: 'TESSERACT',
+          status: 'RAW',
+          governorIdRaw: entry.values.governorId,
+          governorNameRaw: entry.values.governorName,
+          confidence: Number.isFinite(overallConfidence) ? overallConfidence : 0,
+          fields,
+          normalized: {
+            governorId: entry.values.governorId,
+            governorName: entry.values.governorName,
+            power: entry.values.power,
+            killPoints: entry.values.killPoints,
+            t4Kills: entry.values.t4Kills,
+            t5Kills: entry.values.t5Kills,
+            deads: entry.values.deads,
+          },
+          validation,
+        }),
+      });
+
+      const extractionPayload = await extractionRes.json();
+      if (!extractionRes.ok) {
+        throw new Error(
+          extractionPayload?.error?.message ||
+            `Failed to queue extraction for ${entry.fileName}.`
+        );
+      }
+    }
+
+    return scanJobId;
+  };
+
   // Save all confirmed
   const saveAll = async () => {
     const confirmed = entries.filter((e) => e.confirmed && e.status === 'done');
@@ -173,6 +341,18 @@ export default function UploadPage() {
 
     setSaving(true);
     try {
+      if (useReviewQueue) {
+        const scanJobId = await submitToReviewQueue(confirmed);
+        setSaveResult({
+          saved: confirmed.length,
+          updated: 0,
+          errors: 0,
+        });
+        setEntries((prev) => prev.filter((e) => !e.confirmed));
+        alert(`Queued ${confirmed.length} entry(ies) for review in scan job ${scanJobId}.`);
+        return;
+      }
+
       const res = await fetch('/api/snapshots/batch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -245,6 +425,34 @@ export default function UploadPage() {
             + New Event
           </button>
         </div>
+        <div className="grid-2 mt-16">
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label className="form-label">Workspace ID (for v2 review queue mode)</label>
+            <input
+              className="form-input"
+              value={workspaceId}
+              onChange={(e) => setWorkspaceId(e.target.value)}
+              placeholder="workspace_cuid"
+            />
+          </div>
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label className="form-label">Access Token (editor/viewer link token)</label>
+            <input
+              className="form-input"
+              value={accessToken}
+              onChange={(e) => setAccessToken(e.target.value)}
+              placeholder="paste token"
+            />
+          </div>
+        </div>
+        <label className="text-sm mt-12 flex items-center gap-8" style={{ cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={useReviewQueue}
+            onChange={(e) => setUseReviewQueue(e.target.checked)}
+          />
+          Send confirmed entries to v2 review queue instead of direct snapshot save
+        </label>
       </div>
 
       {/* Step 2: Upload */}
@@ -324,6 +532,14 @@ export default function UploadPage() {
                     {entry.status === 'processing' ? '⏳' : entry.status === 'done' ? '✅' : entry.status === 'error' ? '❌' : '⏸️'}
                   </span>
                   <strong>{entry.fileName}</strong>
+                  {entry.templateId && (
+                    <span className="text-muted text-sm">Template: {entry.templateId}</span>
+                  )}
+                  {typeof entry.averageConfidence === 'number' && (
+                    <span className="text-muted text-sm">
+                      Avg OCR: {Math.round(entry.averageConfidence)}%
+                    </span>
+                  )}
                   {entry.confirmed && (
                     <span className="tier-badge tier-support" style={{ fontSize: '0.75rem' }}>Confirmed</span>
                   )}
@@ -344,23 +560,42 @@ export default function UploadPage() {
               </div>
 
               {entry.status === 'done' && (
-                <div className="ocr-review-body">
-                  {fields.map((f) => (
-                    <React.Fragment key={f.key}>
-                      <label className="ocr-field-label">{f.label}</label>
-                      <div className="ocr-field-value">
-                        <input
-                          className="ocr-field-input"
-                          value={entry.values[f.key] || ''}
-                          onChange={(e) => updateValue(entry.id, f.key, e.target.value)}
-                        />
-                        <span className="validation-icon">
-                          {entry.values[f.key] ? '✅' : '⚠️'}
-                        </span>
-                      </div>
-                    </React.Fragment>
-                  ))}
-                </div>
+                <>
+                  <div className="ocr-review-body">
+                    {fields.map((f) => {
+                      const validation = entry.validation.find((v) => v.field === (f.key === 'governorName' ? 'name' : f.key));
+                      const severity = validation?.severity ?? 'ok';
+                      const confidenceValue = f.key === 'governorName' ? entry.confidences.name : entry.confidences[f.key];
+                      return (
+                        <React.Fragment key={f.key}>
+                          <label className="ocr-field-label">{f.label}</label>
+                          <div className="ocr-field-value">
+                            <input
+                              className={`ocr-field-input ${severity === 'error' ? 'has-error' : severity === 'warning' ? 'has-warning' : ''}`}
+                              value={entry.values[f.key] || ''}
+                              onChange={(e) => updateValue(entry.id, f.key, e.target.value)}
+                            />
+                            <span className="validation-icon" title={validation?.warning || 'Looks good'}>
+                              {severity === 'error' ? '❌' : severity === 'warning' ? '⚠️' : '✅'}
+                            </span>
+                            <span className="text-muted text-sm">{Math.round(confidenceValue || 0)}%</span>
+                          </div>
+                        </React.Fragment>
+                      );
+                    })}
+                  </div>
+                  {entry.validation.some((v) => v.severity !== 'ok') && (
+                    <div style={{ padding: '0 20px 16px' }}>
+                      {entry.validation
+                        .filter((v) => v.severity !== 'ok' && v.warning)
+                        .map((v) => (
+                          <div key={`${entry.id}-${v.field}`} className={`text-sm ${v.severity === 'error' ? 'delta-negative' : 'text-gold'}`}>
+                            {v.severity === 'error' ? '❌' : '⚠️'} {v.warning}
+                          </div>
+                        ))}
+                    </div>
+                  )}
+                </>
               )}
 
               {entry.status === 'processing' && (
@@ -388,7 +623,11 @@ export default function UploadPage() {
               disabled={!selectedEventId || confirmedCount === 0 || saving}
               onClick={saveAll}
             >
-              {saving ? '⏳ Saving...' : `💾 Save ${confirmedCount} Entries`}
+              {saving
+                ? '⏳ Saving...'
+                : useReviewQueue
+                  ? `🧪 Queue ${confirmedCount} for Review`
+                  : `💾 Save ${confirmedCount} Entries`}
             </button>
           </div>
 

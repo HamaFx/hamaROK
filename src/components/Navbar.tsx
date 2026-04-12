@@ -9,7 +9,10 @@ const links = [
   { href: '/upload', label: 'Upload', icon: '📸' },
   { href: '/events', label: 'Events', icon: '📅' },
   { href: '/compare', label: 'Compare', icon: '⚔️' },
+  { href: '/insights', label: 'Insights', icon: '📡' },
   { href: '/governors', label: 'Governors', icon: '👥' },
+  { href: '/review', label: 'Review', icon: '🧪' },
+  { href: '/calibration', label: 'Calibrate', icon: '🎯' },
   { href: '/settings', label: 'Settings', icon: '⚙️' },
 ];
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { put } from '@vercel/blob';
+import { assertBlobConfigured } from '@/lib/env';
 
 export async function POST(request: NextRequest) {
   try {
@@ -22,6 +23,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    assertBlobConfigured();
+
     const blob = await put(`screenshots/${Date.now()}-${file.name}`, file, {
       access: 'public',
     });
@@ -33,10 +36,11 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('POST /api/screenshots/upload error:', error);
-    // If Vercel Blob is not configured, return a placeholder
+    const message =
+      error instanceof Error ? error.message : 'Failed to upload screenshot';
     return NextResponse.json(
-      { url: null, message: 'Screenshot upload skipped (Blob storage not configured)', size: 0 },
-      { status: 200 }
+      { error: { code: 'INTERNAL_ERROR', message } },
+      { status: 500 }
     );
   }
 }

@@ -74,6 +74,12 @@ export default function Dashboard() {
         <Link href="/compare" className="btn btn-secondary btn-lg">
           ⚔️ Compare Events
         </Link>
+        <Link href="/insights" className="btn btn-secondary btn-lg">
+          📡 Insights
+        </Link>
+        <Link href="/review" className="btn btn-secondary btn-lg">
+          🧪 Review Queue
+        </Link>
         <Link href="/events" className="btn btn-secondary btn-lg">
           📅 Manage Events
         </Link>

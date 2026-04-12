@@ -1,0 +1,107 @@
+import { Prisma } from '@prisma/client';
+import { prisma } from '@/lib/prisma';
+import { ApiHttpError } from '@/lib/api-response';
+import { createScopedKeyHash, hashRequestPayload } from '@/lib/security';
+
+function toJsonSafe<T>(value: T): T {
+  return JSON.parse(
+    JSON.stringify(value, (_, item) =>
+      typeof item === 'bigint' ? item.toString() : item
+    )
+  ) as T;
+}
+
+interface IdempotencyOptions<T> {
+  workspaceId: string;
+  scope: string;
+  key?: string | null;
+  request: unknown;
+  ttlHours?: number;
+  execute: () => Promise<T>;
+}
+
+export async function withIdempotency<T>({
+  workspaceId,
+  scope,
+  key,
+  request,
+  ttlHours = 24,
+  execute,
+}: IdempotencyOptions<T>): Promise<{ value: T; replayed: boolean }> {
+  if (!key) {
+    const value = await execute();
+    return { value, replayed: false };
+  }
+
+  const keyHash = createScopedKeyHash(workspaceId, scope, key);
+  const requestHash = hashRequestPayload(request);
+  const now = new Date();
+
+  const existing = await prisma.idempotencyKey.findUnique({
+    where: {
+      workspaceId_scope_keyHash: {
+        workspaceId,
+        scope,
+        keyHash,
+      },
+    },
+  });
+
+  if (existing && existing.expiresAt > now) {
+    if (existing.requestHash !== requestHash) {
+      throw new ApiHttpError(
+        'CONFLICT',
+        'Idempotency key was already used with a different request payload.',
+        409
+      );
+    }
+
+    if (existing.response) {
+      return {
+        value: existing.response as T,
+        replayed: true,
+      };
+    }
+  }
+
+  const value = await execute();
+  const response = toJsonSafe(value) as Prisma.InputJsonValue;
+
+  await prisma.idempotencyKey.upsert({
+    where: {
+      workspaceId_scope_keyHash: {
+        workspaceId,
+        scope,
+        keyHash,
+      },
+    },
+    create: {
+      workspaceId,
+      scope,
+      keyHash,
+      requestHash,
+      response,
+      expiresAt: new Date(now.getTime() + ttlHours * 60 * 60 * 1000),
+    },
+    update: {
+      requestHash,
+      response,
+      expiresAt: new Date(now.getTime() + ttlHours * 60 * 60 * 1000),
+    },
+  });
+
+  return {
+    value,
+    replayed: false,
+  };
+}
+
+export async function cleanupExpiredIdempotencyKeys() {
+  const result = await prisma.idempotencyKey.deleteMany({
+    where: {
+      expiresAt: { lt: new Date() },
+    },
+  });
+
+  return result.count;
+}

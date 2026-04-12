@@ -4,8 +4,6 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("POSTGRES_PRISMA_URL")
-  directUrl = env("POSTGRES_URL_NON_POOLING")
 }
 
 model Governor {
@@ -13,12 +11,16 @@ model Governor {
   governorId String     @unique
   name       String
   alliance   String     @default("")
+  workspaceId String?
   createdAt  DateTime   @default(now())
   updatedAt  DateTime   @updatedAt
   snapshots  Snapshot[]
+  workspace  Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  anomalies  Anomaly[]
 
   @@index([governorId])
   @@index([name])
+  @@index([workspaceId])
 }
 
 enum EventType {
@@ -35,18 +37,28 @@ model Event {
   name        String
   description String?
   eventType   EventType @default(CUSTOM)
+  workspaceId String?
   createdAt   DateTime  @default(now())
   snapshots   Snapshot[]
+  workspace   Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  scanJobs    ScanJob[]
+  reportSnapshotsAsA ReportSnapshot[] @relation("ReportEventA")
+  reportSnapshotsAsB ReportSnapshot[] @relation("ReportEventB")
+  exportJobsAsA ExportJob[] @relation("ExportEventA")
+  exportJobsAsB ExportJob[] @relation("ExportEventB")
 
   @@index([createdAt])
+  @@index([workspaceId])
 }
 
 model Snapshot {
   id            String   @id @default(cuid())
   eventId       String
   governorId    String
+  workspaceId   String?
   event         Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
   governor      Governor @relation(fields: [governorId], references: [id], onDelete: Cascade)
+  workspace     Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
   power         BigInt
   killPoints    BigInt
   t4Kills       BigInt   @default(0)
@@ -56,10 +68,14 @@ model Snapshot {
   ocrConfidence Float    @default(0)
   verified      Boolean  @default(false)
   createdAt     DateTime @default(now())
+  artifacts     Artifact[]
+  revisions     SnapshotRevision[]
+  anomalies     Anomaly[]
 
   @@unique([eventId, governorId])
   @@index([eventId])
   @@index([governorId])
+  @@index([workspaceId])
 }
 
 model KingdomSettings {
@@ -71,4 +87,307 @@ model KingdomSettings {
   deadPerPowerRatio Float    @default(0.02) // Expect 20k Deads per 1M power
   discordWebhook    String?
   updatedAt         DateTime @updatedAt
+}
+
+model Workspace {
+  id                String             @id @default(cuid())
+  slug              String             @unique
+  name              String
+  kingdomTag        String?
+  description       String?
+  isArchived        Boolean            @default(false)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  governors         Governor[]
+  events            Event[]
+  snapshots         Snapshot[]
+  settings          WorkspaceSettings?
+  accessLinks       AccessLink[]
+  scanJobs          ScanJob[]
+  artifacts         Artifact[]
+  revisions         SnapshotRevision[]
+  anomalies         Anomaly[]
+  exportJobs        ExportJob[]
+  reportSnapshots   ReportSnapshot[]
+  deliveryLogs      DeliveryLog[]
+  idempotencyKeys   IdempotencyKey[]
+
+  @@index([createdAt])
+}
+
+model WorkspaceSettings {
+  id                   String    @id @default(cuid())
+  workspaceId          String    @unique
+  t4Weight             Float     @default(0.5)
+  t5Weight             Float     @default(1.0)
+  deadWeight           Float     @default(5.0)
+  kpPerPowerRatio      Float     @default(0.3)
+  deadPerPowerRatio    Float     @default(0.02)
+  discordWebhook       String?
+  fallbackOcrEnabled   Boolean   @default(false)
+  fallbackOcrDailyLimit Int      @default(50)
+  featureAdbCaptureRnd Boolean   @default(false)
+  updatedAt            DateTime  @updatedAt
+  workspace            Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+enum WorkspaceRole {
+  OWNER
+  EDITOR
+  VIEWER
+}
+
+model AccessLink {
+  id           String        @id @default(cuid())
+  workspaceId  String
+  role         WorkspaceRole @default(VIEWER)
+  label        String?
+  tokenHash    String        @unique
+  createdAt    DateTime      @default(now())
+  expiresAt    DateTime?
+  revokedAt    DateTime?
+  lastUsedAt   DateTime?
+  workspace    Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  revisions    SnapshotRevision[]
+  reportSnapshots ReportSnapshot[]
+
+  @@index([workspaceId])
+  @@index([expiresAt])
+}
+
+enum ScanJobStatus {
+  QUEUED
+  PROCESSING
+  REVIEW
+  READY
+  COMPLETED
+  FAILED
+  CANCELED
+}
+
+enum ScanJobSource {
+  MANUAL_UPLOAD
+  ADB_RND
+}
+
+model ScanJob {
+  id                String        @id @default(cuid())
+  workspaceId       String
+  eventId           String?
+  status            ScanJobStatus @default(QUEUED)
+  source            ScanJobSource @default(MANUAL_UPLOAD)
+  idempotencyKey    String?
+  totalFiles        Int           @default(0)
+  processedFiles    Int           @default(0)
+  lowConfidenceFiles Int          @default(0)
+  notes             String?
+  error             String?
+  createdAt         DateTime      @default(now())
+  startedAt         DateTime?
+  completedAt       DateTime?
+  workspace         Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  event             Event?        @relation(fields: [eventId], references: [id], onDelete: SetNull)
+  ocrExtractions    OcrExtraction[]
+  artifacts         Artifact[]
+
+  @@unique([workspaceId, idempotencyKey])
+  @@index([workspaceId, status])
+  @@index([createdAt])
+}
+
+enum ArtifactType {
+  SCREENSHOT
+  OCR_CROP
+  REPORT_CSV
+  REPORT_XLSX
+  REPORT_JSON
+}
+
+model Artifact {
+  id           String      @id @default(cuid())
+  workspaceId  String
+  scanJobId    String?
+  snapshotId   String?
+  type         ArtifactType
+  url          String
+  checksum     String?
+  bytes        Int?
+  metadata     Json?
+  createdAt    DateTime    @default(now())
+  workspace    Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  scanJob      ScanJob?    @relation(fields: [scanJobId], references: [id], onDelete: SetNull)
+  snapshot     Snapshot?   @relation(fields: [snapshotId], references: [id], onDelete: SetNull)
+  ocrExtractions OcrExtraction[]
+  exportJobs   ExportJob[]
+
+  @@index([workspaceId, type])
+  @@index([scanJobId])
+  @@index([snapshotId])
+}
+
+enum OcrProvider {
+  TESSERACT
+  FALLBACK
+  MANUAL
+}
+
+enum OcrExtractionStatus {
+  RAW
+  REVIEWED
+  APPROVED
+  REJECTED
+}
+
+model OcrExtraction {
+  id             String              @id @default(cuid())
+  scanJobId      String
+  artifactId     String?
+  provider       OcrProvider         @default(TESSERACT)
+  status         OcrExtractionStatus @default(RAW)
+  governorIdRaw  String?
+  governorNameRaw String?
+  confidence     Float               @default(0)
+  fields         Json
+  normalized     Json?
+  validation     Json?
+  createdAt      DateTime            @default(now())
+  scanJob        ScanJob             @relation(fields: [scanJobId], references: [id], onDelete: Cascade)
+  artifact       Artifact?           @relation(fields: [artifactId], references: [id], onDelete: SetNull)
+
+  @@index([scanJobId, status])
+}
+
+model SnapshotRevision {
+  id             String      @id @default(cuid())
+  workspaceId    String
+  snapshotId     String
+  changedByLinkId String?
+  reason         String?
+  previousData   Json
+  nextData       Json
+  createdAt      DateTime    @default(now())
+  workspace      Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  snapshot       Snapshot    @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+  changedByLink  AccessLink? @relation(fields: [changedByLinkId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, createdAt])
+  @@index([snapshotId])
+}
+
+enum AnomalySeverity {
+  INFO
+  WARNING
+  ERROR
+}
+
+model Anomaly {
+  id            String          @id @default(cuid())
+  workspaceId   String
+  snapshotId    String?
+  governorId    String?
+  eventAId      String?
+  eventBId      String?
+  code          String
+  type          String
+  message       String
+  severity      AnomalySeverity @default(WARNING)
+  context       Json?
+  resolved      Boolean         @default(false)
+  createdAt     DateTime        @default(now())
+  resolvedAt    DateTime?
+  workspace     Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  snapshot      Snapshot?       @relation(fields: [snapshotId], references: [id], onDelete: SetNull)
+  governor      Governor?       @relation(fields: [governorId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, createdAt])
+  @@index([severity, resolved])
+}
+
+enum ExportJobStatus {
+  QUEUED
+  PROCESSING
+  COMPLETED
+  FAILED
+  EXPIRED
+}
+
+model ExportJob {
+  id             String         @id @default(cuid())
+  workspaceId    String
+  eventAId       String?
+  eventBId       String?
+  status         ExportJobStatus @default(QUEUED)
+  format         String         @default("xlsx")
+  idempotencyKey String?
+  request        Json?
+  resultArtifactId String?
+  error          String?
+  createdAt      DateTime       @default(now())
+  startedAt      DateTime?
+  completedAt    DateTime?
+  expiresAt      DateTime?
+  workspace      Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  eventA         Event?         @relation("ExportEventA", fields: [eventAId], references: [id], onDelete: SetNull)
+  eventB         Event?         @relation("ExportEventB", fields: [eventBId], references: [id], onDelete: SetNull)
+  resultArtifact Artifact?      @relation(fields: [resultArtifactId], references: [id], onDelete: SetNull)
+
+  @@unique([workspaceId, idempotencyKey])
+  @@index([workspaceId, status])
+}
+
+model ReportSnapshot {
+  id              String      @id @default(cuid())
+  workspaceId     String
+  shareSlug       String      @unique
+  eventAId        String
+  eventBId        String
+  createdByLinkId String?
+  payload         Json
+  createdAt       DateTime    @default(now())
+  expiresAt       DateTime?
+  workspace       Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  eventA          Event       @relation("ReportEventA", fields: [eventAId], references: [id], onDelete: Cascade)
+  eventB          Event       @relation("ReportEventB", fields: [eventBId], references: [id], onDelete: Cascade)
+  createdByLink   AccessLink? @relation(fields: [createdByLinkId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, createdAt])
+}
+
+enum DeliveryStatus {
+  PENDING
+  RETRYING
+  SENT
+  FAILED
+}
+
+model DeliveryLog {
+  id             String         @id @default(cuid())
+  workspaceId    String
+  integration    String
+  destinationHash String
+  payload        Json
+  status         DeliveryStatus @default(PENDING)
+  attemptCount   Int            @default(0)
+  nextAttemptAt  DateTime?
+  lastError      String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  workspace      Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, status, nextAttemptAt])
+}
+
+model IdempotencyKey {
+  id          String    @id @default(cuid())
+  workspaceId String
+  scope       String
+  keyHash     String
+  requestHash String
+  response    Json?
+  createdAt   DateTime  @default(now())
+  expiresAt   DateTime
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, scope, keyHash])
+  @@index([expiresAt])
 }
