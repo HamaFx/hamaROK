@@ -1,0 +1,63 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("POSTGRES_PRISMA_URL")
+  directUrl = env("POSTGRES_URL_NON_POOLING")
+}
+
+model Governor {
+  id         String     @id @default(cuid())
+  governorId String     @unique
+  name       String
+  alliance   String     @default("")
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+  snapshots  Snapshot[]
+
+  @@index([governorId])
+  @@index([name])
+}
+
+enum EventType {
+  KVK_START
+  KVK_END
+  MGE
+  OSIRIS
+  WEEKLY
+  CUSTOM
+}
+
+model Event {
+  id          String    @id @default(cuid())
+  name        String
+  description String?
+  eventType   EventType @default(CUSTOM)
+  createdAt   DateTime  @default(now())
+  snapshots   Snapshot[]
+
+  @@index([createdAt])
+}
+
+model Snapshot {
+  id            String   @id @default(cuid())
+  eventId       String
+  governorId    String
+  event         Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  governor      Governor @relation(fields: [governorId], references: [id], onDelete: Cascade)
+  power         BigInt
+  killPoints    BigInt
+  t4Kills       BigInt   @default(0)
+  t5Kills       BigInt   @default(0)
+  deads         BigInt
+  screenshotUrl String?
+  ocrConfidence Float    @default(0)
+  verified      Boolean  @default(false)
+  createdAt     DateTime @default(now())
+
+  @@unique([eventId, governorId])
+  @@index([eventId])
+  @@index([governorId])
+}
