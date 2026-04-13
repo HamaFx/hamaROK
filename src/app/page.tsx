@@ -204,7 +204,7 @@ export default function Dashboard() {
                   .map((item) => `${item.rankingType}/${item.metricKey}`)
                   .join(' • ') || 'None'}
               </div>
-            </>
+            </div>
           ) : (
             <EmptyState
               title="Ranking metrics require workspace access"
