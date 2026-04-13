@@ -4,6 +4,20 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { ok, fail, handleApiError, readJson } from '@/lib/api-response';
 import { authorizeWorkspaceAccess } from '@/lib/workspace-auth';
+import {
+  FALLBACK_OCR_PROVIDER_VALUES,
+  getDefaultFallbackOcrModel,
+  normalizeFallbackOcrProvider,
+} from '@/lib/ocr/fallback-config';
+
+const fallbackProviderSchema = z
+  .string()
+  .min(1)
+  .max(40)
+  .transform((value) => normalizeFallbackOcrProvider(value))
+  .refine((value): value is (typeof FALLBACK_OCR_PROVIDER_VALUES)[number] => value != null, {
+    message: `fallbackOcrProvider must be one of: ${FALLBACK_OCR_PROVIDER_VALUES.join(', ')}`,
+  });
 
 const settingsSchema = z.object({
   t4Weight: z.number().min(0).max(20),
@@ -15,7 +29,7 @@ const settingsSchema = z.object({
   fallbackOcrEnabled: z.boolean().optional(),
   fallbackOcrDailyLimit: z.number().int().min(1).max(5000).optional(),
   fallbackOcrMonthlyBudgetUsd: z.number().min(0).max(1000).optional(),
-  fallbackOcrProvider: z.string().min(1).max(40).optional(),
+  fallbackOcrProvider: fallbackProviderSchema.optional(),
   fallbackOcrModel: z.string().min(1).max(80).optional(),
   featureAdbCaptureRnd: z.boolean().optional(),
 });
@@ -69,6 +83,9 @@ export async function POST(
     }
 
     const body = settingsSchema.parse(await readJson(request));
+    const requestedProvider = body.fallbackOcrProvider ?? undefined;
+    const requestedModel = body.fallbackOcrModel?.trim() || undefined;
+    const defaultProvider = 'google_vision' as const;
 
     const settings = await prisma.workspaceSettings.upsert({
       where: { workspaceId },
@@ -80,11 +97,13 @@ export async function POST(
         kpPerPowerRatio: body.kpPerPowerRatio,
         deadPerPowerRatio: body.deadPerPowerRatio,
         discordWebhook: body.discordWebhook?.trim() || null,
-        fallbackOcrEnabled: body.fallbackOcrEnabled ?? false,
+        fallbackOcrEnabled: body.fallbackOcrEnabled ?? true,
         fallbackOcrDailyLimit: body.fallbackOcrDailyLimit ?? 50,
-        fallbackOcrMonthlyBudgetUsd: body.fallbackOcrMonthlyBudgetUsd ?? 0,
-        fallbackOcrProvider: body.fallbackOcrProvider?.trim() || 'openai',
-        fallbackOcrModel: body.fallbackOcrModel?.trim() || 'gpt-5-mini',
+        fallbackOcrMonthlyBudgetUsd: body.fallbackOcrMonthlyBudgetUsd ?? 5,
+        fallbackOcrProvider: requestedProvider || defaultProvider,
+        fallbackOcrModel:
+          requestedModel ||
+          getDefaultFallbackOcrModel(requestedProvider || defaultProvider),
         featureAdbCaptureRnd: body.featureAdbCaptureRnd ?? false,
       },
       update: {
@@ -98,8 +117,10 @@ export async function POST(
         fallbackOcrDailyLimit: body.fallbackOcrDailyLimit ?? undefined,
         fallbackOcrMonthlyBudgetUsd:
           body.fallbackOcrMonthlyBudgetUsd ?? undefined,
-        fallbackOcrProvider: body.fallbackOcrProvider?.trim() || undefined,
-        fallbackOcrModel: body.fallbackOcrModel?.trim() || undefined,
+        fallbackOcrProvider: requestedProvider,
+        fallbackOcrModel:
+          requestedModel ||
+          (requestedProvider ? getDefaultFallbackOcrModel(requestedProvider) : undefined),
         featureAdbCaptureRnd: body.featureAdbCaptureRnd ?? undefined,
       },
     });

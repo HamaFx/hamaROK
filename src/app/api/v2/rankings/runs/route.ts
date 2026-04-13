@@ -24,6 +24,7 @@ import {
   listRankingRuns,
   type RankingRowInput,
 } from '@/lib/rankings/service';
+import { dispatchOcrWork } from '@/lib/aws/ocr-dispatch';
 
 const rowSchema = z.object({
   sourceRank: z.number().int().min(1).max(5000).optional().nullable(),
@@ -139,6 +140,21 @@ export async function POST(request: NextRequest) {
       captureFingerprint: body.captureFingerprint,
       rows: body.rows as RankingRowInput[],
     });
+
+    if (!created.idempotentReplay) {
+      await dispatchOcrWork({
+        type: 'ranking_run_created',
+        workspaceId: body.workspaceId,
+        eventId: body.eventId,
+        rankingRunId: created.id,
+        source: body.source,
+        payload: {
+          rankingType: body.rankingType,
+          metricKey: body.metricKey,
+          rowCount: body.rows.length,
+        },
+      });
+    }
 
     return ok(
       created,

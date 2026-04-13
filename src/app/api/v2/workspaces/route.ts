@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma';
 import { ok, fail, handleApiError, readJson } from '@/lib/api-response';
 import { parsePagination } from '@/lib/v2';
 import { createOpaqueToken, hashAccessToken } from '@/lib/security';
+import { getDefaultFallbackOcrModel } from '@/lib/ocr/fallback-config';
 
 const createWorkspaceSchema = z.object({
   name: z.string().min(2).max(80),
@@ -87,6 +88,7 @@ export async function POST(request: NextRequest) {
 
     const token = createOpaqueToken(32);
     const tokenHash = hashAccessToken(token);
+    const defaultFallbackProvider = 'google_vision' as const;
 
     const workspace = await prisma.$transaction(async (tx) => {
       const created = await tx.workspace.create({
@@ -101,6 +103,10 @@ export async function POST(request: NextRequest) {
       await tx.workspaceSettings.create({
         data: {
           workspaceId: created.id,
+          fallbackOcrEnabled: true,
+          fallbackOcrMonthlyBudgetUsd: 5,
+          fallbackOcrProvider: defaultFallbackProvider,
+          fallbackOcrModel: getDefaultFallbackOcrModel(defaultFallbackProvider),
         },
       });
 

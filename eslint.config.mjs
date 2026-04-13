@@ -9,6 +9,8 @@ export default defineConfig([
     '.next/**',
     'out/**',
     'build/**',
+    '.venv/**',
+    '.venv-paddle/**',
     'next-env.d.ts',
     'src/generated/prisma/**',
     'coverage/**',

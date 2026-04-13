@@ -7,6 +7,7 @@ import { parsePagination, getQueryParam } from '@/lib/v2';
 import { authorizeWorkspaceAccess } from '@/lib/workspace-auth';
 import { withIdempotency } from '@/lib/idempotency';
 import { isAdbCaptureRndEnabled } from '@/lib/env';
+import { dispatchOcrWork } from '@/lib/aws/ocr-dispatch';
 
 const createScanJobSchema = z.object({
   workspaceId: z.string().min(1),
@@ -134,6 +135,19 @@ export async function POST(request: NextRequest) {
         };
       },
     });
+
+    if (!idempotent.replayed) {
+      await dispatchOcrWork({
+        type: 'scan_job_created',
+        workspaceId: idempotent.value.workspaceId,
+        eventId: idempotent.value.eventId,
+        scanJobId: idempotent.value.id,
+        source: idempotent.value.source,
+        payload: {
+          totalFiles: idempotent.value.totalFiles,
+        },
+      });
+    }
 
     return ok(
       idempotent.value,

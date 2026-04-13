@@ -138,11 +138,11 @@ model WorkspaceSettings {
   kpPerPowerRatio      Float     @default(0.3)
   deadPerPowerRatio    Float     @default(0.02)
   discordWebhook       String?
-  fallbackOcrEnabled   Boolean   @default(false)
+  fallbackOcrEnabled   Boolean   @default(true)
   fallbackOcrDailyLimit Int      @default(50)
-  fallbackOcrMonthlyBudgetUsd Float @default(0)
-  fallbackOcrProvider   String    @default("openai")
-  fallbackOcrModel      String    @default("gpt-5-mini")
+  fallbackOcrMonthlyBudgetUsd Float @default(5)
+  fallbackOcrProvider   String    @default("google_vision")
+  fallbackOcrModel      String    @default("DOCUMENT_TEXT_DETECTION")
   featureAdbCaptureRnd Boolean   @default(false)
   updatedAt            DateTime  @updatedAt
   workspace            Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)

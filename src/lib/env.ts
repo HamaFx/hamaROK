@@ -27,6 +27,15 @@ const envSchema = z
     NEXT_PUBLIC_APP_URL: z.string().url().optional(),
     APP_SIGNING_SECRET: z.string().min(16).optional(),
     OPENAI_API_KEY: z.string().optional(),
+    GOOGLE_VISION_API_KEY: z.string().optional(),
+    GOOGLE_APPLICATION_CREDENTIALS: z.string().optional(),
+    GOOGLE_VISION_SERVICE_ACCOUNT_JSON: z.string().optional(),
+    AWS_REGION: z.string().optional(),
+    AWS_ACCESS_KEY_ID: z.string().optional(),
+    AWS_SECRET_ACCESS_KEY: z.string().optional(),
+    AWS_OCR_CONTROL_ENABLED: booleanString,
+    AWS_OCR_QUEUE_URL: z.string().url().optional(),
+    AWS_OCR_START_LAMBDA: z.string().optional(),
     OCR_FALLBACK_ENABLED: booleanString,
     OCR_FALLBACK_DAILY_LIMIT: intString,
     FEATURE_ADB_CAPTURE_RND: booleanString,
@@ -39,6 +48,21 @@ const envSchema = z
         code: z.ZodIssueCode.custom,
         message: 'OCR_FALLBACK_DAILY_LIMIT must be at least 1.',
       });
+    }
+
+    if (value.AWS_OCR_CONTROL_ENABLED) {
+      if (!value.AWS_OCR_QUEUE_URL) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'AWS_OCR_QUEUE_URL is required when AWS_OCR_CONTROL_ENABLED=true.',
+        });
+      }
+      if (!value.AWS_REGION) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'AWS_REGION is required when AWS_OCR_CONTROL_ENABLED=true.',
+        });
+      }
     }
   });
 
@@ -120,4 +144,8 @@ export function isMetricsLoggingEnabled(): boolean {
     return env.FEATURE_METRICS_LOGGING;
   }
   return env.NODE_ENV !== 'production';
+}
+
+export function isAwsOcrControlEnabled(): boolean {
+  return getEnv().AWS_OCR_CONTROL_ENABLED ?? false;
 }

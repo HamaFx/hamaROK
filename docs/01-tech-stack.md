@@ -99,11 +99,12 @@
 - **Privacy**: Screenshots never leave the device unless user chooses to save them
 - **Scalability**: Supports any number of concurrent users without server load
 
-**Why not Google Cloud Vision API?**
-- Costs money per request (~$1.50 per 1000 images)
-- Requires API key management
-- Overkill for structured UI screenshots with predictable layouts
-- Region cropping + digit whitelist achieves comparable accuracy for free
+**Why not Google Cloud Vision API as the default path?**
+- We keep **Tesseract + template preprocessing** as the primary path to stay on near-zero monthly cost.
+- Vision OCR is integrated as an **optional fallback provider** for low-confidence fields.
+- Vision fallback requires a Google Cloud project with billing enabled.
+- Workspace-level budget controls (`fallbackOcrMonthlyBudgetUsd`, daily limits) prevent surprise spending.
+- This hybrid setup keeps cost predictable while still giving us a stronger rescue path for difficult crops.
 
 **Why not server-side Tesseract?**
 - Vercel serverless functions have a 10-second timeout (free tier)

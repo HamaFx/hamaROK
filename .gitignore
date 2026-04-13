@@ -40,3 +40,6 @@ next-env.d.ts
 # keep local secrets out of git
 .env
 !.env.example
+
+# local OCR provider key files
+Example Screenshots/*.json

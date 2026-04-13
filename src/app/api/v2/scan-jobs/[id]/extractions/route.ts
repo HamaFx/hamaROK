@@ -12,6 +12,7 @@ import { prisma } from '@/lib/prisma';
 import { ok, fail, handleApiError, readJson } from '@/lib/api-response';
 import { authorizeWorkspaceAccess } from '@/lib/workspace-auth';
 import { getFallbackOcrDailyLimit, isFallbackOcrEnabled } from '@/lib/env';
+import { dispatchOcrWork } from '@/lib/aws/ocr-dispatch';
 
 const extractionSchema = z.object({
   provider: z.nativeEnum(OcrProvider).default(OcrProvider.TESSERACT),
@@ -131,7 +132,7 @@ export async function POST(
 
     if (body.provider === OcrProvider.FALLBACK) {
       const settings = job.workspace.settings;
-      const enabled = settings?.fallbackOcrEnabled || isFallbackOcrEnabled();
+      const enabled = settings?.fallbackOcrEnabled ?? isFallbackOcrEnabled();
       if (!enabled) {
         return fail('FORBIDDEN', 'Fallback OCR is disabled for this workspace.', 403);
       }
@@ -231,6 +232,21 @@ export async function POST(
       });
 
       return created;
+    });
+
+    await dispatchOcrWork({
+      type: 'ocr_extraction_created',
+      workspaceId: job.workspaceId,
+      eventId: job.eventId,
+      scanJobId: job.id,
+      extractionId: extraction.id,
+      source: job.source,
+      payload: {
+        provider: extraction.provider,
+        status: extraction.status,
+        confidence: extraction.confidence,
+        lowConfidence: extraction.lowConfidence,
+      },
     });
 
     return ok(

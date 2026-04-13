@@ -132,9 +132,18 @@ Open http://localhost:3000
 
 ### Optional
 
-| Variable          | Default | Description                    |
-|-------------------|---------|--------------------------------|
-| `NEXT_PUBLIC_APP_URL` | — | Public URL for sharing links   |
+| Variable               | Default | Description                                              |
+|------------------------|---------|----------------------------------------------------------|
+| `NEXT_PUBLIC_APP_URL`  | —       | Public URL for sharing links                             |
+| `OPENAI_API_KEY`       | —       | Optional OCR fallback provider credential (OpenAI)       |
+| `GOOGLE_VISION_API_KEY`| —       | Optional OCR fallback provider credential (Google Vision)|
+| `GOOGLE_APPLICATION_CREDENTIALS` | — | Optional service-account JSON file path (self-hosted/local) |
+| `GOOGLE_VISION_SERVICE_ACCOUNT_JSON` | — | Optional raw service-account JSON (recommended for Vercel env var) |
+| `AWS_OCR_CONTROL_ENABLED` | `false` | Enable AWS OCR dispatch (SQS + start-lambda trigger) |
+| `AWS_REGION` | `us-east-1` | AWS region for OCR dispatch services |
+| `AWS_OCR_QUEUE_URL` | — | SQS queue URL for OCR work items |
+| `AWS_OCR_START_LAMBDA` | — | Lambda name to wake OCR worker immediately after enqueue |
+| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | — | AWS credentials for Vercel runtime when IAM role auth is unavailable |
 
 ### Local Development (.env.local)
 
@@ -146,7 +155,19 @@ BLOB_READ_WRITE_TOKEN="vercel_blob_..."
 
 # Optional
 NEXT_PUBLIC_APP_URL="http://localhost:3000"
+OPENAI_API_KEY=""
+GOOGLE_VISION_API_KEY=""
+GOOGLE_APPLICATION_CREDENTIALS=""
+GOOGLE_VISION_SERVICE_ACCOUNT_JSON=""
+AWS_OCR_CONTROL_ENABLED="false"
+AWS_REGION="us-east-1"
+AWS_OCR_QUEUE_URL=""
+AWS_OCR_START_LAMBDA=""
+AWS_ACCESS_KEY_ID=""
+AWS_SECRET_ACCESS_KEY=""
 ```
+
+> Google Vision OCR requires billing enabled on the Google Cloud project.
 
 > **Never commit `.env.local` to Git!** It's in `.gitignore` by default.
 
@@ -238,6 +259,23 @@ https://hamarok-pr-5-username.vercel.app
 ```
 
 This is great for testing changes before merging.
+
+---
+
+## AWS OCR Scale-to-Zero Automation
+
+The repo includes turnkey scripts for AWS OCR worker automation:
+
+```bash
+# Provision or update AWS queue + worker + start/stop automation
+./scripts/setup-aws-ocr-scale-zero.sh
+
+# Sync AWS OCR env vars into Vercel (prod/preview/dev)
+./scripts/configure-vercel-aws-ocr.sh
+
+# Run full validation (local, AWS, Vercel, production health checks)
+./scripts/final-system-check.sh
+```
 
 ---
 
