@@ -26,6 +26,7 @@ const envSchema = z
     BLOB_READ_WRITE_TOKEN: z.string().optional(),
     NEXT_PUBLIC_APP_URL: z.string().url().optional(),
     APP_SIGNING_SECRET: z.string().min(16).optional(),
+    OPENAI_API_KEY: z.string().optional(),
     OCR_FALLBACK_ENABLED: booleanString,
     OCR_FALLBACK_DAILY_LIMIT: intString,
     FEATURE_ADB_CAPTURE_RND: booleanString,

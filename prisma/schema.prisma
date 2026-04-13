@@ -17,6 +17,9 @@ model Governor {
   snapshots  Snapshot[]
   workspace  Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
   anomalies  Anomaly[]
+  aliases    GovernorAlias[]
+  rankingRows RankingRow[]
+  rankingSnapshots RankingSnapshot[]
 
   @@index([governorId])
   @@index([name])
@@ -42,6 +45,8 @@ model Event {
   snapshots   Snapshot[]
   workspace   Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
   scanJobs    ScanJob[]
+  rankingRuns RankingRun[]
+  rankingSnapshots RankingSnapshot[]
   reportSnapshotsAsA ReportSnapshot[] @relation("ReportEventA")
   reportSnapshotsAsB ReportSnapshot[] @relation("ReportEventB")
   exportJobsAsA ExportJob[] @relation("ExportEventA")
@@ -111,6 +116,15 @@ model Workspace {
   reportSnapshots   ReportSnapshot[]
   deliveryLogs      DeliveryLog[]
   idempotencyKeys   IdempotencyKey[]
+  ocrProfiles       OcrProfile[]
+  ocrCorrectionLogs OcrCorrectionLog[]
+  ocrFallbackUsage  OcrFallbackUsage[]
+  ocrGoldenFixtures OcrGoldenFixture[]
+  rankingRuns       RankingRun[]
+  rankingRows       RankingRow[]
+  rankingSnapshots  RankingSnapshot[]
+  rankingRevisions  RankingRevision[]
+  governorAliases   GovernorAlias[]
 
   @@index([createdAt])
 }
@@ -126,6 +140,9 @@ model WorkspaceSettings {
   discordWebhook       String?
   fallbackOcrEnabled   Boolean   @default(false)
   fallbackOcrDailyLimit Int      @default(50)
+  fallbackOcrMonthlyBudgetUsd Float @default(0)
+  fallbackOcrProvider   String    @default("openai")
+  fallbackOcrModel      String    @default("gpt-5-mini")
   featureAdbCaptureRnd Boolean   @default(false)
   updatedAt            DateTime  @updatedAt
   workspace            Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -150,6 +167,10 @@ model AccessLink {
   workspace    Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   revisions    SnapshotRevision[]
   reportSnapshots ReportSnapshot[]
+  correctionLogs OcrCorrectionLog[] @relation("OcrCorrectionReviewedBy")
+  rankingRunsCreated RankingRun[] @relation("RankingRunCreatedBy")
+  rankingRowsReviewed RankingRow[] @relation("RankingRowReviewedBy")
+  rankingRevisionsChanged RankingRevision[] @relation("RankingRevisionChangedBy")
 
   @@index([workspaceId])
   @@index([expiresAt])
@@ -219,6 +240,8 @@ model Artifact {
   snapshot     Snapshot?   @relation(fields: [snapshotId], references: [id], onDelete: SetNull)
   ocrExtractions OcrExtraction[]
   exportJobs   ExportJob[]
+  goldenFixtures OcrGoldenFixture[]
+  rankingRuns  RankingRun[]
 
   @@index([workspaceId, type])
   @@index([scanJobId])
@@ -238,23 +261,281 @@ enum OcrExtractionStatus {
   REJECTED
 }
 
+enum IngestionDomain {
+  PROFILE_SNAPSHOT
+  RANKING_CAPTURE
+}
+
+enum RankingRunStatus {
+  RAW
+  REVIEW
+  MERGED
+  FAILED
+}
+
+enum RankingIdentityStatus {
+  UNRESOLVED
+  AUTO_LINKED
+  MANUAL_LINKED
+  REJECTED
+}
+
+enum RankingSnapshotStatus {
+  ACTIVE
+  UNRESOLVED
+  REJECTED
+}
+
+enum RankingRowReviewAction {
+  LINK_TO_GOVERNOR
+  CREATE_ALIAS
+  CORRECT_ROW
+  REJECT_ROW
+  SYSTEM_MERGE
+}
+
 model OcrExtraction {
   id             String              @id @default(cuid())
   scanJobId      String
   artifactId     String?
   provider       OcrProvider         @default(TESSERACT)
   status         OcrExtractionStatus @default(RAW)
+  profileId      String?
   governorIdRaw  String?
   governorNameRaw String?
   confidence     Float               @default(0)
+  engineVersion  String?             @default("v2")
+  lowConfidence  Boolean             @default(false)
+  failureReasons Json?
   fields         Json
   normalized     Json?
   validation     Json?
+  preprocessingTrace Json?
+  candidates     Json?
+  fusionDecision Json?
+  correctionLogs OcrCorrectionLog[]
   createdAt      DateTime            @default(now())
   scanJob        ScanJob             @relation(fields: [scanJobId], references: [id], onDelete: Cascade)
   artifact       Artifact?           @relation(fields: [artifactId], references: [id], onDelete: SetNull)
+  profile        OcrProfile?         @relation(fields: [profileId], references: [id], onDelete: SetNull)
 
   @@index([scanJobId, status])
+  @@index([profileId])
+  @@index([lowConfidence])
+}
+
+model OcrProfile {
+  id            String        @id @default(cuid())
+  workspaceId   String
+  profileKey    String
+  name          String
+  version       Int           @default(1)
+  isDefault     Boolean       @default(false)
+  isActive      Boolean       @default(true)
+  sourceTemplateId String?
+  minWidth      Int?
+  maxWidth      Int?
+  minAspectRatio Float?
+  maxAspectRatio Float?
+  calibration   Json
+  regions       Json
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  workspace     Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  extractions   OcrExtraction[]
+  fixtures      OcrGoldenFixture[]
+
+  @@index([workspaceId, isActive])
+  @@unique([workspaceId, profileKey, version])
+}
+
+model GovernorAlias {
+  id              String    @id @default(cuid())
+  workspaceId     String
+  governorId      String
+  aliasRaw        String
+  aliasNormalized String
+  confidence      Float     @default(1)
+  source          String    @default("manual")
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  governor        Governor  @relation(fields: [governorId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, aliasNormalized])
+  @@index([governorId])
+  @@index([workspaceId, createdAt])
+}
+
+model RankingRun {
+  id               String          @id @default(cuid())
+  workspaceId      String
+  eventId          String?
+  artifactId       String?
+  createdByLinkId  String?
+  domain           IngestionDomain @default(RANKING_CAPTURE)
+  rankingType      String
+  metricKey        String
+  headerText       String?
+  source           ScanJobSource   @default(MANUAL_UPLOAD)
+  status           RankingRunStatus @default(RAW)
+  idempotencyKey   String?
+  captureFingerprint String?
+  dedupeHash       String?
+  metadata         Json?
+  notes            String?
+  error            String?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  processedAt      DateTime?
+  workspace        Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  event            Event?          @relation(fields: [eventId], references: [id], onDelete: SetNull)
+  artifact         Artifact?       @relation(fields: [artifactId], references: [id], onDelete: SetNull)
+  createdByLink    AccessLink?     @relation("RankingRunCreatedBy", fields: [createdByLinkId], references: [id], onDelete: SetNull)
+  rows             RankingRow[]
+  snapshots        RankingSnapshot[]
+  revisions        RankingRevision[]
+
+  @@unique([workspaceId, idempotencyKey])
+  @@index([workspaceId, eventId, createdAt])
+  @@index([workspaceId, rankingType, status])
+  @@index([captureFingerprint])
+}
+
+model RankingRow {
+  id                  String                @id @default(cuid())
+  workspaceId         String
+  runId               String
+  governorId          String?
+  reviewedByLinkId    String?
+  sourceRank          Int?
+  governorNameRaw     String
+  governorNameNormalized String
+  allianceRaw         String?
+  titleRaw            String?
+  metricRaw           String
+  metricValue         BigInt
+  confidence          Float                 @default(0)
+  identityStatus      RankingIdentityStatus @default(UNRESOLVED)
+  rowHash             String
+  ocrTrace            Json?
+  candidates          Json?
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+  workspace           Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  run                 RankingRun            @relation(fields: [runId], references: [id], onDelete: Cascade)
+  governor            Governor?             @relation(fields: [governorId], references: [id], onDelete: SetNull)
+  reviewedByLink      AccessLink?           @relation("RankingRowReviewedBy", fields: [reviewedByLinkId], references: [id], onDelete: SetNull)
+  snapshots           RankingSnapshot[]
+  revisions           RankingRevision[]
+
+  @@unique([runId, rowHash])
+  @@index([workspaceId, identityStatus, createdAt])
+  @@index([workspaceId, governorNameNormalized])
+  @@index([runId, sourceRank])
+}
+
+model RankingSnapshot {
+  id                  String               @id @default(cuid())
+  workspaceId         String
+  eventId             String
+  rankingType         String
+  metricKey           String
+  identityKey         String
+  governorId          String?
+  governorNameRaw     String
+  governorNameNormalized String
+  sourceRank          Int?
+  metricValue         BigInt
+  status              RankingSnapshotStatus @default(ACTIVE)
+  lastRunId           String?
+  lastRowId           String?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  workspace           Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  event               Event                @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  governor            Governor?            @relation(fields: [governorId], references: [id], onDelete: SetNull)
+  lastRun             RankingRun?          @relation(fields: [lastRunId], references: [id], onDelete: SetNull)
+  lastRow             RankingRow?          @relation(fields: [lastRowId], references: [id], onDelete: SetNull)
+  revisions           RankingRevision[]
+
+  @@unique([workspaceId, eventId, rankingType, identityKey])
+  @@index([workspaceId, eventId, rankingType, status])
+  @@index([workspaceId, metricValue, sourceRank, governorNameNormalized])
+}
+
+model RankingRevision {
+  id               String                 @id @default(cuid())
+  workspaceId      String
+  snapshotId       String
+  runId            String?
+  rowId            String?
+  changedByLinkId  String?
+  action           RankingRowReviewAction @default(SYSTEM_MERGE)
+  reason           String?
+  previousData     Json?
+  nextData         Json
+  createdAt        DateTime               @default(now())
+  workspace        Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  snapshot         RankingSnapshot        @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+  run              RankingRun?            @relation(fields: [runId], references: [id], onDelete: SetNull)
+  row              RankingRow?            @relation(fields: [rowId], references: [id], onDelete: SetNull)
+  changedByLink    AccessLink?            @relation("RankingRevisionChangedBy", fields: [changedByLinkId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, createdAt])
+  @@index([snapshotId, createdAt])
+}
+
+model OcrCorrectionLog {
+  id              String      @id @default(cuid())
+  workspaceId     String
+  extractionId    String
+  reviewedByLinkId String?
+  fieldName       String
+  previousValue   String?
+  correctedValue  String
+  reasonCode      String?
+  confidence      Float?
+  createdAt       DateTime    @default(now())
+  workspace       Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  extraction      OcrExtraction @relation(fields: [extractionId], references: [id], onDelete: Cascade)
+  reviewedByLink  AccessLink? @relation("OcrCorrectionReviewedBy", fields: [reviewedByLinkId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, createdAt])
+  @@index([fieldName, createdAt])
+}
+
+model OcrFallbackUsage {
+  id            String      @id @default(cuid())
+  workspaceId   String
+  periodMonth   String
+  requestCount  Int         @default(0)
+  projectedUsd  Float       @default(0)
+  blocked       Int         @default(0)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  workspace     Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, periodMonth])
+  @@index([workspaceId, updatedAt])
+}
+
+model OcrGoldenFixture {
+  id            String      @id @default(cuid())
+  workspaceId   String
+  artifactId    String
+  profileId     String?
+  label         String?
+  expected      Json
+  metadata      Json?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  workspace     Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  artifact      Artifact    @relation(fields: [artifactId], references: [id], onDelete: Cascade)
+  profile       OcrProfile? @relation(fields: [profileId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, createdAt])
+  @@unique([workspaceId, artifactId])
 }
 
 model SnapshotRevision {

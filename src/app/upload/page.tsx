@@ -3,16 +3,27 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { EVENT_TYPE_LABELS } from '@/lib/utils';
 import { cleanNumericOcr, validateGovernorData, ValidationResult } from '@/lib/ocr/validators';
+import type { OcrRuntimeProfile } from '@/lib/ocr/profiles';
 
 interface OcrEntry {
   id: string;
   fileName: string;
+  sourceFile?: File;
+  ingestionDomain: 'profile_snapshot' | 'ranking_capture';
   status: 'pending' | 'processing' | 'done' | 'error';
   values: Record<string, string>;
   confidences: Record<string, number>;
   validation: ValidationResult[];
   templateId?: string;
+  profileId?: string;
+  detectedArchetype?: string;
+  engineVersion?: string;
   averageConfidence?: number;
+  lowConfidence?: boolean;
+  failureReasons?: string[];
+  preprocessingTrace?: Record<string, unknown>;
+  candidates?: Record<string, unknown>;
+  fusionDecision?: Record<string, unknown>;
   confirmed: boolean;
   rawFields?: Record<
     string,
@@ -21,8 +32,25 @@ interface OcrEntry {
       confidence: number;
       croppedImage?: string;
       trace?: unknown;
+      candidates?: unknown;
     }
   >;
+  ranking?: {
+    headerText: string;
+    rankingType: string;
+    metricKey: string;
+    rows: Array<{
+      rowIndex: number;
+      sourceRank: string;
+      governorNameRaw: string;
+      metricRaw: string;
+      confidence: number;
+      failureReasons: string[];
+      candidates?: unknown;
+      ocrTrace?: unknown;
+    }>;
+    rowCandidates?: Record<string, unknown>;
+  };
 }
 
 interface EventOption {
@@ -43,7 +71,8 @@ export default function UploadPage() {
   const [saveResult, setSaveResult] = useState<{ saved: number; updated: number; errors: number } | null>(null);
   const [workspaceId, setWorkspaceId] = useState('');
   const [accessToken, setAccessToken] = useState('');
-  const [useReviewQueue, setUseReviewQueue] = useState(false);
+  const [ocrProfiles, setOcrProfiles] = useState<OcrRuntimeProfile[]>([]);
+  const [preferredProfileId, setPreferredProfileId] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
 
@@ -94,6 +123,38 @@ export default function UploadPage() {
     if (accessToken) localStorage.setItem('workspaceToken', accessToken);
   }, [accessToken]);
 
+  useEffect(() => {
+    if (!workspaceId || !accessToken) {
+      setOcrProfiles([]);
+      return;
+    }
+
+    let canceled = false;
+    const run = async () => {
+      try {
+        const params = new URLSearchParams({ workspaceId });
+        const res = await fetch(`/api/v2/ocr/profiles?${params.toString()}`, {
+          headers: {
+            'x-access-token': accessToken,
+          },
+        });
+        const payload = await res.json();
+        if (!res.ok) return;
+        if (!canceled) {
+          const profiles = Array.isArray(payload?.data) ? payload.data : [];
+          setOcrProfiles(profiles as OcrRuntimeProfile[]);
+        }
+      } catch {
+        if (!canceled) setOcrProfiles([]);
+      }
+    };
+    run();
+
+    return () => {
+      canceled = true;
+    };
+  }, [workspaceId, accessToken]);
+
   // Handle file selection
   const handleFiles = useCallback(async (files: File[]) => {
     const imageFiles = files.filter((f) => f.type.startsWith('image/'));
@@ -103,6 +164,8 @@ export default function UploadPage() {
     const newEntries: OcrEntry[] = imageFiles.map((f, i) => ({
       id: `${Date.now()}-${i}`,
       fileName: f.name,
+      sourceFile: f,
+      ingestionDomain: 'profile_snapshot',
       status: 'pending' as const,
       values: {
         governorId: '',
@@ -131,8 +194,112 @@ export default function UploadPage() {
 
       try {
         // Dynamic import to avoid SSR issues
-        const { processScreenshot } = await import('@/lib/ocr/ocr-engine');
-        const result = await processScreenshot(imageFiles[i]);
+        const {
+          detectScreenArchetype,
+          processRankingScreenshot,
+          processScreenshot,
+        } = await import('@/lib/ocr/ocr-engine');
+        const archetype = await detectScreenArchetype(imageFiles[i]);
+
+        if (archetype === 'rankboard') {
+          const ranking = await processRankingScreenshot(imageFiles[i], {
+            profiles: ocrProfiles.length > 0 ? ocrProfiles : undefined,
+            preferredProfileId: preferredProfileId || undefined,
+          });
+
+          setEntries((prev) =>
+            prev.map((e) =>
+              e.id === entryId
+                ? {
+                    ...e,
+                    ingestionDomain: 'ranking_capture',
+                    status: 'done',
+                    templateId: ranking.templateId,
+                    profileId: ranking.profileId,
+                    detectedArchetype: ranking.screenArchetype,
+                    engineVersion: ranking.engineVersion,
+                    averageConfidence: ranking.averageConfidence,
+                    lowConfidence: ranking.lowConfidence,
+                    failureReasons: ranking.rows
+                      .flatMap((row) => row.failureReasons)
+                      .slice(0, 20),
+                    preprocessingTrace: ranking.preprocessingTrace,
+                    candidates: ranking.rowCandidates,
+                    ranking: {
+                      headerText: ranking.headerText,
+                      rankingType: ranking.rankingType,
+                      metricKey: ranking.metricKey,
+                      rows: ranking.rows.map((row) => ({
+                        rowIndex: row.rowIndex,
+                        sourceRank: row.sourceRank?.toString() || '',
+                        governorNameRaw: row.governorNameRaw,
+                        metricRaw: row.metricRaw || row.metricValue,
+                        confidence: row.confidence,
+                        failureReasons: row.failureReasons,
+                        candidates: row.candidates,
+                        ocrTrace: row.ocrTrace,
+                      })),
+                      rowCandidates: ranking.rowCandidates,
+                    },
+                    values: {
+                      governorId: '',
+                      governorName: '',
+                      power: '',
+                      killPoints: '',
+                      t4Kills: '',
+                      t5Kills: '',
+                      deads: '',
+                    },
+                    confidences: {},
+                    validation: [],
+                  }
+                : e
+            )
+          );
+          continue;
+        }
+
+        const result = await processScreenshot(imageFiles[i], {
+          profiles: ocrProfiles.length > 0 ? ocrProfiles : undefined,
+          preferredProfileId: preferredProfileId || undefined,
+          fallback:
+            workspaceId && accessToken
+              ? async ({ fieldKey, croppedImage, currentValue, currentConfidence }) => {
+                  try {
+                    const res = await fetch('/api/v2/ocr/fallback', {
+                      method: 'POST',
+                      headers: {
+                        'Content-Type': 'application/json',
+                        'x-access-token': accessToken,
+                      },
+                      body: JSON.stringify({
+                        workspaceId,
+                        fieldKey,
+                        croppedImage,
+                        currentValue,
+                        currentConfidence,
+                      }),
+                    });
+                    const payload = await res.json();
+                    if (!res.ok || payload?.data?.blocked) return null;
+                    if (
+                      payload?.data &&
+                      typeof payload.data.value === 'string' &&
+                      typeof payload.data.confidence === 'number'
+                    ) {
+                      return {
+                        value: payload.data.value,
+                        confidence: payload.data.confidence,
+                      };
+                    }
+                    return null;
+                  } catch {
+                    return null;
+                  }
+                }
+              : undefined,
+        });
+
         const values = {
           governorId: cleanNumericOcr(result.governorId.value),
           governorName: result.governorName.value,
@@ -156,14 +323,23 @@ export default function UploadPage() {
         setEntries((prev) =>
           prev.map((e) =>
             e.id === entryId
-                ? {
+              ? {
                   ...e,
+                  ingestionDomain: 'profile_snapshot',
                   status: 'done',
                   values,
                   confidences,
                   validation,
                   templateId: result.templateId,
+                  profileId: result.profileId,
+                  detectedArchetype: result.detectedArchetype,
+                  engineVersion: result.engineVersion,
                   averageConfidence: result.averageConfidence,
+                  lowConfidence: result.lowConfidence,
+                  failureReasons: result.failureReasons,
+                  preprocessingTrace: result.preprocessingTrace,
+                  candidates: result.candidates,
+                  fusionDecision: result.fusionDecision,
                   rawFields: {
                     governorId: result.governorId,
                     governorName: result.governorName,
@@ -186,7 +362,7 @@ export default function UploadPage() {
     }
 
     setProcessing(false);
-  }, [computeValidation]);
+  }, [accessToken, computeValidation, ocrProfiles, preferredProfileId, workspaceId]);
 
   // Drag and drop
   const onDragOver = (e: React.DragEvent) => { e.preventDefault(); setIsDragging(true); };
@@ -208,6 +384,28 @@ export default function UploadPage() {
           ...e,
           values: nextValues,
           validation: computeValidation(nextValues, e.confidences),
+        };
+      })
+    );
+  };
+
+  const updateRankingRow = (
+    entryId: string,
+    rowIndex: number,
+    key: 'sourceRank' | 'governorNameRaw' | 'metricRaw',
+    value: string
+  ) => {
+    setEntries((prev) =>
+      prev.map((entry) => {
+        if (entry.id !== entryId || !entry.ranking) return entry;
+        return {
+          ...entry,
+          ranking: {
+            ...entry.ranking,
+            rows: entry.ranking.rows.map((row) =>
+              row.rowIndex === rowIndex ? { ...row, [key]: value } : row
+            ),
+          },
         };
       })
     );
@@ -244,7 +442,24 @@ export default function UploadPage() {
     }
   };
 
-  const submitToReviewQueue = async (confirmed: OcrEntry[]) => {
+  const uploadScreenshotArtifact = async (file?: File): Promise<string | undefined> => {
+    if (!file) return undefined;
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch('/api/screenshots/upload', {
+        method: 'POST',
+        body: formData,
+      });
+      const payload = await res.json();
+      if (!res.ok || !payload?.url) return undefined;
+      return payload.url as string;
+    } catch {
+      return undefined;
+    }
+  };
+
+  const submitProfileReviewQueue = async (confirmed: OcrEntry[]) => {
     if (!workspaceId || !accessToken) {
       throw new Error('Workspace ID and access token are required for review queue mode.');
     }
@@ -277,6 +492,7 @@ export default function UploadPage() {
 
     for (const entry of confirmed) {
       const overallConfidence = (entry.averageConfidence || 0) / 100;
+      const artifactUrl = await uploadScreenshotArtifact(entry.sourceFile);
       const validation = entry.validation.map((v) => ({
         field: v.field,
         value: v.value,
@@ -308,6 +524,10 @@ export default function UploadPage() {
           governorIdRaw: entry.values.governorId,
           governorNameRaw: entry.values.governorName,
           confidence: Number.isFinite(overallConfidence) ? overallConfidence : 0,
+          profileId: entry.profileId,
+          engineVersion: entry.engineVersion || 'ocr-v3.0.0',
+          lowConfidence: Boolean(entry.lowConfidence),
+          failureReasons: entry.failureReasons || [],
           fields,
           normalized: {
             governorId: entry.values.governorId,
@@ -319,6 +539,11 @@ export default function UploadPage() {
             deads: entry.values.deads,
           },
           validation,
+          preprocessingTrace: entry.preprocessingTrace || {},
+          candidates: entry.candidates || {},
+          fusionDecision: entry.fusionDecision || {},
+          artifactUrl,
+          artifactType: artifactUrl ? 'SCREENSHOT' : undefined,
         }),
       });
 
@@ -334,6 +559,87 @@ export default function UploadPage() {
     return scanJobId;
   };
 
+  const submitRankingRuns = async (confirmed: OcrEntry[]) => {
+    if (!workspaceId || !accessToken) {
+      throw new Error('Workspace ID and access token are required for ranking queue mode.');
+    }
+
+    const runIds: string[] = [];
+
+    for (const entry of confirmed) {
+      if (!entry.ranking || entry.ranking.rows.length === 0) {
+        continue;
+      }
+
+      const artifactUrl = await uploadScreenshotArtifact(entry.sourceFile);
+      const rows = entry.ranking.rows
+        .map((row) => {
+          const sourceRankDigits = String(row.sourceRank || '').replace(/[^0-9]/g, '');
+          const sourceRank = sourceRankDigits ? Number(sourceRankDigits) : null;
+          const metricValue = String(row.metricRaw || '').replace(/[^0-9]/g, '');
+          return {
+            sourceRank,
+            governorNameRaw: row.governorNameRaw,
+            metricRaw: row.metricRaw,
+            metricValue: metricValue || row.metricRaw,
+            confidence: row.confidence,
+            ocrTrace: row.ocrTrace || {},
+            candidates: row.candidates || {},
+          };
+        })
+        .filter((row) => row.governorNameRaw || String(row.metricValue).replace(/[^0-9]/g, '').length > 0);
+
+      if (rows.length === 0) {
+        continue;
+      }
+
+      const rankingRes = await fetch('/api/v2/rankings/runs', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-access-token': accessToken,
+        },
+        body: JSON.stringify({
+          workspaceId,
+          eventId: selectedEventId,
+          source: 'MANUAL_UPLOAD',
+          domain: 'RANKING_CAPTURE',
+          rankingType: entry.ranking.rankingType,
+          metricKey: entry.ranking.metricKey,
+          headerText: entry.ranking.headerText,
+          notes: `Uploaded from UI ranking batch at ${new Date().toISOString()}`,
+          idempotencyKey: `ranking-${selectedEventId}-${entry.id}-${Date.now()}`,
+          artifactUrl,
+          artifactType: artifactUrl ? 'SCREENSHOT' : undefined,
+          metadata: {
+            screenArchetype: entry.detectedArchetype || 'rankboard',
+            templateId: entry.templateId || null,
+            profileId: entry.profileId || null,
+            engineVersion: entry.engineVersion || null,
+            preprocessingTrace: entry.preprocessingTrace || {},
+            rowCandidates: entry.ranking.rowCandidates || {},
+            uploadFileName: entry.fileName,
+          },
+          rows,
+        }),
+      });
+
+      const rankingPayload = await rankingRes.json();
+      if (!rankingRes.ok) {
+        throw new Error(
+          rankingPayload?.error?.message ||
+            `Failed to queue ranking run for ${entry.fileName}.`
+        );
+      }
+
+      if (rankingPayload?.data?.id) {
+        runIds.push(String(rankingPayload.data.id));
+      }
+    }
+
+    return runIds;
+  };
+
   // Save all confirmed
   const saveAll = async () => {
     const confirmed = entries.filter((e) => e.confirmed && e.status === 'done');
@@ -341,41 +647,38 @@ export default function UploadPage() {
 
     setSaving(true);
     try {
-      if (useReviewQueue) {
-        const scanJobId = await submitToReviewQueue(confirmed);
-        setSaveResult({
-          saved: confirmed.length,
-          updated: 0,
-          errors: 0,
-        });
-        setEntries((prev) => prev.filter((e) => !e.confirmed));
-        alert(`Queued ${confirmed.length} entry(ies) for review in scan job ${scanJobId}.`);
-        return;
+      const profileEntries = confirmed.filter((entry) => entry.ingestionDomain === 'profile_snapshot');
+      const rankingEntries = confirmed.filter((entry) => entry.ingestionDomain === 'ranking_capture');
+
+      let scanJobId: string | null = null;
+      let rankingRunIds: string[] = [];
+
+      if (profileEntries.length > 0) {
+        scanJobId = await submitProfileReviewQueue(profileEntries);
+      }
+      if (rankingEntries.length > 0) {
+        rankingRunIds = await submitRankingRuns(rankingEntries);
       }
 
-      const res = await fetch('/api/snapshots/batch', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          eventId: selectedEventId,
-          snapshots: confirmed.map((e) => ({
-            governorId: e.values.governorId,
-            governorName: e.values.governorName,
-            power: e.values.power,
-            killPoints: e.values.killPoints,
-            t4Kills: e.values.t4Kills,
-            t5Kills: e.values.t5Kills,
-            deads: e.values.deads,
-            verified: true,
-          })),
-        }),
+      setSaveResult({
+        saved: confirmed.length,
+        updated: 0,
+        errors: 0,
       });
-      const result = await res.json();
-      setSaveResult(result);
-      // Remove saved entries
       setEntries((prev) => prev.filter((e) => !e.confirmed));
+      const parts: string[] = [];
+      if (scanJobId) {
+        parts.push(`${profileEntries.length} profile entry(ies) in scan job ${scanJobId}`);
+      }
+      if (rankingEntries.length > 0) {
+        parts.push(
+          `${rankingEntries.length} ranking capture(s) in ${rankingRunIds.length} run(s)`
+        );
+      }
+      alert(`Queued ${confirmed.length} entry(ies): ${parts.join(' | ')}.`);
     } catch (err) {
       console.error('Save error:', err);
+      alert(err instanceof Error ? err.message : 'Failed to queue entries for review.');
     } finally {
       setSaving(false);
     }
@@ -427,7 +730,7 @@ export default function UploadPage() {
         </div>
         <div className="grid-2 mt-16">
           <div className="form-group" style={{ marginBottom: 0 }}>
-            <label className="form-label">Workspace ID (for v2 review queue mode)</label>
+            <label className="form-label">Workspace ID (required)</label>
             <input
               className="form-input"
               value={workspaceId}
@@ -436,7 +739,7 @@ export default function UploadPage() {
             />
           </div>
           <div className="form-group" style={{ marginBottom: 0 }}>
-            <label className="form-label">Access Token (editor/viewer link token)</label>
+            <label className="form-label">Access Token (editor link)</label>
             <input
               className="form-input"
               value={accessToken}
@@ -445,14 +748,26 @@ export default function UploadPage() {
             />
           </div>
         </div>
-        <label className="text-sm mt-12 flex items-center gap-8" style={{ cursor: 'pointer' }}>
-          <input
-            type="checkbox"
-            checked={useReviewQueue}
-            onChange={(e) => setUseReviewQueue(e.target.checked)}
-          />
-          Send confirmed entries to v2 review queue instead of direct snapshot save
-        </label>
+        <div className="grid-2 mt-12">
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label className="form-label">OCR Profile Override (Optional)</label>
+            <select
+              className="form-select"
+              value={preferredProfileId}
+              onChange={(e) => setPreferredProfileId(e.target.value)}
+            >
+              <option value="">Auto-select best profile</option>
+              {ocrProfiles.map((profile) => (
+                <option key={profile.id} value={profile.id}>
+                  {profile.name} ({profile.profileKey} v{profile.version})
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <div className="text-sm text-muted mt-12">
+          Always-review policy is active: profile screenshots go to OCR review queue, ranking boards go to ranking review/canonical merge flow.
+        </div>
       </div>
 
       {/* Step 2: Upload */}
@@ -535,11 +850,28 @@ export default function UploadPage() {
                   {entry.templateId && (
                     <span className="text-muted text-sm">Template: {entry.templateId}</span>
                   )}
+                  {entry.profileId && (
+                    <span className="text-muted text-sm">Profile: {entry.profileId}</span>
+                  )}
+                  {entry.detectedArchetype ? (
+                    <span className="text-muted text-sm">Screen: {entry.detectedArchetype}</span>
+                  ) : null}
                   {typeof entry.averageConfidence === 'number' && (
                     <span className="text-muted text-sm">
                       Avg OCR: {Math.round(entry.averageConfidence)}%
                     </span>
                   )}
+                  {entry.lowConfidence ? (
+                    <span className="text-gold text-sm">Low-confidence flagged</span>
+                  ) : null}
+                  {entry.engineVersion ? (
+                    <span className="text-muted text-sm">{entry.engineVersion}</span>
+                  ) : null}
+                  <span className="text-muted text-sm">
+                    {entry.ingestionDomain === 'ranking_capture'
+                      ? 'Domain: ranking_capture'
+                      : 'Domain: profile_snapshot'}
+                  </span>
                   {entry.confirmed && (
                     <span className="tier-badge tier-support" style={{ fontSize: '0.75rem' }}>Confirmed</span>
                   )}
@@ -561,38 +893,125 @@ export default function UploadPage() {
 
               {entry.status === 'done' && (
                 <>
-                  <div className="ocr-review-body">
-                    {fields.map((f) => {
-                      const validation = entry.validation.find((v) => v.field === (f.key === 'governorName' ? 'name' : f.key));
-                      const severity = validation?.severity ?? 'ok';
-                      const confidenceValue = f.key === 'governorName' ? entry.confidences.name : entry.confidences[f.key];
-                      return (
-                        <React.Fragment key={f.key}>
-                          <label className="ocr-field-label">{f.label}</label>
-                          <div className="ocr-field-value">
-                            <input
-                              className={`ocr-field-input ${severity === 'error' ? 'has-error' : severity === 'warning' ? 'has-warning' : ''}`}
-                              value={entry.values[f.key] || ''}
-                              onChange={(e) => updateValue(entry.id, f.key, e.target.value)}
-                            />
-                            <span className="validation-icon" title={validation?.warning || 'Looks good'}>
-                              {severity === 'error' ? '❌' : severity === 'warning' ? '⚠️' : '✅'}
-                            </span>
-                            <span className="text-muted text-sm">{Math.round(confidenceValue || 0)}%</span>
-                          </div>
-                        </React.Fragment>
-                      );
-                    })}
-                  </div>
-                  {entry.validation.some((v) => v.severity !== 'ok') && (
+                  {entry.ingestionDomain === 'ranking_capture' && entry.ranking ? (
+                    <div style={{ padding: '12px 20px 16px' }}>
+                      <div className="text-sm text-muted mb-8">
+                        Ranking Type: <strong>{entry.ranking.rankingType}</strong> • Metric Key:{' '}
+                        <strong>{entry.ranking.metricKey}</strong>
+                      </div>
+                      <div className="text-sm text-muted mb-12">
+                        Header: {entry.ranking.headerText}
+                      </div>
+                      <div style={{ overflowX: 'auto' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.88rem' }}>
+                          <thead>
+                            <tr>
+                              <th style={{ textAlign: 'left', padding: '6px 4px' }}>Rank</th>
+                              <th style={{ textAlign: 'left', padding: '6px 4px' }}>Governor</th>
+                              <th style={{ textAlign: 'left', padding: '6px 4px' }}>Metric</th>
+                              <th style={{ textAlign: 'left', padding: '6px 4px' }}>Conf</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {entry.ranking.rows.map((row) => (
+                              <tr key={`${entry.id}-ranking-row-${row.rowIndex}`}>
+                                <td style={{ padding: '6px 4px' }}>
+                                  <input
+                                    className="ocr-field-input"
+                                    value={row.sourceRank}
+                                    onChange={(e) =>
+                                      updateRankingRow(
+                                        entry.id,
+                                        row.rowIndex,
+                                        'sourceRank',
+                                        e.target.value
+                                      )
+                                    }
+                                    style={{ maxWidth: 70 }}
+                                  />
+                                </td>
+                                <td style={{ padding: '6px 4px' }}>
+                                  <input
+                                    className="ocr-field-input"
+                                    value={row.governorNameRaw}
+                                    onChange={(e) =>
+                                      updateRankingRow(
+                                        entry.id,
+                                        row.rowIndex,
+                                        'governorNameRaw',
+                                        e.target.value
+                                      )
+                                    }
+                                  />
+                                </td>
+                                <td style={{ padding: '6px 4px' }}>
+                                  <input
+                                    className="ocr-field-input"
+                                    value={row.metricRaw}
+                                    onChange={(e) =>
+                                      updateRankingRow(
+                                        entry.id,
+                                        row.rowIndex,
+                                        'metricRaw',
+                                        e.target.value
+                                      )
+                                    }
+                                  />
+                                </td>
+                                <td style={{ padding: '6px 4px' }}>
+                                  {Math.round(row.confidence)}%
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="ocr-review-body">
+                        {fields.map((f) => {
+                          const validation = entry.validation.find((v) => v.field === (f.key === 'governorName' ? 'name' : f.key));
+                          const severity = validation?.severity ?? 'ok';
+                          const confidenceValue = f.key === 'governorName' ? entry.confidences.name : entry.confidences[f.key];
+                          return (
+                            <React.Fragment key={f.key}>
+                              <label className="ocr-field-label">{f.label}</label>
+                              <div className="ocr-field-value">
+                                <input
+                                  className={`ocr-field-input ${severity === 'error' ? 'has-error' : severity === 'warning' ? 'has-warning' : ''}`}
+                                  value={entry.values[f.key] || ''}
+                                  onChange={(e) => updateValue(entry.id, f.key, e.target.value)}
+                                />
+                                <span className="validation-icon" title={validation?.warning || 'Looks good'}>
+                                  {severity === 'error' ? '❌' : severity === 'warning' ? '⚠️' : '✅'}
+                                </span>
+                                <span className="text-muted text-sm">{Math.round(confidenceValue || 0)}%</span>
+                              </div>
+                            </React.Fragment>
+                          );
+                        })}
+                      </div>
+                      {entry.validation.some((v) => v.severity !== 'ok') && (
+                        <div style={{ padding: '0 20px 16px' }}>
+                          {entry.validation
+                            .filter((v) => v.severity !== 'ok' && v.warning)
+                            .map((v) => (
+                              <div key={`${entry.id}-${v.field}`} className={`text-sm ${v.severity === 'error' ? 'delta-negative' : 'text-gold'}`}>
+                                {v.severity === 'error' ? '❌' : '⚠️'} {v.warning}
+                              </div>
+                            ))}
+                        </div>
+                      )}
+                    </>
+                  )}
+                  {entry.failureReasons && entry.failureReasons.length > 0 && (
                     <div style={{ padding: '0 20px 16px' }}>
-                      {entry.validation
-                        .filter((v) => v.severity !== 'ok' && v.warning)
-                        .map((v) => (
-                          <div key={`${entry.id}-${v.field}`} className={`text-sm ${v.severity === 'error' ? 'delta-negative' : 'text-gold'}`}>
-                            {v.severity === 'error' ? '❌' : '⚠️'} {v.warning}
-                          </div>
-                        ))}
+                      {entry.failureReasons.slice(0, 5).map((reason) => (
+                        <div key={`${entry.id}-${reason}`} className="text-sm text-muted">
+                          • {reason}
+                        </div>
+                      ))}
                     </div>
                   )}
                 </>
@@ -620,14 +1039,18 @@ export default function UploadPage() {
             </span>
             <button
               className="btn btn-primary btn-lg"
-              disabled={!selectedEventId || confirmedCount === 0 || saving}
+              disabled={
+                !selectedEventId ||
+                !workspaceId ||
+                !accessToken ||
+                confirmedCount === 0 ||
+                saving
+              }
               onClick={saveAll}
             >
               {saving
                 ? '⏳ Saving...'
-                : useReviewQueue
-                  ? `🧪 Queue ${confirmedCount} for Review`
-                  : `💾 Save ${confirmedCount} Entries`}
+                : `🧪 Queue ${confirmedCount} for Review`}
             </button>
           </div>
 

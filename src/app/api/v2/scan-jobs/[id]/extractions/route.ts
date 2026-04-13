@@ -19,9 +19,16 @@ const extractionSchema = z.object({
   governorIdRaw: z.string().max(50).optional(),
   governorNameRaw: z.string().max(80).optional(),
   confidence: z.number().min(0).max(1),
+  profileId: z.string().optional(),
+  engineVersion: z.string().max(50).optional(),
+  lowConfidence: z.boolean().optional(),
+  failureReasons: z.array(z.string()).optional(),
   fields: z.record(z.string(), z.unknown()),
   normalized: z.record(z.string(), z.unknown()).optional(),
   validation: z.record(z.string(), z.unknown()).optional(),
+  preprocessingTrace: z.record(z.string(), z.unknown()).optional(),
+  candidates: z.record(z.string(), z.unknown()).optional(),
+  fusionDecision: z.record(z.string(), z.unknown()).optional(),
   artifactUrl: z.string().url().optional(),
   artifactType: z.nativeEnum(ArtifactType).optional(),
 });
@@ -70,9 +77,16 @@ export async function GET(
         governorIdRaw: entry.governorIdRaw,
         governorNameRaw: entry.governorNameRaw,
         confidence: entry.confidence,
+        profileId: entry.profileId,
+        engineVersion: entry.engineVersion,
+        lowConfidence: entry.lowConfidence,
+        failureReasons: entry.failureReasons,
         fields: entry.fields,
         normalized: entry.normalized,
         validation: entry.validation,
+        preprocessingTrace: entry.preprocessingTrace,
+        candidates: entry.candidates,
+        fusionDecision: entry.fusionDecision,
         createdAt: entry.createdAt.toISOString(),
       }))
     );
@@ -107,11 +121,28 @@ export async function POST(
 
     const body = extractionSchema.parse(await readJson(request));
 
+    if (body.status === OcrExtractionStatus.APPROVED) {
+      return fail(
+        'VALIDATION_ERROR',
+        'Direct approval is not allowed. Route extraction through review queue.',
+        400
+      );
+    }
+
     if (body.provider === OcrProvider.FALLBACK) {
       const settings = job.workspace.settings;
       const enabled = settings?.fallbackOcrEnabled || isFallbackOcrEnabled();
       if (!enabled) {
         return fail('FORBIDDEN', 'Fallback OCR is disabled for this workspace.', 403);
+      }
+
+      const monthlyBudget = settings?.fallbackOcrMonthlyBudgetUsd ?? 0;
+      if (monthlyBudget <= 0) {
+        return fail(
+          'FORBIDDEN',
+          'Fallback OCR blocked by monthly budget cap ($0).',
+          403
+        );
       }
 
       const dailyLimit =
@@ -156,15 +187,30 @@ export async function POST(
           artifactId: artifact?.id ?? null,
           provider: body.provider,
           status: body.status,
+          profileId: body.profileId || null,
           governorIdRaw: body.governorIdRaw || null,
           governorNameRaw: body.governorNameRaw || null,
           confidence: body.confidence,
+          engineVersion: body.engineVersion || 'v2',
+          lowConfidence: body.lowConfidence ?? body.confidence < 0.85,
+          failureReasons: body.failureReasons
+            ? (body.failureReasons as unknown as Prisma.InputJsonValue)
+            : undefined,
           fields: body.fields as Prisma.InputJsonValue,
           normalized: body.normalized
             ? (body.normalized as Prisma.InputJsonValue)
             : undefined,
           validation: body.validation
             ? (body.validation as Prisma.InputJsonValue)
+            : undefined,
+          preprocessingTrace: body.preprocessingTrace
+            ? (body.preprocessingTrace as Prisma.InputJsonValue)
+            : undefined,
+          candidates: body.candidates
+            ? (body.candidates as Prisma.InputJsonValue)
+            : undefined,
+          fusionDecision: body.fusionDecision
+            ? (body.fusionDecision as Prisma.InputJsonValue)
             : undefined,
         },
       });
@@ -173,11 +219,14 @@ export async function POST(
         where: { id: job.id },
         data: {
           status:
-            OcrExtractionStatus.APPROVED === body.status
-              ? ScanJobStatus.REVIEW
-              : undefined,
+            body.status === OcrExtractionStatus.REJECTED
+              ? undefined
+              : ScanJobStatus.REVIEW,
           processedFiles: { increment: 1 },
-          lowConfidenceFiles: body.confidence < 0.85 ? { increment: 1 } : undefined,
+          lowConfidenceFiles:
+            (body.lowConfidence ?? body.confidence < 0.85)
+              ? { increment: 1 }
+              : undefined,
         },
       });
 
@@ -191,9 +240,16 @@ export async function POST(
         provider: extraction.provider,
         status: extraction.status,
         confidence: extraction.confidence,
+        profileId: extraction.profileId,
+        engineVersion: extraction.engineVersion,
+        lowConfidence: extraction.lowConfidence,
+        failureReasons: extraction.failureReasons,
         fields: extraction.fields,
         normalized: extraction.normalized,
         validation: extraction.validation,
+        preprocessingTrace: extraction.preprocessingTrace,
+        candidates: extraction.candidates,
+        fusionDecision: extraction.fusionDecision,
         createdAt: extraction.createdAt.toISOString(),
       },
       null,

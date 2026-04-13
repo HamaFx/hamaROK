@@ -8,9 +8,12 @@ describe('OCR golden regression suite', () => {
     const fixturePath = resolve(process.cwd(), 'tests/fixtures/ocr/golden-profiles.json');
     const fixture = JSON.parse(readFileSync(fixturePath, 'utf8')) as GoldenOcrCase[];
 
-    const result = evaluateGoldenSuite(fixture);
+    const result = evaluateGoldenSuite(fixture, {
+      numericExactMatchThreshold: 0.98,
+    });
 
     expect(result.total).toBeGreaterThan(0);
     expect(result.failed).toBe(0);
+    expect(result.numericThresholdPassed).toBe(true);
   });
 });

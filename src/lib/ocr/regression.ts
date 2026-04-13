@@ -26,6 +26,15 @@ export interface GoldenCaseResult {
   }>;
 }
 
+const NUMERIC_FIELDS = new Set([
+  'governorId',
+  'power',
+  'killPoints',
+  't4Kills',
+  't5Kills',
+  'deads',
+]);
+
 function normalizeText(value: string) {
   return value.replace(/\s+/g, '').trim().toLowerCase();
 }
@@ -80,13 +89,38 @@ export function evaluateGoldenCase(testCase: GoldenOcrCase): GoldenCaseResult {
   };
 }
 
-export function evaluateGoldenSuite(cases: GoldenOcrCase[]) {
+export function evaluateGoldenSuite(
+  cases: GoldenOcrCase[],
+  options?: { numericExactMatchThreshold?: number }
+) {
   const results = cases.map((testCase) => evaluateGoldenCase(testCase));
   const failed = results.filter((result) => !result.passed);
+
+  let numericTotal = 0;
+  let numericExact = 0;
+  for (const testCase of cases) {
+    for (const [fieldName, field] of Object.entries(testCase.fields)) {
+      if (!NUMERIC_FIELDS.has(fieldName)) continue;
+      numericTotal += 1;
+      const expected = normalizeText(field.expected).replace(/[^0-9]/g, '');
+      const actual = normalizeText(field.actual).replace(/[^0-9]/g, '');
+      if (expected === actual) numericExact += 1;
+    }
+  }
+
+  const numericExactRate = numericTotal > 0 ? numericExact / numericTotal : 1;
+  const numericExactMatchThreshold = options?.numericExactMatchThreshold ?? 0.98;
+  const numericThresholdPassed = numericExactRate >= numericExactMatchThreshold;
+
   return {
     total: cases.length,
     passed: cases.length - failed.length,
     failed: failed.length,
+    numericTotal,
+    numericExact,
+    numericExactRate,
+    numericExactMatchThreshold,
+    numericThresholdPassed,
     results,
   };
 }

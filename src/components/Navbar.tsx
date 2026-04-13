@@ -12,6 +12,8 @@ const links = [
   { href: '/insights', label: 'Insights', icon: '📡' },
   { href: '/governors', label: 'Governors', icon: '👥' },
   { href: '/review', label: 'Review', icon: '🧪' },
+  { href: '/rankings/review', label: 'Rank Review', icon: '🧩' },
+  { href: '/rankings', label: 'Rankings', icon: '🏆' },
   { href: '/calibration', label: 'Calibrate', icon: '🎯' },
   { href: '/settings', label: 'Settings', icon: '⚙️' },
 ];

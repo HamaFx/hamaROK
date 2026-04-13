@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import React from 'react';
+import type { OcrRuntimeProfile } from '@/lib/ocr/profiles';
 
 type Severity = 'HIGH' | 'MEDIUM' | 'LOW';
 type ExtractionStatus = 'RAW' | 'REVIEWED' | 'APPROVED' | 'REJECTED';
@@ -12,6 +13,13 @@ interface QueueField {
   previousValue?: string | null;
   changed?: boolean;
   croppedImage?: string;
+  candidates?: Array<{
+    id: string;
+    source?: string;
+    normalizedValue?: string;
+    confidence?: number;
+    score?: number;
+  }>;
 }
 
 interface QueueItem {
@@ -22,6 +30,19 @@ interface QueueItem {
   status: ExtractionStatus;
   confidence: number;
   severity: { level: Severity; reasons: string[] };
+  lowConfidence?: boolean;
+  profileId?: string | null;
+  profile?: {
+    id: string;
+    profileKey: string;
+    name: string;
+    version: number;
+  } | null;
+  engineVersion?: string | null;
+  failureReasons?: string[];
+  preprocessingTrace?: Record<string, unknown>;
+  candidates?: Record<string, unknown>;
+  fusionDecision?: Record<string, unknown>;
   values: {
     governorId: QueueField;
     governorName: QueueField;
@@ -36,6 +57,11 @@ interface QueueItem {
     severity: 'ok' | 'warning' | 'error';
     warning?: string;
   }>;
+  artifact?: {
+    id: string;
+    url: string;
+    type: string;
+  } | null;
   createdAt: string;
 }
 
@@ -65,6 +91,14 @@ export default function ReviewQueuePage() {
   const [statusFilter, setStatusFilter] = useState('RAW,REVIEWED');
   const [drafts, setDrafts] = useState<Record<string, typeof defaultDraft>>({});
   const [actionBusy, setActionBusy] = useState<string | null>(null);
+  const [profiles, setProfiles] = useState<OcrRuntimeProfile[]>([]);
+  const [rerunProfileByItem, setRerunProfileByItem] = useState<Record<string, string>>({});
+  const [rerunPayloadByItem, setRerunPayloadByItem] = useState<Record<string, unknown>>({});
+  const [metricsSummary, setMetricsSummary] = useState<{
+    lowConfidenceRate: number;
+    reviewerEditRate: number;
+    reviewPassRate: number;
+  } | null>(null);
 
   useEffect(() => {
     const url = new URL(window.location.href);
@@ -121,6 +155,7 @@ export default function ReviewQueuePage() {
       setItems(data);
 
       const nextDrafts: Record<string, typeof defaultDraft> = {};
+      const nextRerunProfiles: Record<string, string> = {};
       for (const item of data) {
         nextDrafts[item.id] = {
           governorId: item.values.governorId.value,
@@ -131,8 +166,30 @@ export default function ReviewQueuePage() {
           t5Kills: item.values.t5Kills.value,
           deads: item.values.deads.value,
         };
+        nextRerunProfiles[item.id] = item.profileId || '';
       }
       setDrafts(nextDrafts);
+      setRerunProfileByItem(nextRerunProfiles);
+      setRerunPayloadByItem({});
+
+      try {
+        const metricParams = new URLSearchParams({ workspaceId, days: '30' });
+        const metricRes = await fetch(`/api/v2/ocr/metrics?${metricParams.toString()}`, {
+          headers: {
+            'x-access-token': accessToken,
+          },
+        });
+        const metricPayload = await metricRes.json();
+        if (metricRes.ok && metricPayload?.data?.rates) {
+          setMetricsSummary({
+            lowConfidenceRate: Number(metricPayload.data.rates.lowConfidenceRate || 0),
+            reviewerEditRate: Number(metricPayload.data.rates.reviewerEditRate || 0),
+            reviewPassRate: Number(metricPayload.data.rates.reviewPassRate || 0),
+          });
+        }
+      } catch {
+        setMetricsSummary(null);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load review queue.');
     } finally {
@@ -145,6 +202,35 @@ export default function ReviewQueuePage() {
       loadQueue();
     }
   }, [workspaceId, accessToken, loadQueue]);
+
+  useEffect(() => {
+    if (!workspaceId || !accessToken) {
+      setProfiles([]);
+      return;
+    }
+    let cancelled = false;
+    const run = async () => {
+      try {
+        const params = new URLSearchParams({ workspaceId });
+        const res = await fetch(`/api/v2/ocr/profiles?${params.toString()}`, {
+          headers: {
+            'x-access-token': accessToken,
+          },
+        });
+        const payload = await res.json();
+        if (!res.ok) return;
+        if (!cancelled) {
+          setProfiles(Array.isArray(payload?.data) ? payload.data : []);
+        }
+      } catch {
+        if (!cancelled) setProfiles([]);
+      }
+    };
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [workspaceId, accessToken]);
 
   const summary = useMemo(() => {
     const high = items.filter((i) => i.severity.level === 'HIGH').length;
@@ -161,6 +247,82 @@ export default function ReviewQueuePage() {
         [key]: value,
       },
     }));
+  };
+
+  const rerunOcr = async (item: QueueItem) => {
+    if (!workspaceId || !accessToken) return;
+    if (!item.artifact?.url) {
+      setError('Cannot rerun OCR because screenshot artifact is missing.');
+      return;
+    }
+
+    const profileId = rerunProfileByItem[item.id] || undefined;
+    setActionBusy(item.id + ':rerun');
+    setError(null);
+
+    try {
+      const imageRes = await fetch(item.artifact.url);
+      if (!imageRes.ok) {
+        throw new Error('Failed to download screenshot artifact for rerun.');
+      }
+      const blob = await imageRes.blob();
+      const ext = blob.type.includes('png') ? 'png' : blob.type.includes('webp') ? 'webp' : 'jpg';
+      const file = new File([blob], `rerun-${item.id}.${ext}`, { type: blob.type || 'image/png' });
+
+      const { processScreenshot } = await import('@/lib/ocr/ocr-engine');
+      const result = await processScreenshot(file, {
+        profiles: profiles.length > 0 ? profiles : undefined,
+        preferredProfileId: profileId,
+      });
+
+      const nextDraft = {
+        governorId: result.governorId.value,
+        governorName: result.governorName.value,
+        power: result.power.value,
+        killPoints: result.killPoints.value,
+        t4Kills: result.t4Kills.value,
+        t5Kills: result.t5Kills.value,
+        deads: result.deads.value,
+      };
+      setDrafts((prev) => ({
+        ...prev,
+        [item.id]: nextDraft,
+      }));
+
+      const diagnosticsRes = await fetch('/api/v2/ocr/run', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-access-token': accessToken,
+        },
+        body: JSON.stringify({
+          workspaceId,
+          preferredProfileId: profileId || null,
+          extraction: result,
+        }),
+      });
+      const diagnosticsPayload = await diagnosticsRes.json();
+      const rerunPayload = {
+        profileId: result.profileId,
+        engineVersion: result.engineVersion,
+        normalized: nextDraft,
+        preprocessingTrace: result.preprocessingTrace,
+        candidates: result.candidates,
+        fusionDecision: result.fusionDecision,
+        failureReasons:
+          diagnosticsPayload?.data?.failureReasons || result.failureReasons || [],
+        lowConfidence:
+          diagnosticsPayload?.data?.lowConfidence ?? result.lowConfidence ?? false,
+      };
+      setRerunPayloadByItem((prev) => ({
+        ...prev,
+        [item.id]: rerunPayload,
+      }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to rerun OCR.');
+    } finally {
+      setActionBusy(null);
+    }
   };
 
   const submitReview = async (id: string, status: ExtractionStatus) => {
@@ -180,6 +342,7 @@ export default function ReviewQueuePage() {
         body: JSON.stringify({
           status,
           corrected: draft,
+          rerun: rerunPayloadByItem[id] || undefined,
           reason:
             status === 'APPROVED'
               ? 'Approved from human review queue'
@@ -195,6 +358,46 @@ export default function ReviewQueuePage() {
       await loadQueue();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update review status.');
+    } finally {
+      setActionBusy(null);
+    }
+  };
+
+  const saveGoldenFixture = async (item: QueueItem) => {
+    if (!workspaceId || !accessToken) return;
+    if (!item.artifact?.id) {
+      setError('Cannot save golden fixture without screenshot artifact.');
+      return;
+    }
+    setActionBusy(item.id + ':fixture');
+    setError(null);
+    try {
+      const draft = drafts[item.id] || defaultDraft;
+      const res = await fetch('/api/v2/ocr/golden-fixtures', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-access-token': accessToken,
+        },
+        body: JSON.stringify({
+          workspaceId,
+          artifactId: item.artifact.id,
+          profileId: rerunProfileByItem[item.id] || item.profileId || null,
+          label: `${draft.governorName || 'Governor'} • ${item.id.slice(-6)}`,
+          expected: draft,
+          metadata: {
+            source: 'review-queue',
+            extractionId: item.id,
+            scanJobId: item.scanJobId,
+          },
+        }),
+      });
+      const payload = await res.json();
+      if (!res.ok) {
+        throw new Error(payload?.error?.message || 'Failed to save golden fixture.');
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save golden fixture.');
     } finally {
       setActionBusy(null);
     }
@@ -267,6 +470,13 @@ export default function ReviewQueuePage() {
         <div className="mt-16 text-sm text-muted">
           Queue summary: {summary.total} total • {summary.high} high • {summary.medium} medium • {summary.low} low
         </div>
+        {metricsSummary && (
+          <div className="mt-8 text-sm text-muted">
+            OCR quality (30d): pass {Math.round(metricsSummary.reviewPassRate * 100)}% • low-confidence{' '}
+            {Math.round(metricsSummary.lowConfidenceRate * 100)}% • reviewer edits{' '}
+            {Math.round(metricsSummary.reviewerEditRate * 100)}%
+          </div>
+        )}
 
         {error && <div className="mt-16 delta-negative">{error}</div>}
       </div>
@@ -290,6 +500,16 @@ export default function ReviewQueuePage() {
                     <span className={`text-sm ${severityClass(item.severity.level)}`}>
                       {item.severity.level}
                     </span>
+                    {item.profile ? (
+                      <span className="text-muted text-sm">
+                        Profile: {item.profile.name} v{item.profile.version}
+                      </span>
+                    ) : item.profileId ? (
+                      <span className="text-muted text-sm">Profile: {item.profileId}</span>
+                    ) : null}
+                    {item.engineVersion ? (
+                      <span className="text-muted text-sm">{item.engineVersion}</span>
+                    ) : null}
                     <span className="text-muted text-sm">Status: {item.status}</span>
                     <span className="text-muted text-sm">Confidence: {Math.round(item.confidence * (item.confidence <= 1 ? 100 : 1))}%</span>
                     <span className="text-muted text-sm">Created: {new Date(item.createdAt).toLocaleString()}</span>
@@ -324,6 +544,22 @@ export default function ReviewQueuePage() {
                               </a>
                             </>
                           ) : null}
+                          {Array.isArray(source?.candidates) && source.candidates.length > 0 ? (
+                            <div>
+                              Alt:{' '}
+                              {source.candidates
+                                .slice(0, 2)
+                                .map((candidate) =>
+                                  candidate?.normalizedValue
+                                    ? `${candidate.normalizedValue} (${Math.round(
+                                        Number(candidate.confidence || 0)
+                                      )}%)`
+                                    : null
+                                )
+                                .filter(Boolean)
+                                .join(' • ') || '—'}
+                            </div>
+                          ) : null}
                         </div>
                         <div className="text-muted text-sm" key={`${item.id}-${field}-confidence`}>
                           {Math.round(source?.confidence ?? 0)}%
@@ -337,6 +573,16 @@ export default function ReviewQueuePage() {
                   <div style={{ padding: '0 20px 12px' }}>
                     {item.severity.reasons.map((reason, idx) => (
                       <div key={`${item.id}-reason-${idx}`} className="text-sm text-muted">
+                        • {reason}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {item.failureReasons && item.failureReasons.length > 0 && (
+                  <div style={{ padding: '0 20px 12px' }}>
+                    {item.failureReasons.slice(0, 5).map((reason, idx) => (
+                      <div key={`${item.id}-failure-${idx}`} className="text-sm text-muted">
                         • {reason}
                       </div>
                     ))}
@@ -359,6 +605,38 @@ export default function ReviewQueuePage() {
                 )}
 
                 <div className="flex gap-8" style={{ padding: '0 20px 18px' }}>
+                  <select
+                    className="form-select"
+                    value={rerunProfileByItem[item.id] || ''}
+                    onChange={(e) =>
+                      setRerunProfileByItem((prev) => ({
+                        ...prev,
+                        [item.id]: e.target.value,
+                      }))
+                    }
+                    style={{ minWidth: 220 }}
+                  >
+                    <option value="">Auto-select profile</option>
+                    {profiles.map((profile) => (
+                      <option key={profile.id} value={profile.id}>
+                        {profile.name} ({profile.profileKey} v{profile.version})
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    disabled={Boolean(actionBusy)}
+                    onClick={() => rerunOcr(item)}
+                  >
+                    {actionBusy === item.id + ':rerun' ? 'Re-running...' : 'Re-run OCR'}
+                  </button>
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    disabled={Boolean(actionBusy)}
+                    onClick={() => saveGoldenFixture(item)}
+                  >
+                    {actionBusy === item.id + ':fixture' ? 'Saving...' : 'Save Golden'}
+                  </button>
                   <button
                     className="btn btn-secondary btn-sm"
                     disabled={Boolean(actionBusy)}

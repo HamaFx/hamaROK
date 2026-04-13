@@ -37,10 +37,22 @@ const correctedSchema = z
   })
   .partial();
 
+const rerunSchema = z.object({
+  profileId: z.string().optional(),
+  engineVersion: z.string().max(50).optional(),
+  normalized: correctedSchema.optional(),
+  preprocessingTrace: z.record(z.string(), z.unknown()).optional(),
+  candidates: z.record(z.string(), z.unknown()).optional(),
+  fusionDecision: z.record(z.string(), z.unknown()).optional(),
+  failureReasons: z.array(z.string()).optional(),
+  lowConfidence: z.boolean().optional(),
+});
+
 const reviewSchema = z.object({
   status: z.nativeEnum(OcrExtractionStatus),
   reason: z.string().max(300).optional(),
   corrected: correctedSchema.optional(),
+  rerun: rerunSchema.optional(),
   validation: z.array(
     z.object({
       field: z.string(),
@@ -52,6 +64,31 @@ const reviewSchema = z.object({
     })
   ).optional(),
 });
+
+function inferCorrectionReasonCode(
+  field: keyof ReturnType<typeof parseExtractionValues>,
+  previousValue: string,
+  correctedValue: string
+): string {
+  if (previousValue === correctedValue) return 'no_change';
+  const previousDigits = previousValue.replace(/[^0-9]/g, '');
+  const correctedDigits = correctedValue.replace(/[^0-9]/g, '');
+
+  if (field !== 'governorName') {
+    if (!previousDigits && correctedDigits) return 'threshold_failure';
+    if (Math.abs(previousDigits.length - correctedDigits.length) >= 2) {
+      return 'crop_drift';
+    }
+    if (previousDigits.length === correctedDigits.length) {
+      return 'digit_confusion';
+    }
+    return 'numeric_adjustment';
+  }
+
+  if (!previousValue.trim() && correctedValue.trim()) return 'name_empty_fix';
+  if (Math.abs(previousValue.length - correctedValue.length) >= 4) return 'name_crop_drift';
+  return 'name_typo_fix';
+}
 
 function applyCorrections(
   base: ReturnType<typeof parseExtractionValues>,
@@ -86,6 +123,43 @@ function applyCorrections(
     deads: {
       ...base.deads,
       value: corrected.deads ?? base.deads.value,
+    },
+  };
+}
+
+function applyRerunNormalized(
+  base: ReturnType<typeof parseExtractionValues>,
+  rerun?: z.infer<typeof rerunSchema>
+) {
+  if (!rerun?.normalized) return base;
+  return {
+    governorId: {
+      ...base.governorId,
+      value: rerun.normalized.governorId ?? base.governorId.value,
+    },
+    governorName: {
+      ...base.governorName,
+      value: rerun.normalized.governorName ?? base.governorName.value,
+    },
+    power: {
+      ...base.power,
+      value: rerun.normalized.power ?? base.power.value,
+    },
+    killPoints: {
+      ...base.killPoints,
+      value: rerun.normalized.killPoints ?? base.killPoints.value,
+    },
+    t4Kills: {
+      ...base.t4Kills,
+      value: rerun.normalized.t4Kills ?? base.t4Kills.value,
+    },
+    t5Kills: {
+      ...base.t5Kills,
+      value: rerun.normalized.t5Kills ?? base.t5Kills.value,
+    },
+    deads: {
+      ...base.deads,
+      value: rerun.normalized.deads ?? base.deads.value,
     },
   };
 }
@@ -131,8 +205,9 @@ export async function PATCH(
       governorNameRaw: extraction.governorNameRaw,
       confidence: extraction.confidence,
     });
-    const mergedValues = applyCorrections(parsedValues, body.corrected);
-    const approvedPayload = toApprovedSnapshotPayload(mergedValues);
+    const rerunValues = applyRerunNormalized(parsedValues, body.rerun);
+    const mergedValues = applyCorrections(rerunValues, body.corrected);
+    let approvedPayload = toApprovedSnapshotPayload(mergedValues);
 
     if (body.status === OcrExtractionStatus.APPROVED) {
       if (!extraction.scanJob.eventId) {
@@ -143,11 +218,31 @@ export async function PATCH(
         );
       }
       if (!/^\d{6,12}$/.test(approvedPayload.governorId)) {
-        throw new ApiHttpError(
-          'VALIDATION_ERROR',
-          'Governor ID must be 6-12 digits before approval.',
-          400
-        );
+        const matchedGovernor = await prisma.governor.findFirst({
+          where: {
+            workspaceId: extraction.scanJob.workspaceId,
+            name: {
+              equals: approvedPayload.governorName,
+              mode: 'insensitive',
+            },
+          },
+          select: {
+            governorId: true,
+          },
+        });
+
+        if (matchedGovernor?.governorId && /^\d{6,12}$/.test(matchedGovernor.governorId)) {
+          approvedPayload = {
+            ...approvedPayload,
+            governorId: matchedGovernor.governorId,
+          };
+        } else {
+          throw new ApiHttpError(
+            'VALIDATION_ERROR',
+            'Governor ID must be 6-12 digits before approval. Add an ID or use a known governor name already mapped in this workspace.',
+            400
+          );
+        }
       }
     }
 
@@ -160,11 +255,71 @@ export async function PATCH(
       deads: approvedPayload.deads,
     });
 
+    const correctionEntries = (
+      Object.keys(mergedValues) as Array<keyof typeof mergedValues>
+    )
+      .map((fieldName) => {
+        const before = rerunValues[fieldName].value;
+        const after = mergedValues[fieldName].value;
+        if (before === after) return null;
+        return {
+          fieldName,
+          previousValue: before,
+          correctedValue: after,
+          reasonCode: inferCorrectionReasonCode(fieldName, before, after),
+          confidence: rerunValues[fieldName].confidence,
+        };
+      })
+      .filter(
+        (
+          item
+        ): item is {
+          fieldName: keyof typeof mergedValues;
+          previousValue: string;
+          correctedValue: string;
+          reasonCode: string;
+          confidence: number;
+        } => Boolean(item)
+      );
+
+    const fallbackFailureReasons =
+      extraction.failureReasons == null
+        ? undefined
+        : (extraction.failureReasons as unknown as Prisma.InputJsonValue);
+    const fallbackPreprocessingTrace =
+      extraction.preprocessingTrace == null
+        ? undefined
+        : (extraction.preprocessingTrace as unknown as Prisma.InputJsonValue);
+    const fallbackCandidates =
+      extraction.candidates == null
+        ? undefined
+        : (extraction.candidates as unknown as Prisma.InputJsonValue);
+    const fallbackFusionDecision =
+      extraction.fusionDecision == null
+        ? undefined
+        : (extraction.fusionDecision as unknown as Prisma.InputJsonValue);
+
     const result = await prisma.$transaction(async (tx) => {
       const updatedExtraction = await tx.ocrExtraction.update({
         where: { id: extraction.id },
         data: {
           status: body.status,
+          profileId: body.rerun?.profileId || extraction.profileId,
+          engineVersion: body.rerun?.engineVersion || extraction.engineVersion,
+          lowConfidence:
+            body.rerun?.lowConfidence ?? extraction.lowConfidence,
+          failureReasons: body.rerun?.failureReasons
+            ? (body.rerun.failureReasons as unknown as Prisma.InputJsonValue)
+            : fallbackFailureReasons,
+          preprocessingTrace: body.rerun?.preprocessingTrace
+            ? (body.rerun.preprocessingTrace as unknown as Prisma.InputJsonValue)
+            : fallbackPreprocessingTrace,
+          candidates: body.rerun?.candidates
+            ? (body.rerun.candidates as unknown as Prisma.InputJsonValue)
+            : fallbackCandidates,
+          fusionDecision: body.rerun?.fusionDecision
+            ? (body.rerun.fusionDecision as unknown as Prisma.InputJsonValue)
+            : fallbackFusionDecision,
           normalized: {
             governorId: mergedValues.governorId,
             governorName: mergedValues.governorName,
@@ -179,6 +334,21 @@ export async function PATCH(
           validation: validation as unknown as Prisma.InputJsonValue,
         },
       });
+
+      if (correctionEntries.length > 0) {
+        await tx.ocrCorrectionLog.createMany({
+          data: correctionEntries.map((entry) => ({
+            workspaceId: extraction.scanJob.workspaceId,
+            extractionId: extraction.id,
+            reviewedByLinkId: auth.link.id,
+            fieldName: entry.fieldName,
+            previousValue: entry.previousValue,
+            correctedValue: entry.correctedValue,
+            reasonCode: entry.reasonCode,
+            confidence: entry.confidence,
+          })),
+        });
+      }
 
       let snapshotId: string | null = null;
 
@@ -335,6 +505,7 @@ export async function PATCH(
         extraction: updatedExtraction,
         snapshotId,
         anomalyCount: anomalies.length,
+        correctionCount: correctionEntries.length,
       };
     });
 
@@ -344,6 +515,7 @@ export async function PATCH(
       scanJobId: result.extraction.scanJobId,
       snapshotId: result.snapshotId,
       anomalyCount: result.anomalyCount,
+      correctionCount: result.correctionCount,
       updatedAt: new Date().toISOString(),
     });
   } catch (error) {

@@ -80,6 +80,12 @@ export default function Dashboard() {
         <Link href="/review" className="btn btn-secondary btn-lg">
           🧪 Review Queue
         </Link>
+        <Link href="/rankings/review" className="btn btn-secondary btn-lg">
+          🧩 Ranking Review
+        </Link>
+        <Link href="/rankings" className="btn btn-secondary btn-lg">
+          🏆 Canonical Rankings
+        </Link>
         <Link href="/events" className="btn btn-secondary btn-lg">
           📅 Manage Events
         </Link>

@@ -14,6 +14,9 @@ const settingsSchema = z.object({
   discordWebhook: z.string().url().optional().or(z.literal('')),
   fallbackOcrEnabled: z.boolean().optional(),
   fallbackOcrDailyLimit: z.number().int().min(1).max(5000).optional(),
+  fallbackOcrMonthlyBudgetUsd: z.number().min(0).max(1000).optional(),
+  fallbackOcrProvider: z.string().min(1).max(40).optional(),
+  fallbackOcrModel: z.string().min(1).max(80).optional(),
   featureAdbCaptureRnd: z.boolean().optional(),
 });
 
@@ -79,6 +82,9 @@ export async function POST(
         discordWebhook: body.discordWebhook?.trim() || null,
         fallbackOcrEnabled: body.fallbackOcrEnabled ?? false,
         fallbackOcrDailyLimit: body.fallbackOcrDailyLimit ?? 50,
+        fallbackOcrMonthlyBudgetUsd: body.fallbackOcrMonthlyBudgetUsd ?? 0,
+        fallbackOcrProvider: body.fallbackOcrProvider?.trim() || 'openai',
+        fallbackOcrModel: body.fallbackOcrModel?.trim() || 'gpt-5-mini',
         featureAdbCaptureRnd: body.featureAdbCaptureRnd ?? false,
       },
       update: {
@@ -90,6 +96,10 @@ export async function POST(
         discordWebhook: body.discordWebhook?.trim() || null,
         fallbackOcrEnabled: body.fallbackOcrEnabled ?? undefined,
         fallbackOcrDailyLimit: body.fallbackOcrDailyLimit ?? undefined,
+        fallbackOcrMonthlyBudgetUsd:
+          body.fallbackOcrMonthlyBudgetUsd ?? undefined,
+        fallbackOcrProvider: body.fallbackOcrProvider?.trim() || undefined,
+        fallbackOcrModel: body.fallbackOcrModel?.trim() || undefined,
         featureAdbCaptureRnd: body.featureAdbCaptureRnd ?? undefined,
       },
     });

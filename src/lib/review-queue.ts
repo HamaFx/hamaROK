@@ -6,6 +6,7 @@ export interface ReviewFieldValue {
   confidence: number;
   croppedImage?: string;
   trace?: unknown;
+  candidates?: unknown;
   previousValue?: string | null;
   changed?: boolean;
 }
@@ -46,6 +47,7 @@ function parseField(
       croppedImage:
         typeof obj.croppedImage === 'string' ? obj.croppedImage : undefined,
       trace: obj.trace,
+      candidates: obj.candidates,
     };
   }
 
@@ -111,6 +113,8 @@ export function parseValidation(value: unknown): ValidationResult[] {
 
 export function inferReviewSeverity(args: {
   extractionStatus: OcrExtractionStatus;
+  lowConfidence?: boolean;
+  failureReasons?: unknown;
   values: ParsedExtractionValues;
   validation: ValidationResult[];
 }): ReviewSeverity {
@@ -132,6 +136,17 @@ export function inferReviewSeverity(args: {
   ];
 
   const minConfidence = Math.min(...confidenceValues);
+  if (args.lowConfidence) {
+    reasons.push('Engine marked this extraction as low-confidence.');
+  }
+
+  const failureReasons = Array.isArray(args.failureReasons)
+    ? args.failureReasons.filter((item): item is string => typeof item === 'string')
+    : [];
+  if (failureReasons.length > 0) {
+    reasons.push(`OCR failure reasons: ${failureReasons.slice(0, 3).join(', ')}.`);
+  }
+
   if (minConfidence < 55) {
     reasons.push(`Very low confidence field (${Math.round(minConfidence)}%).`);
   } else if (minConfidence < 75) {
@@ -148,7 +163,7 @@ export function inferReviewSeverity(args: {
     reasons.push(`${warnings.length} validation warning(s).`);
   }
 
-  if (errors.length > 0 || minConfidence < 55) {
+  if (args.lowConfidence || errors.length > 0 || minConfidence < 55) {
     return { level: 'HIGH', reasons };
   }
   if (warnings.length > 0 || minConfidence < 75) {

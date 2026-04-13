@@ -92,6 +92,14 @@ export async function GET(request: NextRequest) {
             type: true,
           },
         },
+        profile: {
+          select: {
+            id: true,
+            profileKey: true,
+            name: true,
+            version: true,
+          },
+        },
       },
     });
 
@@ -192,9 +200,19 @@ export async function GET(request: NextRequest) {
         const validation = parseValidation(item.validation);
         const severity = inferReviewSeverity({
           extractionStatus: item.status,
+          lowConfidence: item.lowConfidence,
+          failureReasons: item.failureReasons,
           values,
           validation,
         });
+
+        const candidateMap =
+          item.candidates && typeof item.candidates === 'object'
+            ? (item.candidates as Record<string, unknown>)
+            : {};
+        const failureReasons = Array.isArray(item.failureReasons)
+          ? item.failureReasons.filter((reason): reason is string => typeof reason === 'string')
+          : [];
 
         const gameId = values.governorId.value.replace(/[^0-9]/g, '');
         const governor = governorByGameId.get(gameId);
@@ -206,22 +224,26 @@ export async function GET(request: NextRequest) {
         const withDiff = {
           governorId: {
             ...values.governorId,
+            candidates: candidateMap.governorId,
             previousValue: governor?.governorId || null,
             changed:
               Boolean(governor?.governorId) && governor?.governorId !== values.governorId.value,
           },
           governorName: {
             ...values.governorName,
+            candidates: candidateMap.governorName,
             previousValue: governor?.name || null,
             changed: Boolean(governor?.name) && governor?.name !== values.governorName.value,
           },
           power: {
             ...values.power,
+            candidates: candidateMap.power,
             previousValue: previousSnapshot?.power || null,
             changed: Boolean(previousSnapshot?.power) && previousSnapshot?.power !== values.power.value,
           },
           killPoints: {
             ...values.killPoints,
+            candidates: candidateMap.killPoints,
             previousValue: previousSnapshot?.killPoints || null,
             changed:
               Boolean(previousSnapshot?.killPoints) &&
@@ -229,16 +251,19 @@ export async function GET(request: NextRequest) {
           },
           t4Kills: {
             ...values.t4Kills,
+            candidates: candidateMap.t4Kills,
             previousValue: previousSnapshot?.t4Kills || null,
             changed: Boolean(previousSnapshot?.t4Kills) && previousSnapshot?.t4Kills !== values.t4Kills.value,
           },
           t5Kills: {
             ...values.t5Kills,
+            candidates: candidateMap.t5Kills,
             previousValue: previousSnapshot?.t5Kills || null,
             changed: Boolean(previousSnapshot?.t5Kills) && previousSnapshot?.t5Kills !== values.t5Kills.value,
           },
           deads: {
             ...values.deads,
+            candidates: candidateMap.deads,
             previousValue: previousSnapshot?.deads || null,
             changed: Boolean(previousSnapshot?.deads) && previousSnapshot?.deads !== values.deads.value,
           },
@@ -254,7 +279,15 @@ export async function GET(request: NextRequest) {
           provider: item.provider,
           status: item.status,
           confidence: item.confidence,
+          lowConfidence: item.lowConfidence,
           severity,
+          profile: item.profile,
+          profileId: item.profileId,
+          engineVersion: item.engineVersion,
+          failureReasons,
+          preprocessingTrace: item.preprocessingTrace,
+          candidates: item.candidates,
+          fusionDecision: item.fusionDecision,
           values: withDiff,
           validation,
           artifact: item.artifact,
