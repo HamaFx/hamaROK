@@ -44,33 +44,6 @@ interface RankingHealth {
   rankingTypes: Array<{ rankingType: string; metricKey: string; total: number }>;
 }
 
-const QUICK_LANES = [
-  {
-    href: '/upload',
-    title: 'Ingest Captures',
-    description: 'Upload profile/ranking screenshots into review-safe pipelines.',
-    icon: Swords,
-  },
-  {
-    href: '/review',
-    title: 'OCR Review',
-    description: 'Resolve low-confidence profile fields before approval.',
-    icon: FlaskConical,
-  },
-  {
-    href: '/rankings/review',
-    title: 'Ranking Review',
-    description: 'Link unresolved ranking rows and apply canonical corrections.',
-    icon: ShieldCheck,
-  },
-  {
-    href: '/compare',
-    title: 'Compare Events',
-    description: 'Run warrior score comparisons and publish leaderboard outputs.',
-    icon: Workflow,
-  },
-];
-
 export default function Dashboard() {
   const [events, setEvents] = useState<EventSummary[]>([]);
   const [governorCount, setGovernorCount] = useState(0);
@@ -157,64 +130,34 @@ export default function Dashboard() {
         />
       </div>
 
-      <div className="grid-2 mb-24">
-        <Panel
-          title="Operation Lanes"
-          subtitle="Most-used workflows with one-tap access"
-          actions={
-            <Link href="/insights" className="btn btn-ghost btn-sm">
-              <Activity size={14} /> Analytics
-            </Link>
-          }
-        >
-          <div className="quick-lane-grid">
-            {QUICK_LANES.map((lane) => {
-              const Icon = lane.icon;
-              return (
-                <Link key={lane.href} href={lane.href} className="quick-lane-card">
-                  <span className="quick-lane-icon">
-                    <Icon size={15} />
-                  </span>
-                  <div>
-                    <strong>{lane.title}</strong>
-                    <p>{lane.description}</p>
-                  </div>
-                  <ArrowRight size={14} className="quick-lane-arrow" />
-                </Link>
-              );
-            })}
-          </div>
-        </Panel>
-
-        <Panel title="Ranking Health" subtitle="State distribution across all active tables">
-          {rankingHealth ? (
-            <div className="flex flex-col gap-4">
-              <MetricStrip
-                items={[
-                  { label: 'Total Rows', value: rankingHealth.total, accent: 'teal' },
-                  { label: 'Active', value: rankingHealth.statusCounts.ACTIVE || 0, accent: 'gold' },
-                  { label: 'Unresolved', value: rankingHealth.statusCounts.UNRESOLVED || 0, accent: 'rose' },
-                ]}
-              />
-              <div style={{ marginTop: '-40px', marginBottom: '-20px' }}>
-                <TierPieChart distribution={rankingHealth.statusCounts} />
-              </div>
-              <div className="mt-6 text-sm text-center" style={{ color: 'var(--text-3)' }}>
-                Top types:{' '}
-                {rankingHealth.rankingTypes
-                  .slice(0, 4)
-                  .map((item) => `${item.rankingType}/${item.metricKey}`)
-                  .join(' • ') || 'None'}
-              </div>
-            </div>
-          ) : (
-            <EmptyState
-              title="Ranking metrics require workspace access"
-              description="Set workspace ID and access token to unlock ranking health modules."
+      <Panel title="Ranking Health" subtitle="State distribution across all active tables" className="mb-24">
+        {rankingHealth ? (
+          <div className="flex flex-col gap-4">
+            <MetricStrip
+              items={[
+                { label: 'Total Rows', value: rankingHealth.total, accent: 'teal' },
+                { label: 'Active', value: rankingHealth.statusCounts.ACTIVE || 0, accent: 'gold' },
+                { label: 'Unresolved', value: rankingHealth.statusCounts.UNRESOLVED || 0, accent: 'rose' },
+              ]}
             />
-          )}
-        </Panel>
-      </div>
+            <div style={{ marginTop: '-40px', marginBottom: '-20px' }}>
+              <TierPieChart distribution={rankingHealth.statusCounts} />
+            </div>
+            <div className="mt-6 text-sm text-center" style={{ color: 'var(--text-3)' }}>
+              Top types:{' '}
+              {rankingHealth.rankingTypes
+                .slice(0, 4)
+                .map((item) => `${item.rankingType}/${item.metricKey}`)
+                .join(' • ') || 'None'}
+            </div>
+          </div>
+        ) : (
+          <EmptyState
+            title="Ranking metrics require workspace access"
+            description="Set workspace ID and access token to unlock ranking health modules."
+          />
+        )}
+      </Panel>
 
       <Panel
         title="Recent Events"

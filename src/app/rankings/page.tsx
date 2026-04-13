@@ -57,9 +57,6 @@ const ALL_STATUSES: RankingStatus[] = ['ACTIVE', 'UNRESOLVED', 'REJECTED'];
 export default function RankingsPage() {
   const [workspaceId, setWorkspaceId] = useState('');
   const [accessToken, setAccessToken] = useState('');
-  const [eventId, setEventId] = useState('');
-  const [rankingType, setRankingType] = useState('');
-  const [metricKey, setMetricKey] = useState('');
   const [search, setSearch] = useState('');
   const [statuses, setStatuses] = useState<RankingStatus[]>(['ACTIVE', 'UNRESOLVED']);
   const [rows, setRows] = useState<CanonicalRow[]>([]);
@@ -100,9 +97,6 @@ export default function RankingsPage() {
           status: statusQuery,
         });
 
-        if (eventId.trim()) params.set('eventId', eventId.trim());
-        if (rankingType.trim()) params.set('rankingType', rankingType.trim());
-        if (metricKey.trim()) params.set('metricKey', metricKey.trim());
         if (search.trim()) params.set('q', search.trim());
         if (cursor) params.set('cursor', cursor);
 
@@ -113,9 +107,6 @@ export default function RankingsPage() {
           fetch(
             `/api/v2/rankings/summary?${new URLSearchParams({
               workspaceId,
-              ...(eventId.trim() ? { eventId: eventId.trim() } : {}),
-              ...(rankingType.trim() ? { rankingType: rankingType.trim() } : {}),
-              ...(metricKey.trim() ? { metricKey: metricKey.trim() } : {}),
               topN: '15',
             }).toString()}`,
             {
@@ -148,7 +139,7 @@ export default function RankingsPage() {
         setLoading(false);
       }
     },
-    [workspaceId, accessToken, eventId, rankingType, metricKey, search, statusQuery]
+    [workspaceId, accessToken, search, statusQuery]
   );
 
   const refresh = useCallback(() => {
@@ -274,38 +265,18 @@ export default function RankingsPage() {
         }
       />
 
-      <section className="rankings-filter-strip mb-24">
-        <FilterBar>
-          <div className="form-group" style={{ marginBottom: 0, minWidth: 190 }}>
-            <label className="form-label">Workspace</label>
-            <input className="form-input" value={workspaceId} onChange={(e) => setWorkspaceId(e.target.value)} />
+      <section className="rankings-filter-strip mb-24 flex items-center justify-between">
+        <FilterBar style={{ flex: 1, marginRight: '16px' }}>
+          <div className="search-bar" style={{ minWidth: 260, flex: 1 }}>
+            <Search size={16} className="search-icon" style={{ marginLeft: '4px' }} />
+            <input placeholder="Search governor name or ID..." value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
-          <div className="form-group" style={{ marginBottom: 0, minWidth: 190 }}>
-            <label className="form-label">Access Token</label>
-            <input className="form-input" value={accessToken} onChange={(e) => setAccessToken(e.target.value)} />
-          </div>
-          <div className="form-group" style={{ marginBottom: 0, minWidth: 170 }}>
-            <label className="form-label">Event ID</label>
-            <input className="form-input" value={eventId} onChange={(e) => setEventId(e.target.value)} />
-          </div>
-          <div className="form-group" style={{ marginBottom: 0, minWidth: 170 }}>
-            <label className="form-label">Ranking Type</label>
-            <input className="form-input" value={rankingType} onChange={(e) => setRankingType(e.target.value)} />
-          </div>
-          <div className="form-group" style={{ marginBottom: 0, minWidth: 170 }}>
-            <label className="form-label">Metric Key</label>
-            <input className="form-input" value={metricKey} onChange={(e) => setMetricKey(e.target.value)} />
-          </div>
-          <div className="search-bar" style={{ minWidth: 220 }}>
-            <Search size={14} className="search-icon" />
-            <input placeholder="Search governor..." value={search} onChange={(e) => setSearch(e.target.value)} />
-          </div>
-          <button className="btn btn-secondary btn-sm" onClick={refresh} disabled={loading}>
-            <Filter size={14} /> Apply
+          <button className="btn btn-secondary" onClick={refresh} disabled={loading} style={{ padding: '0 16px' }}>
+            <Filter size={14} /> Search
           </button>
         </FilterBar>
 
-        <FilterBar className="mt-8">
+        <FilterBar>
           {ALL_STATUSES.map((status) => (
             <button
               key={status}
@@ -338,30 +309,7 @@ export default function RankingsPage() {
         </div>
       ) : null}
 
-      {summary?.topBuckets ? (
-        <Panel title="Top Bucket Coverage" subtitle="Contribution totals by deterministic rank buckets" className="mb-24">
-          <div className="grid-3">
-            <KpiCard
-              label="Top 100"
-              value={formatMetric(summary.topBuckets.top100.totalMetric)}
-              hint={`${summary.topBuckets.top100.count} rows`}
-              tone="warn"
-            />
-            <KpiCard
-              label="Top 200"
-              value={formatMetric(summary.topBuckets.top200.totalMetric)}
-              hint={`${summary.topBuckets.top200.count} rows`}
-              tone="info"
-            />
-            <KpiCard
-              label="Top 400"
-              value={formatMetric(summary.topBuckets.top400.totalMetric)}
-              hint={`${summary.topBuckets.top400.count} rows`}
-              tone="neutral"
-            />
-          </div>
-        </Panel>
-      ) : null}
+
 
       <Panel
         title="Canonical Ranking Rows"
