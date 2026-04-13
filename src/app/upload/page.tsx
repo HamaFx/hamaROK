@@ -812,43 +812,28 @@ export default function UploadPage() {
   return (
     <div className="page-container">
       <PageHero
-        title="Ingestion Workspace"
-        subtitle="Auto-route Governor Profile and Ranking Board screenshots into clean review-first workflows."
-        badges={['Profile lane', 'Ranking lane', 'Always-review policy']}
-        actions={
-          <>
-            <Link href="/review" className="btn btn-secondary btn-sm">
-              OCR Review
-            </Link>
-            <Link href="/rankings/review" className="btn btn-secondary btn-sm">
-              Ranking Review
-            </Link>
-          </>
-        }
+        title="Upload Screenshots"
+        subtitle="Drag & drop governor profiles or ranking boards to begin OCR processing."
       />
 
       <div className="grid-4 mb-24">
-        <KpiCard label="Queued Files" value={entries.length} hint="Current upload batch" tone="info" />
-        <KpiCard label="Profile Lane" value={profileCount} hint="Governor profile captures" tone="neutral" />
-        <KpiCard label="Ranking Lane" value={rankingCount} hint="Ranking board captures" tone="warn" />
+        <KpiCard label="Queued" value={entries.length} hint="Current batch" tone="info" />
+        <KpiCard label="Profiles" value={profileCount} hint="Governor captures" tone="neutral" />
+        <KpiCard label="Rankings" value={rankingCount} hint="Board captures" tone="warn" />
         <KpiCard
-          label="Ready to Queue"
+          label="Confirmed"
           value={confirmedCount}
-          hint="Confirmed rows ready to submit"
+          hint="Ready to submit"
           tone={confirmedCount > 0 ? 'good' : 'neutral'}
         />
       </div>
 
-      <Panel
-        title="Step 1 · Event + Workspace Access"
-        subtitle="Workspace link access is required for v2 review queues."
-        className="mb-24"
-      >
+      <Panel title="Select Event" className="mb-24">
         <div className="flex gap-12" style={{ flexWrap: 'wrap', alignItems: 'flex-end' }}>
           <div className="form-group" style={{ flex: 1, minWidth: 220, marginBottom: 0 }}>
             <label className="form-label">Event</label>
             <select className="form-select" value={selectedEventId} onChange={(e) => setSelectedEventId(e.target.value)}>
-              <option value="">Select event</option>
+              <option value="">Choose an event...</option>
               {events.map((ev) => (
                 <option key={ev.id} value={ev.id}>
                   {ev.name}
@@ -857,95 +842,12 @@ export default function UploadPage() {
             </select>
           </div>
           <button className="btn btn-secondary" onClick={() => setShowCreateModal(true)}>
-            New Event
+            + New Event
           </button>
-        </div>
-
-        <FilterBar className="mt-12">
-          <StatusPill label="Governor Profile" tone="info" />
-          <StatusPill label="Ranking Board" tone="warn" />
-          <StatusPill label="No Auto-Approve" tone="neutral" />
-        </FilterBar>
-
-        <div className="grid-2 mt-16">
-          <div className="form-group" style={{ marginBottom: 0 }}>
-            <label className="form-label">Workspace ID (required)</label>
-            <input
-              className="form-input"
-              value={workspaceId}
-              onChange={(e) => setWorkspaceId(e.target.value)}
-              placeholder="workspace_cuid"
-            />
-          </div>
-          <div className="form-group" style={{ marginBottom: 0 }}>
-            <label className="form-label">Access Token (editor link)</label>
-            <input
-              className="form-input"
-              value={accessToken}
-              onChange={(e) => setAccessToken(e.target.value)}
-              placeholder="paste token"
-            />
-          </div>
-        </div>
-
-        <div className="grid-2 mt-12">
-          <div className="form-group" style={{ marginBottom: 0 }}>
-            <label className="form-label">OCR Profile Override (optional)</label>
-            <select className="form-select" value={preferredProfileId} onChange={(e) => setPreferredProfileId(e.target.value)}>
-              <option value="">Auto-select best profile</option>
-              {ocrProfiles.map((profile) => (
-                <option key={profile.id} value={profile.id}>
-                  {profile.name} ({profile.profileKey} v{profile.version})
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        <div className="mt-16">
-          <div className="form-label">AWS OCR Worker Control</div>
-          {awsOcrControl?.enabled ? (
-            <>
-              <FilterBar>
-                <StatusPill label={awsOcrControl.queueConfigured ? 'Queue Ready' : 'Queue Missing'} tone={awsOcrControl.queueConfigured ? 'good' : 'bad'} />
-                <StatusPill label={awsOcrControl.startLambdaConfigured ? 'Start Ready' : 'Start Missing'} tone={awsOcrControl.startLambdaConfigured ? 'good' : 'warn'} />
-                <StatusPill label={awsOcrControl.stopLambdaConfigured ? 'Stop Ready' : 'Stop Missing'} tone={awsOcrControl.stopLambdaConfigured ? 'good' : 'warn'} />
-                <StatusPill label={`Pending ${awsQueuePending}`} tone={awsQueuePending > 0 ? 'warn' : 'neutral'} />
-                <StatusPill label={`In-flight ${awsQueueInFlight}`} tone={awsQueueInFlight > 0 ? 'info' : 'neutral'} />
-                <StatusPill label={`Delayed ${awsQueueDelayed}`} tone={awsQueueDelayed > 0 ? 'warn' : 'neutral'} />
-              </FilterBar>
-              <FilterBar className="mt-12">
-                <button
-                  type="button"
-                  className="btn btn-secondary btn-sm"
-                  disabled={!awsOcrControl.startLambdaConfigured || awsControlBusy !== null}
-                  onClick={() => triggerAwsOcrControl('START', 'manual')}
-                >
-                  <Play size={13} /> {awsControlBusy === 'START' ? 'Starting...' : 'Start Worker'}
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-secondary btn-sm"
-                  disabled={!awsOcrControl.stopLambdaConfigured || awsControlBusy !== null}
-                  onClick={() => triggerAwsOcrControl('STOP', 'manual')}
-                >
-                  <Square size={13} /> {awsControlBusy === 'STOP' ? 'Stopping...' : 'Stop Worker'}
-                </button>
-                <button type="button" className="btn btn-ghost btn-sm" onClick={loadAwsOcrControl}>
-                  <Power size={13} /> Refresh Worker Status
-                </button>
-              </FilterBar>
-              {awsControlMessage ? <div className="text-sm text-muted mt-8">{awsControlMessage}</div> : null}
-            </>
-          ) : (
-            <div className="text-sm text-muted">
-              AWS OCR control is currently disabled in environment settings. Upload queue still works locally.
-            </div>
-          )}
         </div>
       </Panel>
 
-      <Panel title="Step 2 · Upload Screenshots" className="mb-24">
+      <Panel title="Upload Screenshots" className="mb-24">
         <div
           className={`drop-zone ${isDragging ? 'dragging' : ''}`}
           onDragOver={onDragOver}
@@ -957,7 +859,7 @@ export default function UploadPage() {
             <ImageUp size={28} />
           </div>
           <div className="drop-text">{isDragging ? 'Release to upload' : 'Drop screenshots here'}</div>
-          <div className="drop-hint">or tap to browse • PNG, JPG, WEBP • max 50 files</div>
+          <div className="drop-hint">or tap to browse • PNG, JPG, WEBP</div>
           <input
             ref={fileInputRef}
             type="file"
@@ -970,23 +872,6 @@ export default function UploadPage() {
               e.target.value = '';
             }}
           />
-        </div>
-
-        <div className="grid-2 mt-16">
-          <div className="ingest-lane-card">
-            <div className="ingest-lane-head">
-              <StatusPill label="Profile Lane" tone="info" />
-              <strong>{profileCount}</strong>
-            </div>
-            <p>Governor profile captures with governor ID + core combat fields.</p>
-          </div>
-          <div className="ingest-lane-card">
-            <div className="ingest-lane-head">
-              <StatusPill label="Ranking Lane" tone="warn" />
-              <strong>{rankingCount}</strong>
-            </div>
-            <p>Ranking board captures with rank/name/metric rows and review linkage.</p>
-          </div>
         </div>
       </Panel>
 
@@ -1007,8 +892,7 @@ export default function UploadPage() {
 
       {entries.length > 0 ? (
         <Panel
-          title={`Step 3 · Review OCR Results (${entries.length})`}
-          subtitle="Confirm or correct values before queueing into review pipelines."
+          title={`OCR Results (${entries.length})`}
           actions={
             <FilterBar>
               <button
@@ -1018,7 +902,7 @@ export default function UploadPage() {
                 <Check size={14} /> Confirm All
               </button>
               <button className="btn btn-danger btn-sm" onClick={() => setEntries([])}>
-                <Trash2 size={14} /> Clear All
+                <Trash2 size={14} /> Clear
               </button>
             </FilterBar>
           }
