@@ -43,3 +43,7 @@ next-env.d.ts
 
 # local OCR provider key files
 Example Screenshots/*.json
+
+# local python envs used for OCR experiments
+.venv/
+.venv-paddle/
