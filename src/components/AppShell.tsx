@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   BarChart3,
   CalendarDays,
@@ -20,6 +20,7 @@ import {
   Trophy,
   Users,
   Workflow,
+  X,
 } from 'lucide-react';
 
 interface NavItem {
@@ -48,6 +49,12 @@ const MOBILE_PRIMARY = ['/', '/upload', '/rankings', '/insights'];
 function matchPath(pathname: string, href: string) {
   if (href === '/') return pathname === '/';
   return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+function groupLabel(group: NavItem['group']) {
+  if (group === 'core') return 'Core';
+  if (group === 'analysis') return 'Analytics';
+  return 'Operations';
 }
 
 function NavSection({
@@ -90,21 +97,21 @@ function NavSection({
 export default function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
+  const [workspaceLabel, setWorkspaceLabel] = useState('No workspace');
+  const [accessLabel, setAccessLabel] = useState('No access token');
 
-  const workspaceIdLabel =
-    typeof window === 'undefined'
-      ? 'No workspace'
-      : (() => {
-          const workspaceId = localStorage.getItem('workspaceId') || '';
-          return workspaceId ? `Workspace ${workspaceId.slice(0, 8)}...` : 'No workspace';
-        })();
+  useEffect(() => {
+    const syncScope = () => {
+      const workspaceId = localStorage.getItem('workspaceId') || '';
+      const token = localStorage.getItem('workspaceToken') || '';
+      setWorkspaceLabel(workspaceId ? `Workspace ${workspaceId.slice(0, 8)}...` : 'No workspace');
+      setAccessLabel(token ? 'Scoped link active' : 'No access token');
+    };
 
-  const workspaceTokenLabel =
-    typeof window === 'undefined'
-      ? 'No access token'
-      : (localStorage.getItem('workspaceToken') || '')
-          ? 'Scoped link active'
-          : 'No access token';
+    syncScope();
+    window.addEventListener('storage', syncScope);
+    return () => window.removeEventListener('storage', syncScope);
+  }, []);
 
   const grouped = useMemo(() => {
     return {
@@ -113,6 +120,11 @@ export default function AppShell({ children }: { children: ReactNode }) {
       ops: NAV_ITEMS.filter((item) => item.group === 'ops'),
     };
   }, []);
+
+  const activeNav = useMemo(
+    () => NAV_ITEMS.find((item) => matchPath(pathname, item.href)) || NAV_ITEMS[0],
+    [pathname]
+  );
 
   const mobilePrimaryItems = NAV_ITEMS.filter((item) => MOBILE_PRIMARY.includes(item.href));
   const mobileMoreItems = NAV_ITEMS.filter((item) => !MOBILE_PRIMARY.includes(item.href));
@@ -127,7 +139,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
             </span>
             <span>
               <strong>RoK Command Center</strong>
-              <small>v2 Tactical Pro</small>
+              <small>Tactical Pro v2</small>
             </span>
           </Link>
           <span className="app-badge">LIVE OPS</span>
@@ -142,31 +154,35 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
       <div className="app-main">
         <header className="app-topbar">
-          <div className="app-topbar-left">
+          <div className="app-topbar-heading">
+            <strong>{activeNav.label}</strong>
+            <span>{groupLabel(activeNav.group)}</span>
+          </div>
+
+          <div className="app-topbar-context">
             <div className="app-context-chip">
               <span className="label">Workspace</span>
-              <span className="value">{workspaceIdLabel}</span>
+              <span className="value">{workspaceLabel}</span>
             </div>
             <div className="app-context-chip muted">
               <span className="label">Access</span>
-              <span className="value">{workspaceTokenLabel}</span>
+              <span className="value">{accessLabel}</span>
             </div>
-          </div>
-
-          <div className="app-topbar-right">
-            <button className="icon-btn" type="button" aria-label="Search">
-              <Search size={16} />
-            </button>
-            <Link className="icon-btn" href="/insights" aria-label="Reports">
-              <FileBarChart2 size={16} />
-            </Link>
-            <Link className="icon-btn" href="/settings" aria-label="Settings">
-              <Cog size={16} />
-            </Link>
+            <div className="app-topbar-right">
+              <button className="icon-btn" type="button" aria-label="Search">
+                <Search size={16} />
+              </button>
+              <Link className="icon-btn" href="/insights" aria-label="Reports">
+                <FileBarChart2 size={16} />
+              </Link>
+              <Link className="icon-btn" href="/settings" aria-label="Settings">
+                <Cog size={16} />
+              </Link>
+            </div>
           </div>
         </header>
 
-        <div className="app-content">{children}</div>
+        <main className="app-content">{children}</main>
       </div>
 
       <nav className="app-mobile-nav" aria-label="Mobile">
@@ -178,12 +194,14 @@ export default function AppShell({ children }: { children: ReactNode }) {
               key={item.href}
               href={item.href}
               className={`app-mobile-link ${active ? 'active' : ''}`}
+              onClick={() => setMobileMoreOpen(false)}
             >
               <Icon size={16} strokeWidth={2.2} />
               <span>{item.label}</span>
             </Link>
           );
         })}
+
         <button
           type="button"
           className={`app-mobile-link ${mobileMoreOpen ? 'active' : ''}`}
@@ -196,35 +214,40 @@ export default function AppShell({ children }: { children: ReactNode }) {
         </button>
       </nav>
 
-      {mobileMoreOpen ? (
-        <div className="app-mobile-sheet" id="mobile-more-sheet">
-          <div className="app-mobile-sheet-inner">
-            <div className="app-mobile-sheet-head">
-              <h3>More Sections</h3>
-              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setMobileMoreOpen(false)}>
-                Close
-              </button>
-            </div>
-            <div className="app-mobile-sheet-list">
-              {mobileMoreItems.map((item) => {
-                const Icon = item.icon;
-                const active = matchPath(pathname, item.href);
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className={`app-mobile-sheet-link ${active ? 'active' : ''}`}
-                    onClick={() => setMobileMoreOpen(false)}
-                  >
-                    <Icon size={16} strokeWidth={2.1} />
-                    <span>{item.label}</span>
-                  </Link>
-                );
-              })}
-            </div>
+      {mobileMoreOpen ? <button className="app-mobile-backdrop" onClick={() => setMobileMoreOpen(false)} aria-label="Close menu" /> : null}
+
+      <aside className={`app-mobile-sheet ${mobileMoreOpen ? 'open' : ''}`} id="mobile-more-sheet">
+        <div className="app-mobile-sheet-inner">
+          <div className="app-mobile-sheet-head">
+            <h3>More Sections</h3>
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={() => setMobileMoreOpen(false)}
+              aria-label="Close"
+            >
+              <X size={14} /> Close
+            </button>
+          </div>
+          <div className="app-mobile-sheet-list">
+            {mobileMoreItems.map((item) => {
+              const Icon = item.icon;
+              const active = matchPath(pathname, item.href);
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`app-mobile-sheet-link ${active ? 'active' : ''}`}
+                  onClick={() => setMobileMoreOpen(false)}
+                >
+                  <Icon size={16} strokeWidth={2.1} />
+                  <span>{item.label}</span>
+                </Link>
+              );
+            })}
           </div>
         </div>
-      ) : null}
+      </aside>
     </div>
   );
 }

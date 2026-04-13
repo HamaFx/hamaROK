@@ -1,8 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link2, PencilLine, ShieldAlert, UserPlus, XCircle } from 'lucide-react';
-import { EmptyState, FilterBar, KpiCard, PageHero, Panel, StatusPill } from '@/components/ui/primitives';
+import { Link2, PencilLine, RefreshCw, ShieldAlert, UserPlus, XCircle } from 'lucide-react';
+import { EmptyState, FilterBar, KpiCard, PageHero, Panel, SkeletonSet, StatusPill } from '@/components/ui/primitives';
 
 type IdentityStatus = 'UNRESOLVED' | 'AUTO_LINKED' | 'MANUAL_LINKED' | 'REJECTED';
 type ReviewAction = 'LINK_TO_GOVERNOR' | 'CREATE_ALIAS' | 'CORRECT_ROW' | 'REJECT_ROW';
@@ -46,6 +46,39 @@ const defaultDraft: DraftState = {
   metricRaw: '',
 };
 
+const STATUS_OPTIONS: IdentityStatus[] = ['UNRESOLVED', 'AUTO_LINKED', 'MANUAL_LINKED', 'REJECTED'];
+
+function identityTone(status: IdentityStatus): 'warn' | 'bad' | 'good' {
+  if (status === 'UNRESOLVED') return 'warn';
+  if (status === 'REJECTED') return 'bad';
+  return 'good';
+}
+
+function parseCandidatePreview(candidates?: Record<string, unknown>) {
+  if (!candidates) return [] as string[];
+
+  const rowCandidates = (candidates.rowCandidates || candidates.candidates || candidates.matches) as unknown;
+  if (!Array.isArray(rowCandidates)) return [];
+
+  return rowCandidates
+    .map((entry) => {
+      if (typeof entry !== 'object' || entry === null) return null;
+      const name =
+        String(
+          (entry as { governorNameRaw?: string; governorName?: string; normalizedValue?: string }).governorNameRaw ||
+            (entry as { governorName?: string }).governorName ||
+            (entry as { normalizedValue?: string }).normalizedValue ||
+            ''
+        ).trim() || null;
+      const scoreRaw = (entry as { score?: number; confidence?: number }).score ?? (entry as { confidence?: number }).confidence;
+      const score = typeof scoreRaw === 'number' ? Math.round(scoreRaw) : null;
+      if (!name) return null;
+      return score != null ? `${name} (${score}%)` : name;
+    })
+    .filter((entry): entry is string => Boolean(entry))
+    .slice(0, 3);
+}
+
 export default function RankingReviewPage() {
   const [workspaceId, setWorkspaceId] = useState('');
   const [accessToken, setAccessToken] = useState('');
@@ -70,7 +103,10 @@ export default function RankingReviewPage() {
   }, [accessToken]);
 
   const loadRows = useCallback(async () => {
-    if (!workspaceId || !accessToken) return;
+    if (!workspaceId || !accessToken) {
+      setError('Workspace ID and access token are required.');
+      return;
+    }
 
     setLoading(true);
     setError(null);
@@ -117,7 +153,9 @@ export default function RankingReviewPage() {
 
   const summary = useMemo(() => {
     const unresolved = rows.filter((row) => row.identityStatus === 'UNRESOLVED').length;
-    const linked = rows.filter((row) => row.identityStatus === 'MANUAL_LINKED' || row.identityStatus === 'AUTO_LINKED').length;
+    const linked = rows.filter(
+      (row) => row.identityStatus === 'MANUAL_LINKED' || row.identityStatus === 'AUTO_LINKED'
+    ).length;
     const rejected = rows.filter((row) => row.identityStatus === 'REJECTED').length;
     return { unresolved, linked, rejected };
   }, [rows]);
@@ -194,7 +232,13 @@ export default function RankingReviewPage() {
     <div className="page-container">
       <PageHero
         title="Ranking Review Queue"
-        subtitle="Resolve identity ambiguity, apply corrective edits, and keep canonical rankings clean."
+        subtitle="Resolve identity ambiguity and row corrections before canonical ranking merge."
+        badges={['Identity-safe linking', 'Canonical merge guard', 'Manual resolution flow']}
+        actions={
+          <button className="btn btn-secondary" onClick={loadRows} disabled={loading}>
+            <RefreshCw size={14} /> Refresh
+          </button>
+        }
       />
 
       <Panel title="Queue Scope" subtitle="Workspace-secured unresolved ranking rows" className="mb-24">
@@ -212,10 +256,15 @@ export default function RankingReviewPage() {
         <FilterBar className="mt-12">
           <div className="form-group" style={{ marginBottom: 0, width: 260 }}>
             <label className="form-label">Status Filter</label>
-            <input className="form-input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} />
+            <select className="form-select" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+              <option value="UNRESOLVED">Unresolved</option>
+              <option value="AUTO_LINKED,MANUAL_LINKED">Linked (Auto + Manual)</option>
+              <option value="REJECTED">Rejected</option>
+              <option value={STATUS_OPTIONS.join(',')}>All</option>
+            </select>
           </div>
           <button className="btn btn-primary" onClick={loadRows} disabled={loading}>
-            {loading ? 'Loading...' : 'Refresh'}
+            {loading ? 'Loading...' : 'Apply'}
           </button>
         </FilterBar>
 
@@ -224,132 +273,136 @@ export default function RankingReviewPage() {
 
       <div className="grid-3 mb-24">
         <KpiCard label="Unresolved" value={summary.unresolved} hint="Needs manual identity action" tone="warn" />
-        <KpiCard label="Linked" value={summary.linked} hint="Auto or manual link ready" tone="good" />
+        <KpiCard label="Linked" value={summary.linked} hint="Auto/manual links ready" tone="good" />
         <KpiCard label="Rejected" value={summary.rejected} hint="Discarded ranking rows" tone="bad" />
       </div>
 
-      <Panel title="Triage Board" subtitle="Field-level corrections with review actions">
-        {rows.length === 0 && !loading ? (
+      <Panel title="Triage Board" subtitle="Resolve rows with deterministic correction actions">
+        {loading ? (
+          <SkeletonSet rows={4} />
+        ) : rows.length === 0 ? (
           <EmptyState title="Queue is clear" description="No ranking rows in the selected status filter." />
         ) : (
-          rows.map((row) => {
-            const draft = drafts[row.id] || defaultDraft;
-            const tone =
-              row.identityStatus === 'UNRESOLVED'
-                ? 'warn'
-                : row.identityStatus === 'REJECTED'
-                  ? 'bad'
-                  : 'good';
+          <div className="ocr-review-stack">
+            {rows.map((row) => {
+              const draft = drafts[row.id] || defaultDraft;
+              const candidatePreview = parseCandidatePreview(row.candidates);
 
-            return (
-              <article key={row.id} className="ocr-review mb-12">
-                <header className="ocr-review-header">
-                  <div>
-                    <div className="flex items-center gap-8" style={{ flexWrap: 'wrap' }}>
-                      <strong>{row.governorNameRaw || 'Unknown'}</strong>
-                      <StatusPill label={row.identityStatus} tone={tone} />
-                      <span className="text-sm text-muted">{Math.round(row.confidence)}% confidence</span>
-                    </div>
-                    <div className="text-sm text-muted mt-4">
-                      {row.run.rankingType} / {row.run.metricKey} • source rank {row.sourceRank ?? '—'} • metric {row.metricValue}
-                    </div>
-                    {(row.allianceRaw || row.titleRaw) && (
-                      <div className="text-sm text-muted mt-4">
-                        {row.allianceRaw ? `Alliance ${row.allianceRaw}` : `Title ${row.titleRaw}`}
+              return (
+                <article key={row.id} className="ocr-review">
+                  <header className="ocr-review-header">
+                    <div>
+                      <div className="flex items-center gap-8" style={{ flexWrap: 'wrap' }}>
+                        <strong>{row.governorNameRaw || 'Unknown'}</strong>
+                        <StatusPill label={row.identityStatus} tone={identityTone(row.identityStatus)} />
+                        <span className="text-sm text-muted">{Math.round(row.confidence)}% confidence</span>
                       </div>
-                    )}
+                      <div className="text-sm text-muted mt-4">
+                        {row.run.rankingType} / {row.run.metricKey} • source rank {row.sourceRank ?? '—'} • metric {row.metricValue}
+                      </div>
+                      {(row.allianceRaw || row.titleRaw) ? (
+                        <div className="text-sm text-muted mt-4">
+                          {row.allianceRaw ? `Alliance ${row.allianceRaw}` : `Title ${row.titleRaw}`}
+                        </div>
+                      ) : null}
+                      {candidatePreview.length > 0 ? (
+                        <div className="text-sm text-muted mt-4">
+                          Candidates: {candidatePreview.join(' • ')}
+                        </div>
+                      ) : null}
+                    </div>
+                  </header>
+
+                  <div style={{ padding: '12px 14px' }}>
+                    <div className="grid-2">
+                      <div className="form-group" style={{ marginBottom: 8 }}>
+                        <label className="form-label">Governor Game ID</label>
+                        <input
+                          className="form-input"
+                          value={draft.governorGameId}
+                          onChange={(e) => updateDraft(row.id, 'governorGameId', e.target.value)}
+                          placeholder="e.g. 222067061"
+                        />
+                      </div>
+                      <div className="form-group" style={{ marginBottom: 8 }}>
+                        <label className="form-label">Alias for Create Alias</label>
+                        <input
+                          className="form-input"
+                          value={draft.aliasRaw}
+                          onChange={(e) => updateDraft(row.id, 'aliasRaw', e.target.value)}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid-3">
+                      <div className="form-group" style={{ marginBottom: 8 }}>
+                        <label className="form-label">Corrected Rank</label>
+                        <input
+                          className="form-input"
+                          value={draft.sourceRank}
+                          onChange={(e) => updateDraft(row.id, 'sourceRank', e.target.value)}
+                        />
+                      </div>
+                      <div className="form-group" style={{ marginBottom: 8 }}>
+                        <label className="form-label">Corrected Name</label>
+                        <input
+                          className="form-input"
+                          value={draft.governorNameRaw}
+                          onChange={(e) => updateDraft(row.id, 'governorNameRaw', e.target.value)}
+                        />
+                      </div>
+                      <div className="form-group" style={{ marginBottom: 8 }}>
+                        <label className="form-label">Corrected Metric</label>
+                        <input
+                          className="form-input"
+                          value={draft.metricRaw}
+                          onChange={(e) => updateDraft(row.id, 'metricRaw', e.target.value)}
+                        />
+                      </div>
+                    </div>
+
+                    <FilterBar>
+                      <button
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => runAction(row, 'LINK_TO_GOVERNOR')}
+                        disabled={busyRow != null}
+                      >
+                        <Link2 size={14} /> {busyRow === `${row.id}:LINK_TO_GOVERNOR` ? 'Linking...' : 'Link Governor'}
+                      </button>
+                      <button
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => runAction(row, 'CREATE_ALIAS')}
+                        disabled={busyRow != null}
+                      >
+                        <UserPlus size={14} /> {busyRow === `${row.id}:CREATE_ALIAS` ? 'Saving...' : 'Create Alias'}
+                      </button>
+                      <button
+                        className="btn btn-primary btn-sm"
+                        onClick={() => runAction(row, 'CORRECT_ROW')}
+                        disabled={busyRow != null}
+                      >
+                        <PencilLine size={14} /> {busyRow === `${row.id}:CORRECT_ROW` ? 'Applying...' : 'Correct Row'}
+                      </button>
+                      <button
+                        className="btn btn-danger btn-sm"
+                        onClick={() => runAction(row, 'REJECT_ROW')}
+                        disabled={busyRow != null}
+                      >
+                        <XCircle size={14} /> {busyRow === `${row.id}:REJECT_ROW` ? 'Rejecting...' : 'Reject'}
+                      </button>
+                    </FilterBar>
+
+                    {row.identityStatus === 'UNRESOLVED' ? (
+                      <div className="text-sm mt-8 text-muted">
+                        <ShieldAlert size={14} style={{ verticalAlign: 'middle', marginRight: 6 }} />
+                        Ambiguous identity requires manual confirmation before canonical merge.
+                      </div>
+                    ) : null}
                   </div>
-                </header>
-
-                <div style={{ padding: '12px 14px' }}>
-                  <div className="grid-2">
-                    <div className="form-group" style={{ marginBottom: 8 }}>
-                      <label className="form-label">Governor Game ID</label>
-                      <input
-                        className="form-input"
-                        value={draft.governorGameId}
-                        onChange={(e) => updateDraft(row.id, 'governorGameId', e.target.value)}
-                        placeholder="e.g. 222067061"
-                      />
-                    </div>
-                    <div className="form-group" style={{ marginBottom: 8 }}>
-                      <label className="form-label">Alias for Create Alias</label>
-                      <input
-                        className="form-input"
-                        value={draft.aliasRaw}
-                        onChange={(e) => updateDraft(row.id, 'aliasRaw', e.target.value)}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid-3">
-                    <div className="form-group" style={{ marginBottom: 8 }}>
-                      <label className="form-label">Corrected Rank</label>
-                      <input
-                        className="form-input"
-                        value={draft.sourceRank}
-                        onChange={(e) => updateDraft(row.id, 'sourceRank', e.target.value)}
-                      />
-                    </div>
-                    <div className="form-group" style={{ marginBottom: 8 }}>
-                      <label className="form-label">Corrected Name</label>
-                      <input
-                        className="form-input"
-                        value={draft.governorNameRaw}
-                        onChange={(e) => updateDraft(row.id, 'governorNameRaw', e.target.value)}
-                      />
-                    </div>
-                    <div className="form-group" style={{ marginBottom: 8 }}>
-                      <label className="form-label">Corrected Metric</label>
-                      <input
-                        className="form-input"
-                        value={draft.metricRaw}
-                        onChange={(e) => updateDraft(row.id, 'metricRaw', e.target.value)}
-                      />
-                    </div>
-                  </div>
-
-                  <FilterBar>
-                    <button
-                      className="btn btn-secondary btn-sm"
-                      onClick={() => runAction(row, 'LINK_TO_GOVERNOR')}
-                      disabled={busyRow != null}
-                    >
-                      <Link2 size={14} /> {busyRow === `${row.id}:LINK_TO_GOVERNOR` ? 'Linking...' : 'Link Governor'}
-                    </button>
-                    <button
-                      className="btn btn-secondary btn-sm"
-                      onClick={() => runAction(row, 'CREATE_ALIAS')}
-                      disabled={busyRow != null}
-                    >
-                      <UserPlus size={14} /> {busyRow === `${row.id}:CREATE_ALIAS` ? 'Saving...' : 'Create Alias'}
-                    </button>
-                    <button
-                      className="btn btn-primary btn-sm"
-                      onClick={() => runAction(row, 'CORRECT_ROW')}
-                      disabled={busyRow != null}
-                    >
-                      <PencilLine size={14} /> {busyRow === `${row.id}:CORRECT_ROW` ? 'Applying...' : 'Correct Row'}
-                    </button>
-                    <button
-                      className="btn btn-danger btn-sm"
-                      onClick={() => runAction(row, 'REJECT_ROW')}
-                      disabled={busyRow != null}
-                    >
-                      <XCircle size={14} /> {busyRow === `${row.id}:REJECT_ROW` ? 'Rejecting...' : 'Reject'}
-                    </button>
-                  </FilterBar>
-
-                  {row.identityStatus === 'UNRESOLVED' ? (
-                    <div className="text-sm mt-8 text-muted">
-                      <ShieldAlert size={14} style={{ verticalAlign: 'middle', marginRight: 6 }} />
-                      Ambiguous identity, manual confirmation required before merge confidence improves.
-                    </div>
-                  ) : null}
-                </div>
-              </article>
-            );
-          })
+                </article>
+              );
+            })}
+          </div>
         )}
       </Panel>
     </div>

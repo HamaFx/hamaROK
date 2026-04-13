@@ -1,7 +1,22 @@
 'use client';
 
+import Link from 'next/link';
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { Camera } from 'lucide-react';
+import {
+  Camera,
+  Check,
+  CheckCircle2,
+  CircleAlert,
+  Clock3,
+  FileType2,
+  ImageUp,
+  Play,
+  Power,
+  Square,
+  ShieldCheck,
+  Trash2,
+  XCircle,
+} from 'lucide-react';
 import { EVENT_TYPE_LABELS } from '@/lib/utils';
 import { cleanNumericOcr, validateGovernorData, ValidationResult } from '@/lib/ocr/validators';
 import type { OcrRuntimeProfile } from '@/lib/ocr/profiles';
@@ -63,6 +78,18 @@ interface EventOption {
   eventType: string;
 }
 
+interface AwsOcrControlStatus {
+  enabled: boolean;
+  queueConfigured: boolean;
+  startLambdaConfigured: boolean;
+  stopLambdaConfigured: boolean;
+  queueStats: {
+    pending: number;
+    inFlight: number;
+    delayed: number;
+  } | null;
+}
+
 export default function UploadPage() {
   const [events, setEvents] = useState<EventOption[]>([]);
   const [selectedEventId, setSelectedEventId] = useState('');
@@ -77,6 +104,9 @@ export default function UploadPage() {
   const [accessToken, setAccessToken] = useState('');
   const [ocrProfiles, setOcrProfiles] = useState<OcrRuntimeProfile[]>([]);
   const [preferredProfileId, setPreferredProfileId] = useState('');
+  const [awsOcrControl, setAwsOcrControl] = useState<AwsOcrControlStatus | null>(null);
+  const [awsControlBusy, setAwsControlBusy] = useState<'START' | 'STOP' | null>(null);
+  const [awsControlMessage, setAwsControlMessage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
 
@@ -158,6 +188,70 @@ export default function UploadPage() {
       canceled = true;
     };
   }, [workspaceId, accessToken]);
+
+  const loadAwsOcrControl = useCallback(async () => {
+    if (!workspaceId || !accessToken) {
+      setAwsOcrControl(null);
+      return;
+    }
+
+    try {
+      const params = new URLSearchParams({ workspaceId });
+      const res = await fetch(`/api/v2/infra/aws-ocr?${params.toString()}`, {
+        headers: { 'x-access-token': accessToken },
+      });
+      const payload = await res.json();
+      if (!res.ok) {
+        setAwsOcrControl(null);
+        return;
+      }
+      setAwsOcrControl(payload?.data || null);
+    } catch {
+      setAwsOcrControl(null);
+    }
+  }, [workspaceId, accessToken]);
+
+  useEffect(() => {
+    loadAwsOcrControl();
+  }, [loadAwsOcrControl]);
+
+  const triggerAwsOcrControl = useCallback(
+    async (action: 'START' | 'STOP', source: 'manual' | 'auto' = 'manual') => {
+      if (!workspaceId || !accessToken) return;
+      setAwsControlBusy(action);
+      if (source === 'manual') setAwsControlMessage(null);
+
+      try {
+        const res = await fetch('/api/v2/infra/aws-ocr', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-access-token': accessToken,
+          },
+          body: JSON.stringify({ workspaceId, action }),
+        });
+        const payload = await res.json();
+        if (!res.ok) {
+          throw new Error(payload?.error?.message || `Failed to ${action.toLowerCase()} AWS OCR worker.`);
+        }
+        setAwsOcrControl(payload?.data?.status || null);
+        if (source === 'manual') {
+          setAwsControlMessage(
+            action === 'START'
+              ? 'AWS OCR worker start requested.'
+              : 'AWS OCR worker stop requested.'
+          );
+        }
+      } catch (error) {
+        if (source === 'manual') {
+          setAwsControlMessage(error instanceof Error ? error.message : 'Failed to control AWS OCR worker.');
+        }
+      } finally {
+        setAwsControlBusy(null);
+      }
+    },
+    [workspaceId, accessToken]
+  );
 
   // Handle file selection
   const handleFiles = useCallback(async (files: File[]) => {
@@ -668,6 +762,10 @@ export default function UploadPage() {
         rankingRunIds = await submitRankingRuns(rankingEntries);
       }
 
+      if (awsOcrControl?.enabled && awsOcrControl.startLambdaConfigured) {
+        await triggerAwsOcrControl('START', 'auto');
+      }
+
       setSaveResult({
         saved: confirmed.length,
         updated: 0,
@@ -695,6 +793,11 @@ export default function UploadPage() {
   const confirmedCount = entries.filter((e) => e.confirmed).length;
   const doneCount = entries.filter((e) => e.status === 'done').length;
   const processingCount = entries.filter((e) => e.status === 'processing').length;
+  const profileCount = entries.filter((e) => e.ingestionDomain === 'profile_snapshot').length;
+  const rankingCount = entries.filter((e) => e.ingestionDomain === 'ranking_capture').length;
+  const awsQueuePending = awsOcrControl?.queueStats?.pending ?? 0;
+  const awsQueueInFlight = awsOcrControl?.queueStats?.inFlight ?? 0;
+  const awsQueueDelayed = awsOcrControl?.queueStats?.delayed ?? 0;
 
   const fields = [
     { key: 'governorId', label: 'Governor ID' },
@@ -710,46 +813,42 @@ export default function UploadPage() {
     <div className="page-container">
       <PageHero
         title="Ingestion Workspace"
-        subtitle="Auto-detect Governor Profile vs Ranking Board screenshots, then queue everything through review-safe workflows."
-        badges={['Governor profile lane', 'Ranking board lane', 'Always-review policy']}
+        subtitle="Auto-route Governor Profile and Ranking Board screenshots into clean review-first workflows."
+        badges={['Profile lane', 'Ranking lane', 'Always-review policy']}
+        actions={
+          <>
+            <Link href="/review" className="btn btn-secondary btn-sm">
+              OCR Review
+            </Link>
+            <Link href="/rankings/review" className="btn btn-secondary btn-sm">
+              Ranking Review
+            </Link>
+          </>
+        }
       />
 
-      <div className="grid-3 mb-24">
-        <KpiCard
-          label="Queued Files"
-          value={entries.length}
-          hint="Current batch entries"
-          tone="info"
-        />
+      <div className="grid-4 mb-24">
+        <KpiCard label="Queued Files" value={entries.length} hint="Current upload batch" tone="info" />
+        <KpiCard label="Profile Lane" value={profileCount} hint="Governor profile captures" tone="neutral" />
+        <KpiCard label="Ranking Lane" value={rankingCount} hint="Ranking board captures" tone="warn" />
         <KpiCard
           label="Ready to Queue"
           value={confirmedCount}
-          hint="Confirmed rows ready for save"
+          hint="Confirmed rows ready to submit"
           tone={confirmedCount > 0 ? 'good' : 'neutral'}
-        />
-        <KpiCard
-          label="Processing"
-          value={processingCount}
-          hint="OCR currently running"
-          tone={processingCount > 0 ? 'warn' : 'neutral'}
         />
       </div>
 
-      {/* Step 1: Select Event */}
       <Panel
         title="Step 1 · Event + Access Scope"
-        subtitle="Workspace scoped link access is required for v2 review queues."
-        className="mb-24 animate-fade-in-up"
+        subtitle="Workspace-scoped access is required for v2 review queues."
+        className="mb-24"
       >
         <div className="flex gap-12" style={{ flexWrap: 'wrap', alignItems: 'flex-end' }}>
-          <div className="form-group" style={{ flex: 1, minWidth: 200, marginBottom: 0 }}>
+          <div className="form-group" style={{ flex: 1, minWidth: 220, marginBottom: 0 }}>
             <label className="form-label">Event</label>
-            <select
-              className="form-select"
-              value={selectedEventId}
-              onChange={(e) => setSelectedEventId(e.target.value)}
-            >
-              <option value="">— Select an event —</option>
+            <select className="form-select" value={selectedEventId} onChange={(e) => setSelectedEventId(e.target.value)}>
+              <option value="">Select event</option>
               {events.map((ev) => (
                 <option key={ev.id} value={ev.id}>
                   {ev.name}
@@ -758,13 +857,14 @@ export default function UploadPage() {
             </select>
           </div>
           <button className="btn btn-secondary" onClick={() => setShowCreateModal(true)}>
-            + New Event
+            New Event
           </button>
         </div>
 
         <FilterBar className="mt-12">
           <StatusPill label="Governor Profile" tone="info" />
           <StatusPill label="Ranking Board" tone="warn" />
+          <StatusPill label="No Auto-Approve" tone="neutral" />
         </FilterBar>
 
         <div className="grid-2 mt-16">
@@ -787,14 +887,11 @@ export default function UploadPage() {
             />
           </div>
         </div>
+
         <div className="grid-2 mt-12">
           <div className="form-group" style={{ marginBottom: 0 }}>
-            <label className="form-label">OCR Profile Override (Optional)</label>
-            <select
-              className="form-select"
-              value={preferredProfileId}
-              onChange={(e) => setPreferredProfileId(e.target.value)}
-            >
+            <label className="form-label">OCR Profile Override (optional)</label>
+            <select className="form-select" value={preferredProfileId} onChange={(e) => setPreferredProfileId(e.target.value)}>
               <option value="">Auto-select best profile</option>
               {ocrProfiles.map((profile) => (
                 <option key={profile.id} value={profile.id}>
@@ -804,13 +901,51 @@ export default function UploadPage() {
             </select>
           </div>
         </div>
-        <div className="text-sm text-muted mt-12">
-          Always-review policy is active: profile screenshots go to OCR review queue, ranking boards go to ranking review/canonical merge flow.
+
+        <div className="mt-16">
+          <div className="form-label">AWS OCR Worker Control</div>
+          {awsOcrControl?.enabled ? (
+            <>
+              <FilterBar>
+                <StatusPill label={awsOcrControl.queueConfigured ? 'Queue Ready' : 'Queue Missing'} tone={awsOcrControl.queueConfigured ? 'good' : 'bad'} />
+                <StatusPill label={awsOcrControl.startLambdaConfigured ? 'Start Ready' : 'Start Missing'} tone={awsOcrControl.startLambdaConfigured ? 'good' : 'warn'} />
+                <StatusPill label={awsOcrControl.stopLambdaConfigured ? 'Stop Ready' : 'Stop Missing'} tone={awsOcrControl.stopLambdaConfigured ? 'good' : 'warn'} />
+                <StatusPill label={`Pending ${awsQueuePending}`} tone={awsQueuePending > 0 ? 'warn' : 'neutral'} />
+                <StatusPill label={`In-flight ${awsQueueInFlight}`} tone={awsQueueInFlight > 0 ? 'info' : 'neutral'} />
+                <StatusPill label={`Delayed ${awsQueueDelayed}`} tone={awsQueueDelayed > 0 ? 'warn' : 'neutral'} />
+              </FilterBar>
+              <FilterBar className="mt-12">
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  disabled={!awsOcrControl.startLambdaConfigured || awsControlBusy !== null}
+                  onClick={() => triggerAwsOcrControl('START', 'manual')}
+                >
+                  <Play size={13} /> {awsControlBusy === 'START' ? 'Starting...' : 'Start Worker'}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  disabled={!awsOcrControl.stopLambdaConfigured || awsControlBusy !== null}
+                  onClick={() => triggerAwsOcrControl('STOP', 'manual')}
+                >
+                  <Square size={13} /> {awsControlBusy === 'STOP' ? 'Stopping...' : 'Stop Worker'}
+                </button>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={loadAwsOcrControl}>
+                  <Power size={13} /> Refresh Worker Status
+                </button>
+              </FilterBar>
+              {awsControlMessage ? <div className="text-sm text-muted mt-8">{awsControlMessage}</div> : null}
+            </>
+          ) : (
+            <div className="text-sm text-muted">
+              AWS OCR control is currently disabled in environment settings. Upload queue still works locally.
+            </div>
+          )}
         </div>
       </Panel>
 
-      {/* Step 2: Upload */}
-      <Panel title="Step 2 · Upload Screenshots" className="mb-24 animate-fade-in-up stagger-2">
+      <Panel title="Step 2 · Upload Screenshots" className="mb-24">
         <div
           className={`drop-zone ${isDragging ? 'dragging' : ''}`}
           onDragOver={onDragOver}
@@ -818,11 +953,11 @@ export default function UploadPage() {
           onDrop={onDrop}
           onClick={() => fileInputRef.current?.click()}
         >
-          <div className="drop-icon"><Camera size={28} /></div>
-          <div className="drop-text">
-            {isDragging ? 'Release to upload' : 'Drag & Drop Screenshots Here'}
+          <div className="drop-icon">
+            <ImageUp size={28} />
           </div>
-          <div className="drop-hint">or click to browse • PNG, JPG, WEBP • Max 50 per batch</div>
+          <div className="drop-text">{isDragging ? 'Release to upload' : 'Drop screenshots here'}</div>
+          <div className="drop-hint">or tap to browse • PNG, JPG, WEBP • max 50 files</div>
           <input
             ref={fileInputRef}
             type="file"
@@ -836,215 +971,201 @@ export default function UploadPage() {
             }}
           />
         </div>
-      </Panel>
 
-      {/* Processing indicator */}
-      {processingCount > 0 && (
-        <div className="card card-no-hover mb-24">
-          <div className="flex items-center gap-12">
-            <span>⏳ Processing screenshots...</span>
-            <span className="text-muted text-sm">
-              {doneCount} / {entries.length} done
-            </span>
+        <div className="grid-2 mt-16">
+          <div className="ingest-lane-card">
+            <div className="ingest-lane-head">
+              <StatusPill label="Profile Lane" tone="info" />
+              <strong>{profileCount}</strong>
+            </div>
+            <p>Governor profile captures with governor ID + core combat fields.</p>
           </div>
-          <div className="progress-bar-wrap">
-            <div
-              className="progress-bar-fill"
-              style={{ width: `${(doneCount / Math.max(entries.length, 1)) * 100}%` }}
-            />
+          <div className="ingest-lane-card">
+            <div className="ingest-lane-head">
+              <StatusPill label="Ranking Lane" tone="warn" />
+              <strong>{rankingCount}</strong>
+            </div>
+            <p>Ranking board captures with rank/name/metric rows and review linkage.</p>
           </div>
         </div>
-      )}
+      </Panel>
 
-      {/* Step 3: Review */}
-      {entries.length > 0 && (
-        <div className="animate-fade-in-up stagger-3">
-          <div className="flex items-center justify-between mb-16">
-            <h3>Step 3: Review OCR Results ({entries.length})</h3>
-            <div className="flex gap-8">
+      {processingCount > 0 ? (
+        <Panel
+          title="OCR in Progress"
+          subtitle={`${doneCount} of ${entries.length} screenshots processed`}
+          className="mb-24"
+        >
+          <div className="flex items-center gap-8 text-sm text-muted">
+            <Clock3 size={14} /> Running OCR pipeline
+          </div>
+          <div className="progress-bar-wrap">
+            <div className="progress-bar-fill" style={{ width: `${(doneCount / Math.max(entries.length, 1)) * 100}%` }} />
+          </div>
+        </Panel>
+      ) : null}
+
+      {entries.length > 0 ? (
+        <Panel
+          title={`Step 3 · Review OCR Results (${entries.length})`}
+          subtitle="Confirm or correct values before queueing into review pipelines."
+          actions={
+            <FilterBar>
               <button
                 className="btn btn-secondary btn-sm"
-                onClick={() => setEntries((prev) => prev.map((e) => e.status === 'done' ? { ...e, confirmed: true } : e))}
+                onClick={() => setEntries((prev) => prev.map((e) => (e.status === 'done' ? { ...e, confirmed: true } : e)))}
               >
-                ✅ Confirm All
+                <Check size={14} /> Confirm All
               </button>
-              <button
-                className="btn btn-danger btn-sm"
-                onClick={() => setEntries([])}
-              >
-                Clear All
+              <button className="btn btn-danger btn-sm" onClick={() => setEntries([])}>
+                <Trash2 size={14} /> Clear All
               </button>
-            </div>
-          </div>
+            </FilterBar>
+          }
+        >
+          <div className="ocr-review-stack">
+            {entries.map((entry) => {
+              const validationHasIssue = entry.validation.some((v) => v.severity !== 'ok');
+              const statusTone =
+                entry.status === 'done' ? 'good' : entry.status === 'processing' ? 'warn' : entry.status === 'error' ? 'bad' : 'neutral';
 
-          {entries.map((entry) => (
-            <div key={entry.id} className="ocr-review">
-              <div className="ocr-review-header">
-                <div className="flex items-center gap-12">
-                  <span>
-                    {entry.status === 'processing' ? '⏳' : entry.status === 'done' ? '✅' : entry.status === 'error' ? '❌' : '⏸️'}
-                  </span>
-                  <strong>{entry.fileName}</strong>
-                  {entry.templateId && (
-                    <span className="text-muted text-sm">Template: {entry.templateId}</span>
-                  )}
-                  {entry.profileId && (
-                    <span className="text-muted text-sm">Profile: {entry.profileId}</span>
-                  )}
-                  {entry.detectedArchetype ? (
-                    <span className="text-muted text-sm">Screen: {entry.detectedArchetype}</span>
-                  ) : null}
-                  {typeof entry.averageConfidence === 'number' && (
-                    <span className="text-muted text-sm">
-                      Avg OCR: {Math.round(entry.averageConfidence)}%
-                    </span>
-                  )}
-                  {entry.lowConfidence ? (
-                    <span className="text-gold text-sm">Low-confidence flagged</span>
-                  ) : null}
-                  {entry.engineVersion ? (
-                    <span className="text-muted text-sm">{entry.engineVersion}</span>
-                  ) : null}
-                  <span className="text-muted text-sm">
-                    {entry.ingestionDomain === 'ranking_capture'
-                      ? 'Domain: ranking_capture'
-                      : 'Domain: profile_snapshot'}
-                  </span>
-                  {entry.confirmed && (
-                    <span className="tier-badge tier-support" style={{ fontSize: '0.75rem' }}>Confirmed</span>
-                  )}
-                </div>
-                <div className="flex gap-8">
-                  {entry.status === 'done' && (
-                    <button
-                      className={`btn btn-sm ${entry.confirmed ? 'btn-secondary' : 'btn-primary'}`}
-                      onClick={() => toggleConfirm(entry.id)}
-                    >
-                      {entry.confirmed ? 'Undo' : '✅ Confirm'}
-                    </button>
-                  )}
-                  <button className="btn btn-danger btn-sm" onClick={() => removeEntry(entry.id)}>
-                    ✕
-                  </button>
-                </div>
-              </div>
+              return (
+                <article key={entry.id} className="ocr-review">
+                  <header className="ocr-review-header">
+                    <div className="flex items-center gap-12" style={{ flexWrap: 'wrap' }}>
+                      <StatusPill label={entry.status.toUpperCase()} tone={statusTone} />
+                      <strong>{entry.fileName}</strong>
+                      <span className="text-muted text-sm">
+                        {entry.ingestionDomain === 'ranking_capture' ? 'Ranking Capture' : 'Profile Snapshot'}
+                      </span>
+                      {entry.detectedArchetype ? <span className="text-muted text-sm">{entry.detectedArchetype}</span> : null}
+                      {typeof entry.averageConfidence === 'number' ? (
+                        <span className="text-muted text-sm">OCR {Math.round(entry.averageConfidence)}%</span>
+                      ) : null}
+                      {entry.lowConfidence ? <StatusPill label="Low Confidence" tone="warn" /> : null}
+                      {entry.confirmed ? <StatusPill label="Confirmed" tone="good" /> : null}
+                    </div>
+                    <div className="flex gap-8">
+                      {entry.status === 'done' ? (
+                        <button
+                          className={`btn btn-sm ${entry.confirmed ? 'btn-secondary' : 'btn-primary'}`}
+                          onClick={() => toggleConfirm(entry.id)}
+                        >
+                          {entry.confirmed ? 'Undo' : 'Confirm'}
+                        </button>
+                      ) : null}
+                      <button className="btn btn-danger btn-sm" onClick={() => removeEntry(entry.id)}>
+                        <Trash2 size={14} /> Remove
+                      </button>
+                    </div>
+                  </header>
 
-              {entry.status === 'done' && (
-                <>
-                  {entry.ingestionDomain === 'ranking_capture' && entry.ranking ? (
-                    <div style={{ padding: '12px 20px 16px' }}>
+                  {entry.status === 'processing' ? (
+                    <div style={{ padding: 20 }}>
+                      <div className="shimmer shimmer-row" />
+                      <div className="shimmer shimmer-row" />
+                    </div>
+                  ) : null}
+
+                  {entry.status === 'error' ? (
+                    <div style={{ padding: 20 }} className="delta-negative text-sm">
+                      Failed to process this screenshot. Try uploading again.
+                    </div>
+                  ) : null}
+
+                  {entry.status === 'done' && entry.ingestionDomain === 'ranking_capture' && entry.ranking ? (
+                    <div className="ranking-row-editor">
                       <div className="text-sm text-muted mb-8">
-                        Ranking Type: <strong>{entry.ranking.rankingType}</strong> • Metric Key:{' '}
-                        <strong>{entry.ranking.metricKey}</strong>
+                        <strong>{entry.ranking.rankingType}</strong> • {entry.ranking.metricKey}
                       </div>
-                      <div className="text-sm text-muted mb-12">
-                        Header: {entry.ranking.headerText}
-                      </div>
-                      <div style={{ overflowX: 'auto' }}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.88rem' }}>
+                      <div className="text-sm text-muted mb-12">Header: {entry.ranking.headerText}</div>
+                      <div className="data-table-wrap">
+                        <table className="data-table data-table-dense">
                           <thead>
                             <tr>
-                              <th style={{ textAlign: 'left', padding: '6px 4px' }}>Rank</th>
-                              <th style={{ textAlign: 'left', padding: '6px 4px' }}>Governor</th>
-                              <th style={{ textAlign: 'left', padding: '6px 4px' }}>Alliance/Title</th>
-                              <th style={{ textAlign: 'left', padding: '6px 4px' }}>Metric</th>
-                              <th style={{ textAlign: 'left', padding: '6px 4px' }}>Conf</th>
+                              <th>Rank</th>
+                              <th>Governor</th>
+                              <th>Alliance / Title</th>
+                              <th>Metric</th>
+                              <th>Conf</th>
                             </tr>
                           </thead>
                           <tbody>
                             {entry.ranking.rows.map((row) => (
                               <tr key={`${entry.id}-ranking-row-${row.rowIndex}`}>
-                                <td style={{ padding: '6px 4px' }}>
+                                <td>
                                   <input
                                     className="ocr-field-input"
                                     value={row.sourceRank}
-                                    onChange={(e) =>
-                                      updateRankingRow(
-                                        entry.id,
-                                        row.rowIndex,
-                                        'sourceRank',
-                                        e.target.value
-                                      )
-                                    }
-                                    style={{ maxWidth: 70 }}
+                                    onChange={(e) => updateRankingRow(entry.id, row.rowIndex, 'sourceRank', e.target.value)}
                                   />
                                 </td>
-                                <td style={{ padding: '6px 4px' }}>
+                                <td>
                                   <input
                                     className="ocr-field-input"
                                     value={row.governorNameRaw}
                                     onChange={(e) =>
-                                      updateRankingRow(
-                                        entry.id,
-                                        row.rowIndex,
-                                        'governorNameRaw',
-                                        e.target.value
-                                      )
+                                      updateRankingRow(entry.id, row.rowIndex, 'governorNameRaw', e.target.value)
                                     }
                                   />
                                 </td>
-                                <td style={{ padding: '6px 4px' }}>
+                                <td>
                                   <input
                                     className="ocr-field-input"
                                     value={row.allianceRaw || row.titleRaw || ''}
                                     onChange={(e) => {
                                       const value = e.target.value;
-                                      updateRankingRow(
-                                        entry.id,
-                                        row.rowIndex,
-                                        'allianceRaw',
-                                        value
-                                      );
-                                      updateRankingRow(
-                                        entry.id,
-                                        row.rowIndex,
-                                        'titleRaw',
-                                        ''
-                                      );
+                                      updateRankingRow(entry.id, row.rowIndex, 'allianceRaw', value);
+                                      updateRankingRow(entry.id, row.rowIndex, 'titleRaw', '');
                                     }}
                                   />
                                 </td>
-                                <td style={{ padding: '6px 4px' }}>
+                                <td>
                                   <input
                                     className="ocr-field-input"
                                     value={row.metricRaw}
-                                    onChange={(e) =>
-                                      updateRankingRow(
-                                        entry.id,
-                                        row.rowIndex,
-                                        'metricRaw',
-                                        e.target.value
-                                      )
-                                    }
+                                    onChange={(e) => updateRankingRow(entry.id, row.rowIndex, 'metricRaw', e.target.value)}
                                   />
                                 </td>
-                                <td style={{ padding: '6px 4px' }}>
-                                  {Math.round(row.confidence)}%
-                                </td>
+                                <td>{Math.round(row.confidence)}%</td>
                               </tr>
                             ))}
                           </tbody>
                         </table>
                       </div>
                     </div>
-                  ) : (
-                    <>
+                  ) : null}
+
+                  {entry.status === 'done' && entry.ingestionDomain === 'profile_snapshot' ? (
+                    <div>
                       <div className="ocr-review-body">
                         {fields.map((f) => {
-                          const validation = entry.validation.find((v) => v.field === (f.key === 'governorName' ? 'name' : f.key));
+                          const validation = entry.validation.find(
+                            (v) => v.field === (f.key === 'governorName' ? 'name' : f.key)
+                          );
                           const severity = validation?.severity ?? 'ok';
-                          const confidenceValue = f.key === 'governorName' ? entry.confidences.name : entry.confidences[f.key];
+                          const confidenceValue =
+                            f.key === 'governorName' ? entry.confidences.name : entry.confidences[f.key];
+
                           return (
                             <React.Fragment key={f.key}>
                               <label className="ocr-field-label">{f.label}</label>
                               <div className="ocr-field-value">
                                 <input
-                                  className={`ocr-field-input ${severity === 'error' ? 'has-error' : severity === 'warning' ? 'has-warning' : ''}`}
+                                  className={`ocr-field-input ${
+                                    severity === 'error' ? 'has-error' : severity === 'warning' ? 'has-warning' : ''
+                                  }`}
                                   value={entry.values[f.key] || ''}
                                   onChange={(e) => updateValue(entry.id, f.key, e.target.value)}
                                 />
                                 <span className="validation-icon" title={validation?.warning || 'Looks good'}>
-                                  {severity === 'error' ? '❌' : severity === 'warning' ? '⚠️' : '✅'}
+                                  {severity === 'error' ? (
+                                    <XCircle size={15} color="#ff9cad" />
+                                  ) : severity === 'warning' ? (
+                                    <CircleAlert size={15} color="#f7cf76" />
+                                  ) : (
+                                    <CheckCircle2 size={15} color="#72f5c7" />
+                                  )}
                                 </span>
                                 <span className="text-muted text-sm">{Math.round(confidenceValue || 0)}%</span>
                               </div>
@@ -1052,20 +1173,25 @@ export default function UploadPage() {
                           );
                         })}
                       </div>
-                      {entry.validation.some((v) => v.severity !== 'ok') && (
+
+                      {validationHasIssue ? (
                         <div style={{ padding: '0 20px 16px' }}>
                           {entry.validation
                             .filter((v) => v.severity !== 'ok' && v.warning)
                             .map((v) => (
-                              <div key={`${entry.id}-${v.field}`} className={`text-sm ${v.severity === 'error' ? 'delta-negative' : 'text-gold'}`}>
-                                {v.severity === 'error' ? '❌' : '⚠️'} {v.warning}
+                              <div
+                                key={`${entry.id}-${v.field}`}
+                                className={`text-sm ${v.severity === 'error' ? 'delta-negative' : 'text-gold'}`}
+                              >
+                                {v.warning}
                               </div>
                             ))}
                         </div>
-                      )}
-                    </>
-                  )}
-                  {entry.failureReasons && entry.failureReasons.length > 0 && (
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  {entry.status === 'done' && entry.failureReasons && entry.failureReasons.length > 0 ? (
                     <div style={{ padding: '0 20px 16px' }}>
                       {entry.failureReasons.slice(0, 5).map((reason) => (
                         <div key={`${entry.id}-${reason}`} className="text-sm text-muted">
@@ -1073,57 +1199,47 @@ export default function UploadPage() {
                         </div>
                       ))}
                     </div>
-                  )}
-                </>
-              )}
+                  ) : null}
+                </article>
+              );
+            })}
+          </div>
 
-              {entry.status === 'processing' && (
-                <div style={{ padding: 20 }}>
-                  <div className="shimmer shimmer-row" />
-                  <div className="shimmer shimmer-row" />
-                </div>
-              )}
-
-              {entry.status === 'error' && (
-                <div style={{ padding: 20, color: 'var(--color-danger)' }}>
-                  ❌ Failed to process this screenshot. Try uploading again.
-                </div>
-              )}
-            </div>
-          ))}
-
-          {/* Save button */}
-          <div className="flex items-center justify-between mt-24">
+          <div className="review-save-row">
             <span className="text-muted">
               {confirmedCount} of {doneCount} entries confirmed
             </span>
             <button
               className="btn btn-primary btn-lg"
-              disabled={
-                !selectedEventId ||
-                !workspaceId ||
-                !accessToken ||
-                confirmedCount === 0 ||
-                saving
-              }
+              disabled={!selectedEventId || !workspaceId || !accessToken || confirmedCount === 0 || saving}
               onClick={saveAll}
             >
-              {saving
-                ? '⏳ Saving...'
-                : `🧪 Queue ${confirmedCount} for Review`}
+              {saving ? (
+                <>
+                  <Clock3 size={14} /> Queueing...
+                </>
+              ) : (
+                <>
+                  <ShieldCheck size={14} /> Queue {confirmedCount} for Review
+                </>
+              )}
             </button>
           </div>
 
-          {saveResult && (
-            <div className="card mt-16" style={{ background: 'var(--color-success-bg)', borderColor: 'rgba(16,185,129,0.3)' }}>
-              ✅ Saved {saveResult.saved} new, updated {saveResult.updated}, errors: {saveResult.errors}
+          {saveResult ? (
+            <div className="card mt-16">
+              <div className="flex items-center gap-8">
+                <FileType2 size={15} color="#72f5c7" />
+                <span className="text-sm">
+                  Saved {saveResult.saved} new, updated {saveResult.updated}, errors {saveResult.errors}.
+                </span>
+              </div>
             </div>
-          )}
-        </div>
-      )}
+          ) : null}
+        </Panel>
+      ) : null}
 
-      {/* Create Event Modal */}
-      {showCreateModal && (
+      {showCreateModal ? (
         <div className="modal-overlay" onClick={() => setShowCreateModal(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <h2>Create New Event</h2>
@@ -1139,11 +1255,7 @@ export default function UploadPage() {
             </div>
             <div className="form-group">
               <label className="form-label">Event Type</label>
-              <select
-                className="form-select"
-                value={newEventType}
-                onChange={(e) => setNewEventType(e.target.value)}
-              >
+              <select className="form-select" value={newEventType} onChange={(e) => setNewEventType(e.target.value)}>
                 {Object.entries(EVENT_TYPE_LABELS).map(([value, label]) => (
                   <option key={value} value={value}>
                     {label}
@@ -1156,12 +1268,12 @@ export default function UploadPage() {
                 Cancel
               </button>
               <button className="btn btn-primary" onClick={createEvent}>
-                Create Event
+                <Camera size={14} /> Create Event
               </button>
             </div>
           </div>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

@@ -1,7 +1,16 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, ArrowRight, Filter, Layers, Search, SlidersHorizontal } from 'lucide-react';
+import {
+  ArrowLeft,
+  ArrowRight,
+  Filter,
+  Layers,
+  RefreshCw,
+  Search,
+  SlidersHorizontal,
+  TableProperties,
+} from 'lucide-react';
 import {
   ActionToolbar,
   DataTableLite,
@@ -186,13 +195,13 @@ export default function RankingsPage() {
     const base = [
       {
         key: 'stable',
-        label: 'Stable Rank',
+        label: 'Rank',
         className: 'num',
         render: (row: CanonicalRow) => (
-          <>
-            #{row.stableRank}
-            {row.conflictFlags?.tie ? <span className="text-muted"> (T{row.tieGroup})</span> : null}
-          </>
+          <div>
+            <strong>#{row.stableRank}</strong>
+            {row.conflictFlags?.tie ? <span className="text-muted"> • Tie {row.tieGroup}</span> : null}
+          </div>
         ),
       },
       {
@@ -215,11 +224,12 @@ export default function RankingsPage() {
         key: 'source',
         label: 'Source Rank',
         className: 'num',
+        mobileHidden: true,
         render: (row: CanonicalRow) => row.sourceRank ?? '—',
       },
       {
         key: 'status',
-        label: 'Status',
+        label: 'State',
         render: (row: CanonicalRow) => (
           <StatusPill
             label={row.status}
@@ -230,6 +240,7 @@ export default function RankingsPage() {
       {
         key: 'updated',
         label: 'Updated',
+        mobileHidden: true,
         render: (row: CanonicalRow) => new Date(row.updatedAt).toLocaleString(),
       },
     ];
@@ -241,6 +252,7 @@ export default function RankingsPage() {
       {
         key: 'type',
         label: 'Type / Metric',
+        mobileHidden: true,
         render: (row: CanonicalRow) => `${row.rankingType} / ${row.metricKey}`,
       },
       ...base.slice(2),
@@ -248,21 +260,24 @@ export default function RankingsPage() {
         key: 'event',
         label: 'Event ID',
         className: 'font-mono text-sm text-muted',
+        mobileHidden: true,
         render: (row: CanonicalRow) => row.eventId,
       },
     ];
   }, [showMetaCols]);
 
+  const unresolved = summary?.statusCounts.UNRESOLVED || 0;
+
   return (
     <div className="page-container">
       <PageHero
-        title="Canonical Rankings"
-        subtitle="Deterministic sorting, tie-aware display, and stable pagination for review-safe operations."
-        badges={['Stable sort contract', sortHint]}
+        title="Rankings Board"
+        subtitle="Stable ordering, tie-aware display, and review-driven canonical ranking state."
+        badges={['Deterministic sort', sortHint]}
         actions={
           <>
             <button className="btn btn-secondary" onClick={refresh} disabled={loading}>
-              <Filter size={14} /> {loading ? 'Loading...' : 'Refresh'}
+              <RefreshCw size={14} /> {loading ? 'Loading...' : 'Refresh'}
             </button>
             <button className="btn btn-secondary" onClick={() => setDense((prev) => !prev)}>
               <SlidersHorizontal size={14} /> {dense ? 'Comfortable' : 'Dense'}
@@ -274,7 +289,7 @@ export default function RankingsPage() {
         }
       />
 
-      <Panel title="Workspace + Filters" subtitle="Scoped ranking list with cursor pagination" className="mb-24">
+      <Panel title="Scope + Filters" subtitle="Workspace scoped ranking list with stable cursor pagination" className="mb-24">
         <div className="grid-2">
           <div className="form-group" style={{ marginBottom: 0 }}>
             <label className="form-label">Workspace ID</label>
@@ -301,7 +316,7 @@ export default function RankingsPage() {
           </div>
           <div className="search-bar" style={{ minWidth: 220 }}>
             <Search size={14} className="search-icon" />
-            <input placeholder="Search governor..." value={search} onChange={(e) => setSearch(e.target.value)} />
+            <input placeholder="Search governor or alias..." value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
         </FilterBar>
 
@@ -317,27 +332,32 @@ export default function RankingsPage() {
             </button>
           ))}
           <button className="btn btn-secondary btn-sm" onClick={refresh} disabled={loading}>
-            Apply Filters
+            <Filter size={14} /> Apply
           </button>
         </FilterBar>
       </Panel>
 
       {summary ? (
         <div className="grid-4 mb-24">
-          <KpiCard label="Total Rows" value={summary.total} hint="Canonical snapshot rows" tone="info" />
-          <KpiCard label="Active" value={summary.statusCounts.ACTIVE || 0} hint="Ready for analytics" tone="good" />
+          <KpiCard label="Canonical Rows" value={summary.total} hint="Current merged snapshot rows" tone="info" />
+          <KpiCard label="Active" value={summary.statusCounts.ACTIVE || 0} hint="In ranking output" tone="good" />
           <KpiCard
             label="Unresolved"
             value={summary.statusCounts.UNRESOLVED || 0}
-            hint="Need identity review"
-            tone={(summary.statusCounts.UNRESOLVED || 0) > 0 ? 'warn' : 'good'}
+            hint="Needs identity review"
+            tone={unresolved > 0 ? 'warn' : 'good'}
           />
-          <KpiCard label="Rejected" value={summary.statusCounts.REJECTED || 0} hint="Excluded from canonical" tone="bad" />
+          <KpiCard
+            label="Rejected"
+            value={summary.statusCounts.REJECTED || 0}
+            hint="Excluded rows"
+            tone="bad"
+          />
         </div>
       ) : null}
 
       {summary?.topBuckets ? (
-        <Panel title="Top-N Buckets" subtitle="Contribution totals by stable rank buckets" className="mb-24">
+        <Panel title="Top Bucket Coverage" subtitle="Contribution totals by deterministic rank buckets" className="mb-24">
           <div className="grid-3">
             <KpiCard
               label="Top 100"
@@ -372,6 +392,9 @@ export default function RankingsPage() {
             <button className="btn btn-secondary btn-sm" onClick={goNext} disabled={loading || !nextCursor}>
               Next <ArrowRight size={14} />
             </button>
+            <button className="btn btn-ghost btn-sm" type="button">
+              <TableProperties size={14} /> Stable sort active
+            </button>
           </ActionToolbar>
         }
       >
@@ -389,7 +412,7 @@ export default function RankingsPage() {
         ) : (
           <EmptyState
             title="No canonical rows found"
-            description="Try broadening status/type filters or verify workspace link access."
+            description="Try broadening type/status filters or verify workspace link access."
           />
         )}
       </Panel>

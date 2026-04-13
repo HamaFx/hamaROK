@@ -2,9 +2,25 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import React from 'react';
-import { AlertTriangle, CheckCircle2, RefreshCw, Save, ShieldCheck, XCircle } from 'lucide-react';
+import {
+  AlertTriangle,
+  CheckCircle2,
+  RefreshCw,
+  Save,
+  ShieldCheck,
+  Sparkles,
+  XCircle,
+} from 'lucide-react';
 import type { OcrRuntimeProfile } from '@/lib/ocr/profiles';
-import { EmptyState, FilterBar, KpiCard, PageHero, Panel, StatusPill } from '@/components/ui/primitives';
+import {
+  EmptyState,
+  FilterBar,
+  KpiCard,
+  PageHero,
+  Panel,
+  SkeletonSet,
+  StatusPill,
+} from '@/components/ui/primitives';
 
 type Severity = 'HIGH' | 'MEDIUM' | 'LOW';
 type ExtractionStatus = 'RAW' | 'REVIEWED' | 'APPROVED' | 'REJECTED';
@@ -77,10 +93,44 @@ const defaultDraft = {
   deads: '',
 };
 
+const FIELD_ORDER: Array<keyof typeof defaultDraft> = [
+  'governorId',
+  'governorName',
+  'power',
+  'killPoints',
+  't4Kills',
+  't5Kills',
+  'deads',
+];
+
+const FIELD_LABELS: Record<keyof typeof defaultDraft, string> = {
+  governorId: 'Governor ID',
+  governorName: 'Governor Name',
+  power: 'Power',
+  killPoints: 'Kill Points',
+  t4Kills: 'T4 Kills',
+  t5Kills: 'T5 Kills',
+  deads: 'Deads',
+};
+
+const STATUS_PRESETS = [
+  { label: 'Pending', value: 'RAW,REVIEWED' },
+  { label: 'Raw', value: 'RAW' },
+  { label: 'Reviewed', value: 'REVIEWED' },
+  { label: 'Approved', value: 'APPROVED' },
+  { label: 'Rejected', value: 'REJECTED' },
+];
+
 function statusTone(level: Severity): 'warn' | 'bad' | 'neutral' {
   if (level === 'HIGH') return 'bad';
   if (level === 'MEDIUM') return 'warn';
   return 'neutral';
+}
+
+function formatFieldConfidence(value?: number) {
+  if (typeof value !== 'number') return '0%';
+  const normalized = value <= 1 ? value * 100 : value;
+  return `${Math.round(normalized)}%`;
 }
 
 export default function ReviewQueuePage() {
@@ -409,10 +459,16 @@ export default function ReviewQueuePage() {
     <div className="page-container">
       <PageHero
         title="OCR Review Queue"
-        subtitle="Always-review workflow with field-level corrections, reruns, and confidence evidence."
+        subtitle="Review, correct, rerun, and approve profile extraction rows with full trace visibility."
+        actions={
+          <button className="btn btn-secondary" onClick={loadQueue} disabled={loading}>
+            <RefreshCw size={14} /> Refresh
+          </button>
+        }
+        badges={['Always-review policy', 'Field-level edits', 'Golden fixture labeling']}
       />
 
-      <Panel title="Queue Filters" subtitle="Workspace token controls visibility" className="mb-24">
+      <Panel title="Queue Scope" subtitle="Workspace token controls queue visibility" className="mb-24">
         <div className="grid-2">
           <div className="form-group" style={{ marginBottom: 0 }}>
             <label className="form-label">Workspace ID</label>
@@ -425,7 +481,7 @@ export default function ReviewQueuePage() {
         </div>
 
         <FilterBar className="mt-12">
-          <div className="form-group" style={{ marginBottom: 0 }}>
+          <div className="form-group" style={{ marginBottom: 0, minWidth: 180 }}>
             <label className="form-label">Severity</label>
             <select className="form-select" value={severity} onChange={(e) => setSeverity(e.target.value as '' | Severity)}>
               <option value="">All</option>
@@ -434,18 +490,18 @@ export default function ReviewQueuePage() {
               <option value="LOW">Low</option>
             </select>
           </div>
-          <div className="form-group" style={{ marginBottom: 0 }}>
-            <label className="form-label">Statuses</label>
+          <div className="form-group" style={{ marginBottom: 0, minWidth: 210 }}>
+            <label className="form-label">Status</label>
             <select className="form-select" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-              <option value="RAW,REVIEWED">Pending (RAW + REVIEWED)</option>
-              <option value="RAW">RAW only</option>
-              <option value="REVIEWED">REVIEWED only</option>
-              <option value="APPROVED">APPROVED</option>
-              <option value="REJECTED">REJECTED</option>
+              {STATUS_PRESETS.map((preset) => (
+                <option key={preset.value} value={preset.value}>
+                  {preset.label}
+                </option>
+              ))}
             </select>
           </div>
           <button className="btn btn-primary" onClick={loadQueue} disabled={loading}>
-            {loading ? 'Loading...' : 'Refresh Queue'}
+            {loading ? 'Loading...' : 'Apply Filters'}
           </button>
         </FilterBar>
 
@@ -453,14 +509,14 @@ export default function ReviewQueuePage() {
       </Panel>
 
       <div className="grid-4 mb-24">
-        <KpiCard label="Queue Total" value={summary.total} hint="Pending rows in current filter" tone="info" />
-        <KpiCard label="High Severity" value={summary.high} hint="Likely OCR correction needed" tone="bad" />
+        <KpiCard label="Queue Total" value={summary.total} hint="Rows in current queue filter" tone="info" />
+        <KpiCard label="High Severity" value={summary.high} hint="Likely correction needed" tone="bad" />
         <KpiCard label="Medium Severity" value={summary.medium} hint="Validate before approve" tone="warn" />
-        <KpiCard label="Low Severity" value={summary.low} hint="Likely ready to approve" tone="good" />
+        <KpiCard label="Low Severity" value={summary.low} hint="Usually ready" tone="good" />
       </div>
 
       {metricsSummary ? (
-        <Panel title="OCR Quality (30 days)" subtitle="Review funnel metrics" className="mb-24">
+        <Panel title="OCR Quality (30 days)" subtitle="Recent pass/edit/low-confidence rates" className="mb-24">
           <FilterBar>
             <StatusPill label={`Pass ${Math.round(metricsSummary.reviewPassRate * 100)}%`} tone="good" />
             <StatusPill label={`Low-confidence ${Math.round(metricsSummary.lowConfidenceRate * 100)}%`} tone="warn" />
@@ -469,13 +525,16 @@ export default function ReviewQueuePage() {
         </Panel>
       ) : null}
 
-      <Panel title="Review Board" subtitle="Field edits, candidate alternatives, and rerun controls">
-        {items.length === 0 ? (
-          <EmptyState title="No entries in queue" description="Try refreshing or broadening queue filters." />
+      <Panel title="Review Board" subtitle="Edit fields and approve only when extraction is trusted">
+        {loading ? (
+          <SkeletonSet rows={4} />
+        ) : items.length === 0 ? (
+          <EmptyState title="No entries in queue" description="Try broadening filters or refreshing." />
         ) : (
-          <div className="flex" style={{ flexDirection: 'column', gap: 14 }}>
+          <div className="ocr-review-stack">
             {items.map((item) => {
               const draft = drafts[item.id] || defaultDraft;
+
               return (
                 <article key={item.id} className="ocr-review">
                   <header className="ocr-review-header">
@@ -484,58 +543,75 @@ export default function ReviewQueuePage() {
                         <strong>{item.values.governorName.value || 'Unknown Governor'}</strong>
                         <StatusPill label={item.severity.level} tone={statusTone(item.severity.level)} />
                         <StatusPill label={item.status} tone="info" />
-                        <span className="text-sm text-muted">
-                          {Math.round(item.confidence * (item.confidence <= 1 ? 100 : 1))}% confidence
-                        </span>
+                        {item.lowConfidence ? <StatusPill label="Low Confidence" tone="warn" /> : null}
                       </div>
                       <div className="text-sm text-muted mt-4">
                         ID {item.values.governorId.value || '—'} • {item.engineVersion || item.provider} •{' '}
-                        {new Date(item.createdAt).toLocaleString()}
+                        {new Date(item.createdAt).toLocaleString()} • Overall {formatFieldConfidence(item.confidence)}
                       </div>
                     </div>
                   </header>
 
-                  <div className="ocr-review-body" style={{ gridTemplateColumns: '170px 1fr 1fr 72px' }}>
-                    {Object.entries(draft).map(([field, value]) => {
-                      const source = item.values[field as keyof QueueItem['values']];
+                  <div className="review-field-grid">
+                    {FIELD_ORDER.map((fieldKey) => {
+                      const source = item.values[fieldKey as keyof QueueItem['values']];
+                      const validationFieldKey = fieldKey === 'governorName' ? 'name' : fieldKey;
+                      const fieldValidation = item.validation.find((entry) => entry.field === validationFieldKey);
+                      const candidateList = (source?.candidates || [])
+                        .map((candidate) => ({
+                          value: candidate.normalizedValue || '',
+                          confidence: Number(candidate.confidence || 0),
+                        }))
+                        .filter((candidate) => candidate.value)
+                        .slice(0, 3);
+
                       return (
-                        <React.Fragment key={`${item.id}-${field}`}>
-                          <label className="ocr-field-label">{field}</label>
-                          <div className="ocr-field-value">
+                        <div key={`${item.id}-${fieldKey}`} className="review-field-row">
+                          <label className="ocr-field-label">{FIELD_LABELS[fieldKey]}</label>
+                          <div className="review-field-main">
                             <input
-                              className="ocr-field-input"
-                              value={value}
-                              onChange={(e) => updateDraft(item.id, field as keyof typeof defaultDraft, e.target.value)}
+                              className={`ocr-field-input ${
+                                fieldValidation?.severity === 'error'
+                                  ? 'has-error'
+                                  : fieldValidation?.severity === 'warning'
+                                    ? 'has-warning'
+                                    : ''
+                              }`}
+                              value={draft[fieldKey] || ''}
+                              onChange={(e) => updateDraft(item.id, fieldKey, e.target.value)}
                             />
+                            <span className="text-sm text-muted">{formatFieldConfidence(source?.confidence)}</span>
                           </div>
-                          <div className="text-sm text-muted">
-                            Prev {source?.previousValue ?? '—'}
-                            {source?.changed ? <span className="delta-negative"> changed</span> : null}
+                          <div className="review-field-meta text-sm text-muted">
+                            <span>Prev: {source?.previousValue ?? '—'}</span>
+                            {source?.changed ? <span className="delta-negative">changed</span> : null}
                             {source?.croppedImage ? (
-                              <>
-                                {' '}
-                                <a href={source.croppedImage} target="_blank" rel="noreferrer">
-                                  crop
-                                </a>
-                              </>
+                              <a href={source.croppedImage} target="_blank" rel="noreferrer">
+                                crop
+                              </a>
                             ) : null}
-                            {Array.isArray(source?.candidates) && source.candidates.length > 0 ? (
-                              <div>
-                                Alt{' '}
-                                {source.candidates
-                                  .slice(0, 2)
-                                  .map((candidate) =>
-                                    candidate?.normalizedValue
-                                      ? `${candidate.normalizedValue} (${Math.round(Number(candidate.confidence || 0))}%)`
-                                      : null
-                                  )
-                                  .filter(Boolean)
-                                  .join(' • ') || '—'}
-                              </div>
+                            {fieldValidation?.warning ? (
+                              <span className={fieldValidation.severity === 'error' ? 'delta-negative' : 'text-gold'}>
+                                {fieldValidation.warning}
+                              </span>
                             ) : null}
                           </div>
-                          <div className="text-sm text-muted">{Math.round(source?.confidence ?? 0)}%</div>
-                        </React.Fragment>
+                          {candidateList.length > 0 ? (
+                            <div className="review-candidate-row">
+                              {candidateList.map((candidate, index) => (
+                                <button
+                                  type="button"
+                                  key={`${item.id}-${fieldKey}-candidate-${index}`}
+                                  className="btn btn-ghost btn-sm"
+                                  onClick={() => updateDraft(item.id, fieldKey, candidate.value)}
+                                >
+                                  <Sparkles size={12} />
+                                  {candidate.value} ({Math.round(candidate.confidence)}%)
+                                </button>
+                              ))}
+                            </div>
+                          ) : null}
+                        </div>
                       );
                     })}
                   </div>
@@ -560,23 +636,7 @@ export default function ReviewQueuePage() {
                     </div>
                   ) : null}
 
-                  {item.validation.filter((entry) => entry.severity !== 'ok').length > 0 ? (
-                    <div style={{ padding: '0 14px 10px' }}>
-                      {item.validation
-                        .filter((entry) => entry.severity !== 'ok')
-                        .map((entry, idx) => (
-                          <div
-                            key={`${item.id}-validation-${idx}`}
-                            className={`text-sm ${entry.severity === 'error' ? 'delta-negative' : 'text-gold'}`}
-                          >
-                            {entry.severity === 'error' ? 'Error' : 'Warning'} {entry.field}:{' '}
-                            {entry.warning || 'Check value'}
-                          </div>
-                        ))}
-                    </div>
-                  ) : null}
-
-                  <FilterBar style={{ padding: '0 14px 14px' } as React.CSSProperties}>
+                  <FilterBar style={{ padding: '0 14px 14px' }}>
                     <select
                       className="form-select"
                       value={rerunProfileByItem[item.id] || ''}

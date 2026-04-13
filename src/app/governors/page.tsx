@@ -1,10 +1,19 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Search, TrendingUp } from 'lucide-react';
+import { RefreshCw, Search, TrendingUp } from 'lucide-react';
 import { abbreviateNumber } from '@/lib/utils';
 import { GrowthLineChart } from '@/components/Charts';
-import { DataTableLite, EmptyState, FilterBar, KpiCard, PageHero, Panel, SkeletonSet } from '@/components/ui/primitives';
+import {
+  DataTableLite,
+  EmptyState,
+  FilterBar,
+  KpiCard,
+  PageHero,
+  Panel,
+  SkeletonSet,
+  StatusPill,
+} from '@/components/ui/primitives';
 
 interface GovernorItem {
   id: string;
@@ -81,31 +90,46 @@ export default function GovernorsPage() {
     return Math.round(governors.reduce((sum, governor) => sum + governor.snapshotCount, 0) / governors.length);
   }, [governors]);
 
+  const governorsWithHighPower = useMemo(
+    () => governors.filter((governor) => Number(governor.latestPower || 0) >= 100000000).length,
+    [governors]
+  );
+
   return (
     <div className="page-container">
       <PageHero
         title="Governor Registry"
         subtitle="Identity-level roster with timeline drill-down for growth and contribution trends."
+        badges={['Name + ID roster', 'Timeline drill-in', 'Search-first workflow']}
+        actions={
+          <button className="btn btn-secondary" onClick={() => fetchGovernors(search)} disabled={loading}>
+            <RefreshCw size={14} /> Refresh
+          </button>
+        }
       />
 
-      <div className="grid-3 mb-24">
+      <div className="grid-4 mb-24">
         <KpiCard label="Tracked Governors" value={total} hint="Roster identities indexed" tone="info" />
-        <KpiCard label="Visible in Filter" value={governors.length} hint="Current table row count" tone="neutral" />
+        <KpiCard label="Visible Rows" value={governors.length} hint="Current search result count" tone="neutral" />
         <KpiCard label="Avg Snapshots" value={avgSnapshots} hint="Average snapshots per governor" tone="good" />
+        <KpiCard label="100M+ Power" value={governorsWithHighPower} hint="High-power profiles in view" tone="warn" />
       </div>
 
       <Panel
         title="Governor Table"
-        subtitle="Search by governor name or governor ID"
+        subtitle="Search by governor name or game ID"
         actions={
-          <div className="search-bar" style={{ maxWidth: 380 }}>
-            <Search size={14} className="search-icon" />
-            <input
-              placeholder="Search governor..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
+          <FilterBar>
+            <div className="search-bar" style={{ minWidth: 240 }}>
+              <Search size={14} className="search-icon" />
+              <input
+                placeholder="Search governor..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+            <StatusPill label={`${governors.length} rows`} tone="info" />
+          </FilterBar>
         }
       >
         {loading ? (
@@ -140,6 +164,7 @@ export default function GovernorsPage() {
               {
                 key: 'alliance',
                 label: 'Alliance',
+                mobileHidden: true,
                 render: (row) => row.alliance || '—',
               },
               {
@@ -152,6 +177,7 @@ export default function GovernorsPage() {
                 key: 'snapshots',
                 label: 'Snapshots',
                 className: 'num',
+                mobileHidden: true,
                 render: (row) => row.snapshotCount,
               },
               {
@@ -182,7 +208,7 @@ export default function GovernorsPage() {
               }))}
             />
           ) : (
-            <EmptyState title="No timeline data" description="This governor has no comparable progression history yet." />
+            <EmptyState title="No timeline data" description="This governor has no progression history yet." />
           )}
           <FilterBar className="mt-16">
             <button className="btn btn-secondary btn-sm" onClick={() => setExpandedId(null)}>

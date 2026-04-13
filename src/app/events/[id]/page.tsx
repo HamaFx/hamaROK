@@ -3,9 +3,17 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { Download, Upload } from 'lucide-react';
+import { Download, Search, Upload } from 'lucide-react';
 import { formatDate, abbreviateNumber, EVENT_TYPE_LABELS } from '@/lib/utils';
-import { DataTableLite, EmptyState, FilterBar, KpiCard, PageHero, Panel, StatusPill } from '@/components/ui/primitives';
+import {
+  DataTableLite,
+  EmptyState,
+  FilterBar,
+  KpiCard,
+  PageHero,
+  Panel,
+  StatusPill,
+} from '@/components/ui/primitives';
 
 interface SnapshotRow {
   id: string;
@@ -42,7 +50,7 @@ export default function EventDetailPage() {
         setEvent(data);
         setLoading(false);
       })
-      .catch(console.error);
+      .catch(() => setLoading(false));
   }, [params.id]);
 
   const sortedSnapshots = useMemo(() => {
@@ -76,7 +84,10 @@ export default function EventDetailPage() {
 
     const headers = 'Governor,ID,Power,Kill Points,T4 Kills,T5 Kills,Deads\n';
     const rows = sortedSnapshots
-      .map((row) => `${row.governor.name},${row.governor.governorId},${row.power},${row.killPoints},${row.t4Kills},${row.t5Kills},${row.deads}`)
+      .map(
+        (row) =>
+          `${row.governor.name},${row.governor.governorId},${row.power},${row.killPoints},${row.t4Kills},${row.t5Kills},${row.deads}`
+      )
       .join('\n');
 
     const blob = new Blob([headers + rows], { type: 'text/csv' });
@@ -118,7 +129,7 @@ export default function EventDetailPage() {
     <div className="page-container">
       <PageHero
         title={event.name}
-        subtitle="Event-level snapshot table with sortable combat and power fields."
+        subtitle="Event-level snapshot table with stable sorting and export-ready fields."
         badges={[EVENT_TYPE_LABELS[event.eventType] || event.eventType, `Created ${formatDate(event.createdAt)}`]}
         actions={
           <>
@@ -153,7 +164,8 @@ export default function EventDetailPage() {
         subtitle="Sort by power and combat fields"
         actions={
           <FilterBar>
-            <div className="search-bar">
+            <div className="search-bar" style={{ minWidth: 220 }}>
+              <Search size={14} className="search-icon" />
               <input
                 placeholder="Search governor..."
                 value={search}
@@ -207,6 +219,7 @@ export default function EventDetailPage() {
               label: 'T4 Kills',
               className: 'num',
               sortable: true,
+              mobileHidden: true,
               render: (row) => abbreviateNumber(row.t4Kills),
             },
             {
@@ -214,6 +227,7 @@ export default function EventDetailPage() {
               label: 'T5 Kills',
               className: 'num',
               sortable: true,
+              mobileHidden: true,
               render: (row) => abbreviateNumber(row.t5Kills),
             },
             {
@@ -221,6 +235,7 @@ export default function EventDetailPage() {
               label: 'Deads',
               className: 'num',
               sortable: true,
+              mobileHidden: true,
               render: (row) => abbreviateNumber(row.deads),
             },
           ]}

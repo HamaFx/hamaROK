@@ -143,6 +143,7 @@ Open http://localhost:3000
 | `AWS_REGION` | `us-east-1` | AWS region for OCR dispatch services |
 | `AWS_OCR_QUEUE_URL` | — | SQS queue URL for OCR work items |
 | `AWS_OCR_START_LAMBDA` | — | Lambda name to wake OCR worker immediately after enqueue |
+| `AWS_OCR_STOP_LAMBDA` | — | Lambda name used by manual stop controls in UI/API |
 | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | — | AWS credentials for Vercel runtime when IAM role auth is unavailable |
 
 ### Local Development (.env.local)
@@ -163,6 +164,7 @@ AWS_OCR_CONTROL_ENABLED="false"
 AWS_REGION="us-east-1"
 AWS_OCR_QUEUE_URL=""
 AWS_OCR_START_LAMBDA=""
+AWS_OCR_STOP_LAMBDA=""
 AWS_ACCESS_KEY_ID=""
 AWS_SECRET_ACCESS_KEY=""
 ```

@@ -1,10 +1,18 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { CalendarPlus, Trash2 } from 'lucide-react';
+import { CalendarPlus, Search, Trash2, Upload } from 'lucide-react';
 import { formatDate, EVENT_TYPE_LABELS } from '@/lib/utils';
-import { EmptyState, FilterBar, KpiCard, PageHero, Panel, SkeletonSet, StatusPill } from '@/components/ui/primitives';
+import {
+  EmptyState,
+  FilterBar,
+  KpiCard,
+  PageHero,
+  Panel,
+  SkeletonSet,
+  StatusPill,
+} from '@/components/ui/primitives';
 
 interface EventItem {
   id: string;
@@ -22,6 +30,8 @@ export default function EventsPage() {
   const [newName, setNewName] = useState('');
   const [newType, setNewType] = useState('CUSTOM');
   const [newDesc, setNewDesc] = useState('');
+  const [search, setSearch] = useState('');
+  const [typeFilter, setTypeFilter] = useState('ALL');
 
   const fetchEvents = async () => {
     try {
@@ -66,20 +76,46 @@ export default function EventsPage() {
 
   const kvkCount = events.filter((event) => event.eventType.includes('KVK')).length;
 
+  const eventTypeOptions = useMemo(() => {
+    const distinct = Array.from(new Set(events.map((event) => event.eventType))).sort();
+    return ['ALL', ...distinct];
+  }, [events]);
+
+  const filteredEvents = useMemo(() => {
+    return events
+      .filter((event) => {
+        const matchesType = typeFilter === 'ALL' ? true : event.eventType === typeFilter;
+        const q = search.trim().toLowerCase();
+        const matchesSearch =
+          q.length === 0 ||
+          event.name.toLowerCase().includes(q) ||
+          String(EVENT_TYPE_LABELS[event.eventType] || event.eventType)
+            .toLowerCase()
+            .includes(q);
+        return matchesType && matchesSearch;
+      })
+      .sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt));
+  }, [events, search, typeFilter]);
+
   return (
     <div className="page-container">
       <PageHero
         title="Events"
-        subtitle="Manage snapshot checkpoints used by compare, insights, and ranking merge workflows."
+        subtitle="Manage event checkpoints used by compare, insights, and ranking merge workflows."
         actions={
-          <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
-            <CalendarPlus size={14} /> Create Event
-          </button>
+          <>
+            <Link href="/upload" className="btn btn-secondary">
+              <Upload size={14} /> Upload
+            </Link>
+            <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
+              <CalendarPlus size={14} /> Create Event
+            </button>
+          </>
         }
       />
 
       <div className="grid-3 mb-24">
-        <KpiCard label="Total Events" value={events.length} hint="All tracked capture checkpoints" tone="info" />
+        <KpiCard label="Total Events" value={events.length} hint="Tracked event checkpoints" tone="info" />
         <KpiCard label="KvK Events" value={kvkCount} hint="Events tagged with KvK type" tone="warn" />
         <KpiCard
           label="Snapshots Indexed"
@@ -89,13 +125,43 @@ export default function EventsPage() {
         />
       </div>
 
-      <Panel title="Event Registry" subtitle="Snapshot collections sorted by creation date">
+      <Panel
+        title="Event Registry"
+        subtitle="Search, filter, and manage event snapshots"
+        actions={
+          <FilterBar>
+            <div className="search-bar" style={{ minWidth: 220 }}>
+              <Search size={14} className="search-icon" />
+              <input
+                placeholder="Search events..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+            <div className="form-group" style={{ marginBottom: 0, minWidth: 180 }}>
+              <label className="form-label">Type</label>
+              <select className="form-select" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
+                {eventTypeOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {option === 'ALL' ? 'All Types' : EVENT_TYPE_LABELS[option] || option}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <StatusPill label={`${filteredEvents.length} visible`} tone="info" />
+          </FilterBar>
+        }
+      >
         {loading ? (
           <SkeletonSet rows={4} />
-        ) : events.length === 0 ? (
+        ) : filteredEvents.length === 0 ? (
           <EmptyState
-            title="No events yet"
-            description="Create your first event to start collecting governor profile snapshots."
+            title={events.length === 0 ? 'No events yet' : 'No matching events'}
+            description={
+              events.length === 0
+                ? 'Create your first event to start collecting snapshots.'
+                : 'Try a different search or type filter.'
+            }
             action={
               <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
                 Create Event
@@ -103,7 +169,7 @@ export default function EventsPage() {
             }
           />
         ) : (
-          events.map((event) => (
+          filteredEvents.map((event) => (
             <div key={event.id} className="event-card">
               <div className="event-card-info">
                 <div className="event-card-name">{event.name}</div>

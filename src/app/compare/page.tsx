@@ -322,18 +322,21 @@ function CompareContent() {
                   key: 'target',
                   label: 'Target DKP',
                   className: 'num',
+                  mobileHidden: true,
                   render: (row: Comparison) => formatDelta(row.warriorScore?.expectedKp || 0),
                 },
                 {
                   key: 'actual',
                   label: 'Actual DKP',
                   className: 'num',
+                  mobileHidden: true,
                   render: (row: Comparison) => formatDelta(row.warriorScore?.actualDkp || 0),
                 },
                 {
                   key: 'kd',
                   label: 'KD Ratio',
                   className: 'num',
+                  mobileHidden: true,
                   render: (row: Comparison) => row.warriorScore?.kdRatio || 0,
                 },
                 {

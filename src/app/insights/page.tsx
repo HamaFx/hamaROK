@@ -325,7 +325,13 @@ export default function InsightsPage() {
                 },
                 { key: 'score', label: 'Avg Score', className: 'num', render: (row) => `${row.avgWarriorScore}%` },
                 { key: 'gov', label: 'Governors', className: 'num', render: (row) => row.totalGovernors },
-                { key: 'anomaly', label: 'Anomalies', className: 'num', render: (row) => row.anomalyCount },
+                {
+                  key: 'anomaly',
+                  label: 'Anomalies',
+                  className: 'num',
+                  mobileHidden: true,
+                  render: (row) => row.anomalyCount,
+                },
               ]}
             />
           </Panel>
@@ -347,7 +353,13 @@ export default function InsightsPage() {
                   render: (row) => row.latestAvgWarriorScore ?? '—',
                 },
                 { key: 'gov', label: 'Governors', className: 'num', render: (row) => row.totals.governors },
-                { key: 'events', label: 'Events', className: 'num', render: (row) => row.totals.events },
+                {
+                  key: 'events',
+                  label: 'Events',
+                  className: 'num',
+                  mobileHidden: true,
+                  render: (row) => row.totals.events,
+                },
               ]}
             />
           </Panel>

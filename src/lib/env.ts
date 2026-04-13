@@ -36,6 +36,7 @@ const envSchema = z
     AWS_OCR_CONTROL_ENABLED: booleanString,
     AWS_OCR_QUEUE_URL: z.string().url().optional(),
     AWS_OCR_START_LAMBDA: z.string().optional(),
+    AWS_OCR_STOP_LAMBDA: z.string().optional(),
     OCR_FALLBACK_ENABLED: booleanString,
     OCR_FALLBACK_DAILY_LIMIT: intString,
     FEATURE_ADB_CAPTURE_RND: booleanString,

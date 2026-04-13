@@ -2,9 +2,28 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Activity, CalendarClock, Database, ShieldAlert, Swords, Trophy } from 'lucide-react';
+import {
+  Activity,
+  ArrowRight,
+  CalendarClock,
+  Database,
+  FlaskConical,
+  ShieldAlert,
+  ShieldCheck,
+  Swords,
+  Trophy,
+  Workflow,
+} from 'lucide-react';
 import { formatDate, EVENT_TYPE_LABELS } from '@/lib/utils';
-import { EmptyState, KpiCard, MetricStrip, PageHero, Panel, SkeletonSet, StatusPill } from '@/components/ui/primitives';
+import {
+  EmptyState,
+  KpiCard,
+  MetricStrip,
+  PageHero,
+  Panel,
+  SkeletonSet,
+  StatusPill,
+} from '@/components/ui/primitives';
 
 interface EventSummary {
   id: string;
@@ -19,6 +38,33 @@ interface RankingHealth {
   statusCounts: Record<string, number>;
   rankingTypes: Array<{ rankingType: string; metricKey: string; total: number }>;
 }
+
+const QUICK_LANES = [
+  {
+    href: '/upload',
+    title: 'Ingest Captures',
+    description: 'Upload profile/ranking screenshots into review-safe pipelines.',
+    icon: Swords,
+  },
+  {
+    href: '/review',
+    title: 'OCR Review',
+    description: 'Resolve low-confidence profile fields before approval.',
+    icon: FlaskConical,
+  },
+  {
+    href: '/rankings/review',
+    title: 'Ranking Review',
+    description: 'Link unresolved ranking rows and apply canonical corrections.',
+    icon: ShieldCheck,
+  },
+  {
+    href: '/compare',
+    title: 'Compare Events',
+    description: 'Run warrior score comparisons and publish leaderboard outputs.',
+    icon: Workflow,
+  },
+];
 
 export default function Dashboard() {
   const [events, setEvents] = useState<EventSummary[]>([]);
@@ -73,66 +119,68 @@ export default function Dashboard() {
   }, []);
 
   const totalSnapshots = useMemo(() => events.reduce((sum, e) => sum + e.snapshotCount, 0), [events]);
-
   const unresolvedRanking = rankingHealth?.statusCounts?.UNRESOLVED || 0;
 
   return (
     <div className="page-container">
       <PageHero
         title="Command Center"
-        subtitle="Live operational picture across ingestion, rankings, and event analytics."
-        badges={['Tactical Pro UI', 'Deterministic Rankings', 'Always-Review OCR']}
+        subtitle="A clean tactical board for ingestion, ranking quality, and event operations."
+        badges={['Mobile-first layout', 'Deterministic ranking order', 'Always-review OCR']}
         actions={
           <>
             <Link href="/upload" className="btn btn-primary btn-lg">
-              <Swords size={14} /> Upload Capture
+              <Swords size={14} /> Upload
             </Link>
             <Link href="/rankings" className="btn btn-secondary btn-lg">
-              <Trophy size={14} /> Open Rankings
+              <Trophy size={14} /> Rankings
             </Link>
           </>
         }
       />
 
       <div className="grid-4 mb-24 animate-fade-in-up">
-        <KpiCard label="Governors" value={loading ? '—' : governorCount} hint="Unique tracked identities" tone="neutral" />
-        <KpiCard label="Events" value={loading ? '—' : events.length} hint="Snapshots grouped by event" tone="info" />
-        <KpiCard label="Snapshots" value={loading ? '—' : totalSnapshots} hint="Profile captures ingested" tone="good" />
+        <KpiCard label="Governors" value={loading ? '—' : governorCount} hint="Tracked identities" tone="neutral" />
+        <KpiCard label="Events" value={loading ? '—' : events.length} hint="Available snapshots" tone="info" />
+        <KpiCard label="Snapshots" value={loading ? '—' : totalSnapshots} hint="Captured profiles" tone="good" />
         <KpiCard
           label="Unresolved Rows"
           value={rankingHealth ? unresolvedRanking : '—'}
-          hint="Ranking rows waiting identity resolution"
+          hint="Need ranking identity review"
           tone={unresolvedRanking > 0 ? 'warn' : 'good'}
         />
       </div>
 
       <div className="grid-2 mb-24">
         <Panel
-          title="Quick Operations"
-          subtitle="Jump into the most common workflows"
+          title="Operation Lanes"
+          subtitle="Most-used workflows with one-tap access"
           actions={
             <Link href="/insights" className="btn btn-ghost btn-sm">
               <Activity size={14} /> Analytics
             </Link>
           }
         >
-          <div className="action-toolbar">
-            <Link href="/upload" className="btn btn-primary">
-              Ingest Screenshots
-            </Link>
-            <Link href="/review" className="btn btn-secondary">
-              OCR Review Queue
-            </Link>
-            <Link href="/rankings/review" className="btn btn-secondary">
-              Ranking Review Queue
-            </Link>
-            <Link href="/compare" className="btn btn-secondary">
-              Compare Events
-            </Link>
+          <div className="quick-lane-grid">
+            {QUICK_LANES.map((lane) => {
+              const Icon = lane.icon;
+              return (
+                <Link key={lane.href} href={lane.href} className="quick-lane-card">
+                  <span className="quick-lane-icon">
+                    <Icon size={15} />
+                  </span>
+                  <div>
+                    <strong>{lane.title}</strong>
+                    <p>{lane.description}</p>
+                  </div>
+                  <ArrowRight size={14} className="quick-lane-arrow" />
+                </Link>
+              );
+            })}
           </div>
         </Panel>
 
-        <Panel title="Ranking Health" subtitle="Canonical ranking state and distribution">
+        <Panel title="Ranking Health" subtitle="Canonical state and distribution overview">
           {rankingHealth ? (
             <>
               <MetricStrip
@@ -144,7 +192,7 @@ export default function Dashboard() {
                 ]}
               />
               <div className="mt-12 text-sm text-muted">
-                Top ranking types:{' '}
+                Top types:{' '}
                 {rankingHealth.rankingTypes
                   .slice(0, 4)
                   .map((item) => `${item.rankingType}/${item.metricKey}`)
@@ -153,8 +201,8 @@ export default function Dashboard() {
             </>
           ) : (
             <EmptyState
-              title="Ranking metrics locked behind workspace links"
-              description="Set workspace ID + access token in any v2 page to enable ranking health modules."
+              title="Ranking metrics require workspace scope"
+              description="Set workspace ID and access token to unlock ranking health modules."
             />
           )}
         </Panel>
@@ -162,10 +210,10 @@ export default function Dashboard() {
 
       <Panel
         title="Recent Events"
-        subtitle="Newest captures available for compare and insights"
+        subtitle="Newest entries ready for compare and insights"
         actions={
           <Link href="/events" className="btn btn-secondary btn-sm">
-            <CalendarClock size={14} /> Manage Events
+            <CalendarClock size={14} /> Manage
           </Link>
         }
       >
@@ -174,7 +222,7 @@ export default function Dashboard() {
         ) : events.length === 0 ? (
           <EmptyState
             title="No events yet"
-            description="Create an event and upload screenshots to begin building analytics."
+            description="Create an event and upload screenshots to begin analytics."
             action={
               <Link href="/upload" className="btn btn-primary">
                 <Database size={14} /> Start Ingestion

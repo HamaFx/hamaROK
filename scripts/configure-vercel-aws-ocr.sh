@@ -7,6 +7,7 @@ REGION="${REGION:-us-east-1}"
 
 QUEUE_NAME="${PREFIX}-ocr-jobs"
 START_LAMBDA_NAME="${PREFIX}-ocr-start-worker"
+STOP_LAMBDA_NAME="${PREFIX}-ocr-stop-worker"
 
 QUEUE_URL="$(aws --region "$REGION" sqs get-queue-url --queue-name "$QUEUE_NAME" --query 'QueueUrl' --output text)"
 AWS_ACCESS_KEY_ID_VALUE="${AWS_ACCESS_KEY_ID:-$(aws configure get aws_access_key_id || true)}"
@@ -41,6 +42,7 @@ for env in production preview development; do
     upsert_env "AWS_REGION" "$REGION" "$env" "$preview_branch"
     upsert_env "AWS_OCR_QUEUE_URL" "$QUEUE_URL" "$env" "$preview_branch"
     upsert_env "AWS_OCR_START_LAMBDA" "$START_LAMBDA_NAME" "$env" "$preview_branch"
+    upsert_env "AWS_OCR_STOP_LAMBDA" "$STOP_LAMBDA_NAME" "$env" "$preview_branch"
     upsert_env "AWS_ACCESS_KEY_ID" "$AWS_ACCESS_KEY_ID_VALUE" "$env" "$preview_branch"
     upsert_env "AWS_SECRET_ACCESS_KEY" "$AWS_SECRET_ACCESS_KEY_VALUE" "$env" "$preview_branch"
   else
@@ -48,6 +50,7 @@ for env in production preview development; do
     upsert_env "AWS_REGION" "$REGION" "$env"
     upsert_env "AWS_OCR_QUEUE_URL" "$QUEUE_URL" "$env"
     upsert_env "AWS_OCR_START_LAMBDA" "$START_LAMBDA_NAME" "$env"
+    upsert_env "AWS_OCR_STOP_LAMBDA" "$STOP_LAMBDA_NAME" "$env"
     upsert_env "AWS_ACCESS_KEY_ID" "$AWS_ACCESS_KEY_ID_VALUE" "$env"
     upsert_env "AWS_SECRET_ACCESS_KEY" "$AWS_SECRET_ACCESS_KEY_VALUE" "$env"
   fi
@@ -56,4 +59,5 @@ done
 echo "Vercel AWS OCR environment synced successfully."
 echo "Region: $REGION"
 echo "Queue:  $QUEUE_URL"
-echo "Lambda: $START_LAMBDA_NAME"
+echo "Start Lambda: $START_LAMBDA_NAME"
+echo "Stop Lambda:  $STOP_LAMBDA_NAME"

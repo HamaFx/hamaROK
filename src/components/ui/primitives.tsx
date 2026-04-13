@@ -178,6 +178,7 @@ export interface DataTableLiteColumn<T> {
   className?: string;
   thClassName?: string;
   sortable?: boolean;
+  mobileHidden?: boolean;
   render: (row: T, index: number) => ReactNode;
 }
 
@@ -190,6 +191,7 @@ export function DataTableLite<T>({
   sortDir,
   stickyFirst = false,
   dense = false,
+  mobileCards = true,
   emptyLabel = 'No records found.',
 }: {
   columns: DataTableLiteColumn<T>[];
@@ -200,11 +202,18 @@ export function DataTableLite<T>({
   sortDir?: 'asc' | 'desc';
   stickyFirst?: boolean;
   dense?: boolean;
+  mobileCards?: boolean;
   emptyLabel?: string;
 }) {
   return (
     <div className={cn('data-table-wrap', stickyFirst ? 'sticky-first-col' : '')}>
-      <table className={cn('data-table', dense ? 'data-table-dense' : '')}>
+      <table
+        className={cn(
+          'data-table',
+          dense ? 'data-table-dense' : '',
+          mobileCards ? 'data-table-mobile-cards' : ''
+        )}
+      >
         <thead>
           <tr>
             {columns.map((column, index) => {
@@ -213,7 +222,11 @@ export function DataTableLite<T>({
               return (
                 <th
                   key={column.key}
-                  className={cn(column.thClassName, index === 0 && stickyFirst ? 'sticky-col' : '')}
+                  className={cn(
+                    column.thClassName,
+                    index === 0 && stickyFirst ? 'sticky-col' : '',
+                    column.mobileHidden ? 'mobile-hidden-col' : ''
+                  )}
                   onClick={sortable ? () => onSort?.(column.key) : undefined}
                   role={sortable ? 'button' : undefined}
                   tabIndex={sortable ? 0 : undefined}
@@ -243,7 +256,12 @@ export function DataTableLite<T>({
               {columns.map((column, colIdx) => (
                 <td
                   key={`${rowKey(row, idx)}-${column.key}`}
-                  className={cn(column.className, colIdx === 0 && stickyFirst ? 'sticky-col' : '')}
+                  className={cn(
+                    column.className,
+                    colIdx === 0 && stickyFirst ? 'sticky-col' : '',
+                    column.mobileHidden ? 'mobile-hidden-col' : ''
+                  )}
+                  data-label={column.label}
                 >
                   {column.render(row, idx)}
                 </td>
