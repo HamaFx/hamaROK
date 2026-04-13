@@ -65,8 +65,6 @@ export default function RankingsPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [summary, setSummary] = useState<SummaryPayload | null>(null);
-  const [dense, setDense] = useState(false);
-  const [showMetaCols, setShowMetaCols] = useState(false);
   const [sortHint, setSortHint] = useState('metricValue DESC, sourceRank ASC, normalizedName ASC, rowId ASC');
 
   useEffect(() => {
@@ -227,26 +225,8 @@ export default function RankingsPage() {
       },
     ];
 
-    if (!showMetaCols) return base;
-
-    return [
-      ...base.slice(0, 2),
-      {
-        key: 'type',
-        label: 'Type / Metric',
-        mobileHidden: true,
-        render: (row: CanonicalRow) => `${row.rankingType} / ${row.metricKey}`,
-      },
-      ...base.slice(2),
-      {
-        key: 'event',
-        label: 'Event ID',
-        className: 'font-mono text-sm text-muted',
-        mobileHidden: true,
-        render: (row: CanonicalRow) => row.eventId,
-      },
-    ];
-  }, [showMetaCols]);
+    return base;
+  }, []);
 
   const unresolved = summary?.statusCounts.UNRESOLVED || 0;
 
@@ -255,7 +235,6 @@ export default function RankingsPage() {
       <PageHero
         title="Rankings Board"
         subtitle="Stable ordering, tie-aware display, and review-driven canonical ranking state."
-        badges={['Deterministic sort', sortHint]}
         actions={
           <>
             <button className="btn btn-secondary" onClick={refresh} disabled={loading}>
@@ -313,23 +292,13 @@ export default function RankingsPage() {
 
       <Panel
         title="Canonical Ranking Rows"
-        subtitle="Order: metricValue DESC, sourceRank ASC NULLS LAST, normalizedName ASC, rowId ASC"
         actions={
           <ActionToolbar>
-            <button className="btn btn-secondary btn-sm" onClick={() => setDense((prev) => !prev)}>
-              <SlidersHorizontal size={14} /> {dense ? 'Comfortable' : 'Dense'}
-            </button>
-            <button className="btn btn-secondary btn-sm" onClick={() => setShowMetaCols((prev) => !prev)}>
-              <Layers size={14} /> {showMetaCols ? 'Hide Meta' : 'Show Meta'}
-            </button>
             <button className="btn btn-secondary btn-sm" onClick={goBack} disabled={loading || cursorStack.length <= 1}>
               <ArrowLeft size={14} /> Prev
             </button>
             <button className="btn btn-secondary btn-sm" onClick={goNext} disabled={loading || !nextCursor}>
               Next <ArrowRight size={14} />
-            </button>
-            <button className="btn btn-ghost btn-sm" type="button">
-              <TableProperties size={14} /> Stable sort active
             </button>
           </ActionToolbar>
         }
@@ -339,7 +308,6 @@ export default function RankingsPage() {
         {rows.length > 0 ? (
           <DataTableLite
             stickyFirst
-            dense={dense}
             columns={columns}
             rows={rows}
             rowKey={(row) => row.id}

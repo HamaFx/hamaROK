@@ -104,17 +104,6 @@ export default function Dashboard() {
       <PageHero
         title="Welcome back, Commander."
         subtitle="Your command center for ingestion, ranking quality, and analytical operations."
-        badges={['Live Engine', 'Mobile-first layout', 'Deterministic ranking order']}
-        actions={
-          <>
-            <Link href="/upload" className="btn btn-primary btn-lg">
-              <Swords size={14} /> Upload Event
-            </Link>
-            <Link href="/rankings" className="btn btn-secondary btn-lg">
-              <Trophy size={14} /> View Rankings
-            </Link>
-          </>
-        }
       />
 
       <div className="grid-4 mb-24 animate-fade-in-up">

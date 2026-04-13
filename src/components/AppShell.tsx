@@ -165,21 +165,6 @@ export default function AppShell({ children }: { children: ReactNode }) {
                 <span className="value" style={{ fontSize: '0.85rem', color: '#fff', fontWeight: '500' }}>{workspaceLabel}</span>
               </div>
             </Link>
-            <div className="app-context-chip muted" style={{ display: 'flex', flexDirection: 'column', marginLeft: '8px' }}>
-              <span className="label" style={{ fontSize: '0.65rem', textTransform: 'uppercase' }}>Access Key</span>
-              <span className="value" style={{ fontSize: '0.85rem' }}>{accessLabel}</span>
-            </div>
-            <div className="app-topbar-right" style={{ marginLeft: '12px' }}>
-              <button className="icon-btn" type="button" aria-label="Search">
-                <Search size={18} />
-              </button>
-              <Link className="icon-btn" href="/insights" aria-label="Reports">
-                <FileBarChart2 size={18} />
-              </Link>
-              <Link className="icon-btn" href="/settings" aria-label="Settings">
-                <Cog size={18} />
-              </Link>
-            </div>
           </div>
         </header>
 
