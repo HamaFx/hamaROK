@@ -20,11 +20,11 @@ import {
 import { abbreviateNumber } from '@/lib/utils';
 
 const TIER_COLORS: Record<string, string> = {
-  'War Legend': '#f5b54a',
-  'Elite Warrior': '#ff6f83',
-  'Frontline Fighter': '#6cc5f5',
-  'Support Role': '#4ddce0',
-  Inactive: '#718aa5',
+  'War Legend': '#3b82f6',
+  'Elite Warrior': '#60a5fa',
+  'Frontline Fighter': '#93c5fd',
+  'Support Role': '#e2e8f0',
+  Inactive: '#64748b',
 };
 
 function prettyNumber(value: string | number) {
@@ -55,7 +55,7 @@ export function KillsBarChart({ data }: { data: { name: string; killDelta: numbe
     .slice(0, 15)
     .map((entry, index) => ({
       ...entry,
-      tone: index < 3 ? '#f5b54a' : index < 7 ? '#4ddce0' : '#6cc5f5',
+      tone: index < 3 ? '#3b82f6' : index < 7 ? '#60a5fa' : '#93c5fd',
     }));
 
   return (
@@ -143,21 +143,21 @@ export function GrowthLineChart({
             {avgPower > 0 ? (
               <ReferenceLine
                 y={Math.round(avgPower)}
-                stroke="#f5b54a"
+                stroke="#60a5fa"
                 strokeDasharray="5 5"
-                label={{ value: 'Avg Power', fill: '#f5b54a', fontSize: 11 }}
+                label={{ value: 'Avg Power', fill: '#60a5fa', fontSize: 11 }}
               />
             ) : null}
-            <Line type="monotone" dataKey="power" stroke="#f5b54a" strokeWidth={2.2} dot={{ r: 3 }} name="Power" />
+            <Line type="monotone" dataKey="power" stroke="#3b82f6" strokeWidth={2.2} dot={{ r: 3 }} name="Power" />
             <Line
               type="monotone"
               dataKey="killPoints"
-              stroke="#4ddce0"
+              stroke="#93c5fd"
               strokeWidth={2.2}
               dot={{ r: 3 }}
               name="Kill Points"
             />
-            <Line type="monotone" dataKey="deads" stroke="#ff6f83" strokeWidth={2.2} dot={{ r: 3 }} name="Deads" />
+            <Line type="monotone" dataKey="deads" stroke="#f43f5e" strokeWidth={2.2} dot={{ r: 3 }} name="Deads" />
           </LineChart>
         </ResponsiveContainer>
       </div>

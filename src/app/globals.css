@@ -1,35 +1,35 @@
 /* RoK Command Center v2 - Tactical Pro */
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Manrope:wght@400;500;600;700;800&family=Sora:wght@600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 
 :root {
-  --bg-canvas: #040911;
-  --bg-shell: #091423;
-  --bg-surface: #0f1c2f;
-  --bg-surface-2: #13243a;
-  --bg-surface-3: #1a2d48;
-  --bg-overlay: rgba(5, 11, 21, 0.82);
+  --bg-canvas: #0b0f19;
+  --bg-shell: #131821;
+  --bg-surface: #1a202c;
+  --bg-surface-2: #222a38;
+  --bg-surface-3: #2d3748;
+  --bg-overlay: rgba(11, 15, 25, 0.82);
 
-  --line-soft: rgba(120, 182, 224, 0.2);
-  --line-strong: rgba(120, 182, 224, 0.34);
+  --line-soft: rgba(255, 255, 255, 0.08);
+  --line-strong: rgba(255, 255, 255, 0.14);
 
-  --text-1: #e8f4ff;
-  --text-2: #9bb8d1;
-  --text-3: #6f8eaa;
+  --text-1: #ffffff;
+  --text-2: #94a3b8;
+  --text-3: #64748b;
 
-  --teal-1: #4abbff;
-  --teal-2: #8dd8ff;
-  --gold-1: #3eafff;
-  --gold-2: #9eddff;
-  --rose-1: #ff6f83;
-  --ok-1: #44d59f;
+  --teal-1: #3b82f6;
+  --teal-2: #60a5fa;
+  --gold-1: #3b82f6;
+  --gold-2: #93c5fd;
+  --rose-1: #f43f5e;
+  --ok-1: #10b981;
 
-  --shadow-soft: 0 12px 28px rgba(0, 0, 0, 0.36);
-  --shadow-strong: 0 24px 54px rgba(0, 0, 0, 0.46);
+  --shadow-soft: 0 4px 12px rgba(0, 0, 0, 0.2);
+  --shadow-strong: 0 12px 28px rgba(0, 0, 0, 0.36);
 
-  --radius-sm: 10px;
-  --radius-md: 14px;
-  --radius-lg: 20px;
-  --radius-xl: 28px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
 
   --space-1: 4px;
   --space-2: 8px;
@@ -39,12 +39,12 @@
   --space-6: 24px;
   --space-7: 32px;
 
-  --font-heading: 'Sora', sans-serif;
-  --font-body: 'Manrope', sans-serif;
+  --font-heading: 'Outfit', sans-serif;
+  --font-body: 'Inter', sans-serif;
   --font-mono: 'IBM Plex Mono', monospace;
 
-  --transition-fast: 140ms cubic-bezier(0.2, 0, 0, 1);
-  --transition: 220ms cubic-bezier(0.2, 0, 0, 1);
+  --transition-fast: 150ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  --transition: 300ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 * {
@@ -65,10 +65,7 @@ html {
 
 body {
   font-family: var(--font-body);
-  background:
-    radial-gradient(circle at 16% -14%, rgba(77, 180, 255, 0.24), transparent 44%),
-    radial-gradient(circle at 92% 4%, rgba(77, 180, 255, 0.15), transparent 42%),
-    linear-gradient(180deg, #040911 0%, #060d18 100%);
+  background: var(--bg-canvas);
   color: var(--text-1);
   line-height: 1.5;
 }
@@ -238,7 +235,7 @@ h6 {
   z-index: 50;
   min-height: 64px;
   border-bottom: 1px solid var(--line-soft);
-  background: rgba(7, 13, 22, 0.94);
+  background: rgba(11, 15, 25, 0.85);
   backdrop-filter: blur(18px);
   display: flex;
   flex-direction: column;
@@ -359,18 +356,18 @@ h6 {
 /* Mobile shell */
 .app-mobile-nav {
   position: fixed;
-  left: 10px;
-  right: 10px;
-  bottom: 10px;
+  left: 20px;
+  right: 20px;
+  bottom: 20px;
   z-index: 70;
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   border: 1px solid var(--line-strong);
-  background: rgba(10, 18, 30, 0.94);
-  border-radius: 16px;
-  padding: 6px;
+  background: rgba(15, 20, 28, 0.85);
+  border-radius: 100px;
+  padding: 8px 12px;
   backdrop-filter: blur(14px);
-  box-shadow: var(--shadow-soft);
+  box-shadow: 0 10px 25px rgba(0,0,0,0.5);
 }
 
 .app-mobile-link {
@@ -382,15 +379,17 @@ h6 {
   font-size: 0.65rem;
   font-weight: 700;
   padding: 6px 4px;
-  border-radius: 10px;
+  border-radius: 100px;
   border: 1px solid transparent;
   background: transparent;
+  transition: all var(--transition-fast);
 }
 
 .app-mobile-link.active {
-  color: var(--text-1);
-  border-color: var(--line-soft);
-  background: rgba(74, 187, 255, 0.16);
+  color: var(--teal-2);
+  border-color: rgba(96, 165, 250, 0.4);
+  background: rgba(96, 165, 250, 0.15);
+  filter: drop-shadow(0 0 10px rgba(59, 130, 246, 0.4));
 }
 
 .app-mobile-backdrop {
@@ -398,7 +397,7 @@ h6 {
   inset: 0;
   z-index: 71;
   border: 0;
-  background: rgba(5, 9, 14, 0.58);
+  background: rgba(0, 0, 0, 0.6);
 }
 
 .app-mobile-sheet {
@@ -406,7 +405,7 @@ h6 {
   position: fixed;
   left: 0;
   right: 0;
-  bottom: 72px;
+  bottom: 86px;
   z-index: 72;
   padding: 0 10px;
   pointer-events: none;
@@ -492,10 +491,11 @@ h6 {
 
 .page-hero h1 {
   font-size: clamp(1.52rem, 2.7vw, 2.28rem);
-  background: linear-gradient(120deg, #dff4ff 0%, #8fdcff 46%, #4abbff 100%);
+  background: linear-gradient(120deg, #ffffff 0%, var(--teal-2) 100%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
+  animation: pulseGlow 3.5s infinite ease-in-out;
 }
 
 .page-hero p {
@@ -522,7 +522,7 @@ h6 {
 .card,
 .chart-container {
   border: 1px solid var(--line-soft);
-  background: linear-gradient(180deg, rgba(17, 27, 42, 0.94), rgba(13, 21, 34, 0.88));
+  background: var(--bg-surface);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-soft);
 }
@@ -562,11 +562,13 @@ h6 {
 
 .card {
   padding: 18px;
+  transition: all var(--transition-fast);
 }
 
 .card:hover:not(.card-no-hover) {
-  border-color: var(--line-strong);
-  transform: translateY(-1px);
+  border-color: rgba(96, 165, 250, 0.4);
+  transform: translateY(-2px) scale(1.01);
+  box-shadow: 0 8px 24px rgba(59, 130, 246, 0.12);
 }
 
 .card-no-hover:hover {
@@ -597,7 +599,14 @@ h6 {
   padding: 18px;
   border: 1px solid var(--line-soft);
   border-radius: 16px;
-  background: linear-gradient(180deg, rgba(19, 31, 47, 0.84), rgba(15, 24, 38, 0.84));
+  background: var(--bg-surface);
+  transition: all var(--transition-fast);
+}
+
+.kpi-card:hover {
+  border-color: rgba(96, 165, 250, 0.4);
+  transform: translateY(-2px) scale(1.01);
+  box-shadow: 0 8px 24px rgba(59, 130, 246, 0.12);
 }
 
 .kpi-label,
@@ -693,8 +702,9 @@ h6 {
 }
 
 .quick-lane-card:hover {
-  border-color: var(--line-strong);
-  transform: translateY(-1px);
+  border-color: rgba(96, 165, 250, 0.4);
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 6px 18px rgba(59, 130, 246, 0.15);
 }
 
 .quick-lane-icon {
@@ -781,10 +791,10 @@ h6 {
   border: 1px solid var(--line-soft);
   border-radius: 11px;
   color: var(--text-1);
-  background: rgba(19, 33, 49, 0.9);
+  background: var(--bg-surface-2);
   padding: 9px 14px;
   font-size: 0.84rem;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.01em;
   cursor: pointer;
   display: inline-flex;
@@ -794,8 +804,15 @@ h6 {
 }
 
 .btn:hover {
-  border-color: var(--line-strong);
-  transform: translateY(-1px);
+  border-color: rgba(96, 165, 250, 0.5);
+  background: var(--bg-surface-3);
+  transform: translateY(-1px) scale(1.015);
+  box-shadow: 0 6px 16px rgba(59, 130, 246, 0.15);
+}
+
+.btn:active {
+  transform: scale(0.97);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .btn:disabled {
@@ -805,20 +822,20 @@ h6 {
 }
 
 .btn-primary {
-  border-color: rgba(141, 216, 255, 0.48);
-  color: #041424;
-  background: linear-gradient(140deg, #57c5ff, #9eddff);
+  border-color: rgba(96, 165, 250, 0.4);
+  color: #ffffff;
+  background: var(--teal-1);
 }
 
 .btn-secondary {
-  background: rgba(22, 37, 56, 0.92);
+  background: var(--bg-surface);
   color: var(--text-1);
 }
 
 .btn-danger {
-  background: rgba(80, 20, 32, 0.88);
-  border-color: rgba(255, 111, 131, 0.4);
-  color: #ffd8de;
+  background: rgba(244, 63, 94, 0.15);
+  border-color: rgba(244, 63, 94, 0.4);
+  color: #ffb3c1;
 }
 
 .btn-ghost {
@@ -1475,6 +1492,16 @@ h6 {
   }
 }
 
+@keyframes pulseGlow {
+  0% { filter: drop-shadow(0 0 2px rgba(59,130,246,0.1)); }
+  50% { filter: drop-shadow(0 0 12px rgba(59,130,246,0.6)); }
+  100% { filter: drop-shadow(0 0 2px rgba(59,130,246,0.1)); }
+}
+
+.animate-pulse-glow {
+  animation: pulseGlow 3.5s infinite ease-in-out;
+}
+
 .animate-fade-in-up {
   animation: fadeUp 280ms ease-out forwards;
 }
@@ -1514,7 +1541,7 @@ h6 {
     display: block;
     width: 260px;
     flex-shrink: 0;
-    background: linear-gradient(180deg, rgba(11, 19, 32, 0.95), rgba(8, 14, 24, 0.95));
+    background: var(--bg-shell);
     border-right: 1px solid var(--line-soft);
     position: sticky;
     top: 0;

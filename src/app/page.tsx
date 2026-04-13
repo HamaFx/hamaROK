@@ -5,15 +5,18 @@ import Link from 'next/link';
 import {
   Activity,
   ArrowRight,
-  CalendarClock,
   Database,
   FlaskConical,
-  ShieldAlert,
   ShieldCheck,
   Swords,
   Trophy,
+  Users,
+  FileBox,
+  Library,
+  AlertTriangle,
   Workflow,
 } from 'lucide-react';
+import { TierPieChart } from '@/components/Charts';
 import { formatDate, EVENT_TYPE_LABELS } from '@/lib/utils';
 import {
   EmptyState,
@@ -124,29 +127,30 @@ export default function Dashboard() {
   return (
     <div className="page-container">
       <PageHero
-        title="Command Center"
-        subtitle="A clean tactical board for ingestion, ranking quality, and event operations."
-        badges={['Mobile-first layout', 'Deterministic ranking order', 'Always-review OCR']}
+        title="Welcome back, Commander."
+        subtitle="Your command center for ingestion, ranking quality, and analytical operations."
+        badges={['Live Engine', 'Mobile-first layout', 'Deterministic ranking order']}
         actions={
           <>
             <Link href="/upload" className="btn btn-primary btn-lg">
-              <Swords size={14} /> Upload
+              <Swords size={14} /> Upload Event
             </Link>
             <Link href="/rankings" className="btn btn-secondary btn-lg">
-              <Trophy size={14} /> Rankings
+              <Trophy size={14} /> View Rankings
             </Link>
           </>
         }
       />
 
       <div className="grid-4 mb-24 animate-fade-in-up">
-        <KpiCard label="Governors" value={loading ? '—' : governorCount} hint="Tracked identities" tone="neutral" />
-        <KpiCard label="Events" value={loading ? '—' : events.length} hint="Available snapshots" tone="info" />
-        <KpiCard label="Snapshots" value={loading ? '—' : totalSnapshots} hint="Captured profiles" tone="good" />
+        <KpiCard icon={<Users size={18} />} label="Governors" value={loading ? '—' : governorCount} hint="Tracked identities" tone="neutral" />
+        <KpiCard icon={<Library size={18} />} label="Events" value={loading ? '—' : events.length} hint="Available snapshots" tone="info" />
+        <KpiCard icon={<FileBox size={18} />} label="Snapshots" value={loading ? '—' : totalSnapshots} hint="Captured profiles" tone="good" />
         <KpiCard
+          icon={<AlertTriangle size={18} />}
           label="Unresolved Rows"
-          value={rankingHealth ? unresolvedRanking : '—'}
-          hint="Need ranking identity review"
+          value={rankingHealth ? unresolvedRanking : 0}
+          hint="Require identity review"
           tone={unresolvedRanking > 0 ? 'warn' : 'good'}
         />
       </div>
@@ -180,18 +184,20 @@ export default function Dashboard() {
           </div>
         </Panel>
 
-        <Panel title="Ranking Health" subtitle="Canonical state and distribution overview">
+        <Panel title="Ranking Health" subtitle="State distribution across all active tables">
           {rankingHealth ? (
-            <>
+            <div className="flex flex-col gap-4">
               <MetricStrip
                 items={[
                   { label: 'Total Rows', value: rankingHealth.total, accent: 'teal' },
                   { label: 'Active', value: rankingHealth.statusCounts.ACTIVE || 0, accent: 'gold' },
                   { label: 'Unresolved', value: rankingHealth.statusCounts.UNRESOLVED || 0, accent: 'rose' },
-                  { label: 'Rejected', value: rankingHealth.statusCounts.REJECTED || 0, accent: 'slate' },
                 ]}
               />
-              <div className="mt-12 text-sm text-muted">
+              <div style={{ marginTop: '-40px', marginBottom: '-20px' }}>
+                <TierPieChart distribution={rankingHealth.statusCounts} />
+              </div>
+              <div className="mt-6 text-sm text-center" style={{ color: 'var(--text-3)' }}>
                 Top types:{' '}
                 {rankingHealth.rankingTypes
                   .slice(0, 4)

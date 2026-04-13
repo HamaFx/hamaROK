@@ -1,7 +1,31 @@
-import type { CSSProperties, ReactNode } from 'react';
+'use client';
+
+import { type CSSProperties, type ReactNode, useEffect, useState } from 'react';
 
 function cn(...values: Array<string | false | null | undefined>) {
   return values.filter(Boolean).join(' ');
+}
+
+export function AnimatedCounter({ value, duration = 1000 }: { value: string | number; duration?: number }) {
+  const [count, setCount] = useState(0);
+
+  useEffect(() => {
+    if (typeof value === 'string') return;
+    let startTimestamp: number | null = null;
+    const step = (timestamp: number) => {
+      if (!startTimestamp) startTimestamp = timestamp;
+      const progress = Math.min((timestamp - startTimestamp) / duration, 1);
+      const easeProgress = progress === 1 ? 1 : 1 - Math.pow(2, -10 * progress);
+      setCount(Math.floor(easeProgress * value));
+      if (progress < 1) {
+        window.requestAnimationFrame(step);
+      }
+    };
+    window.requestAnimationFrame(step);
+  }, [value, duration]);
+
+  if (typeof value === 'string') return <span>{value}</span>;
+  return <span>{count.toLocaleString()}</span>;
 }
 
 export function PageHero({
@@ -68,18 +92,23 @@ export function KpiCard({
   label,
   value,
   hint,
+  icon,
   tone = 'neutral',
+  animated = true,
 }: {
   label: string;
   value: string | number;
   hint?: string;
+  icon?: ReactNode;
   tone?: 'neutral' | 'good' | 'warn' | 'bad' | 'info';
+  animated?: boolean;
 }) {
   return (
-    <article className={cn('kpi-card', `tone-${tone}`)}>
+    <article className={cn('kpi-card', `tone-${tone}`)} style={{ position: 'relative' }}>
       <p className="kpi-label">{label}</p>
-      <p className="kpi-value">{value}</p>
+      <p className="kpi-value">{animated && typeof value === 'number' ? <AnimatedCounter value={value} /> : value}</p>
       {hint ? <p className="kpi-hint">{hint}</p> : null}
+      {icon ? <div style={{ position: 'absolute', top: '18px', right: '18px', color: 'var(--teal-2)', opacity: 0.8, filter: 'drop-shadow(0 0 6px rgba(96,165,250,0.5))' }}>{icon}</div> : null}
     </article>
   );
 }

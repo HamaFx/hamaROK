@@ -157,25 +157,27 @@ export default function AppShell({ children }: { children: ReactNode }) {
               <span>{groupLabel(activeNav.group)}</span>
             </div>
           </div>
-
           <div className="app-topbar-context">
-            <div className="app-context-chip">
-              <span className="label">Workspace</span>
-              <span className="value">{workspaceLabel}</span>
+            <Link href="/settings" className="app-context-chip workspace-chip" style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px', border: '1px solid rgba(96,165,250,0.3)', background: 'rgba(96,165,250,0.1)', padding: '6px 16px', borderRadius: '100px', textDecoration: 'none', transition: 'all 200ms ease' }}>
+              <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10b981', boxShadow: '0 0 10px #10b981' }} />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                <span className="label" style={{ fontSize: '0.6rem', textTransform: 'uppercase', color: 'var(--teal-2)', fontWeight: '700', letterSpacing: '0.05em' }}>Workspace</span>
+                <span className="value" style={{ fontSize: '0.85rem', color: '#fff', fontWeight: '500' }}>{workspaceLabel}</span>
+              </div>
+            </Link>
+            <div className="app-context-chip muted" style={{ display: 'flex', flexDirection: 'column', marginLeft: '8px' }}>
+              <span className="label" style={{ fontSize: '0.65rem', textTransform: 'uppercase' }}>Access Key</span>
+              <span className="value" style={{ fontSize: '0.85rem' }}>{accessLabel}</span>
             </div>
-            <div className="app-context-chip muted">
-              <span className="label">Access</span>
-              <span className="value">{accessLabel}</span>
-            </div>
-            <div className="app-topbar-right">
+            <div className="app-topbar-right" style={{ marginLeft: '12px' }}>
               <button className="icon-btn" type="button" aria-label="Search">
-                <Search size={16} />
+                <Search size={18} />
               </button>
               <Link className="icon-btn" href="/insights" aria-label="Reports">
-                <FileBarChart2 size={16} />
+                <FileBarChart2 size={18} />
               </Link>
               <Link className="icon-btn" href="/settings" aria-label="Settings">
-                <Cog size={16} />
+                <Cog size={18} />
               </Link>
             </div>
           </div>
