@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
@@ -13,7 +14,6 @@ import {
   FlaskConical,
   Home,
   ImageUp,
-  LayoutGrid,
   Radar,
   Search,
   ShieldCheck,
@@ -101,16 +101,16 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const [accessLabel, setAccessLabel] = useState('No access token');
 
   useEffect(() => {
-    const syncScope = () => {
+    const syncAccessContext = () => {
       const workspaceId = localStorage.getItem('workspaceId') || '';
       const token = localStorage.getItem('workspaceToken') || '';
       setWorkspaceLabel(workspaceId ? `Workspace ${workspaceId.slice(0, 8)}...` : 'No workspace');
-      setAccessLabel(token ? 'Scoped link active' : 'No access token');
+      setAccessLabel(token ? 'Secure link active' : 'No access token');
     };
 
-    syncScope();
-    window.addEventListener('storage', syncScope);
-    return () => window.removeEventListener('storage', syncScope);
+    syncAccessContext();
+    window.addEventListener('storage', syncAccessContext);
+    return () => window.removeEventListener('storage', syncAccessContext);
   }, []);
 
   const grouped = useMemo(() => {
@@ -134,15 +134,9 @@ export default function AppShell({ children }: { children: ReactNode }) {
       <aside className="app-sidebar" aria-label="Primary">
         <div className="app-brand-wrap">
           <Link href="/" className="app-brand">
-            <span className="app-brand-mark" aria-hidden>
-              <LayoutGrid size={18} strokeWidth={2.2} />
-            </span>
-            <span>
-              <strong>RoK Command Center</strong>
-              <small>Tactical Pro v2</small>
-            </span>
+            <Image src="/hana-logo.svg" alt="Hana logo" className="app-brand-logo" width={176} height={44} priority />
           </Link>
-          <span className="app-badge">LIVE OPS</span>
+          <span className="app-badge">HANA OPS</span>
         </div>
 
         <div className="app-sidebar-scroll">
@@ -154,9 +148,14 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
       <div className="app-main">
         <header className="app-topbar">
-          <div className="app-topbar-heading">
-            <strong>{activeNav.label}</strong>
-            <span>{groupLabel(activeNav.group)}</span>
+          <div className="app-topbar-main">
+            <Link href="/" className="app-header-brand">
+              <Image src="/hana-logo.svg" alt="Hana logo" className="app-header-logo" width={176} height={44} priority />
+            </Link>
+            <div className="app-topbar-heading">
+              <strong>{activeNav.label}</strong>
+              <span>{groupLabel(activeNav.group)}</span>
+            </div>
           </div>
 
           <div className="app-topbar-context">

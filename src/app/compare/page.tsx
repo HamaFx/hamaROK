@@ -170,7 +170,7 @@ function CompareContent() {
         }
       />
 
-      <Panel title="Comparison Scope" subtitle="Pick baseline and current event snapshots">
+      <Panel title="Comparison Setup" subtitle="Pick baseline and current event snapshots">
         <FilterBar>
           <div className="form-group" style={{ flex: 1, minWidth: 220, marginBottom: 0 }}>
             <label className="form-label">Event A (Baseline)</label>

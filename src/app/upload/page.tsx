@@ -840,8 +840,8 @@ export default function UploadPage() {
       </div>
 
       <Panel
-        title="Step 1 · Event + Access Scope"
-        subtitle="Workspace-scoped access is required for v2 review queues."
+        title="Step 1 · Event + Workspace Access"
+        subtitle="Workspace link access is required for v2 review queues."
         className="mb-24"
       >
         <div className="flex gap-12" style={{ flexWrap: 'wrap', alignItems: 'flex-end' }}>

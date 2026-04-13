@@ -241,7 +241,7 @@ export default function RankingReviewPage() {
         }
       />
 
-      <Panel title="Queue Scope" subtitle="Workspace-secured unresolved ranking rows" className="mb-24">
+      <Panel title="Queue Access" subtitle="Workspace-secured unresolved ranking rows" className="mb-24">
         <div className="grid-2">
           <div className="form-group" style={{ marginBottom: 0 }}>
             <label className="form-label">Workspace ID</label>

@@ -201,7 +201,7 @@ export default function Dashboard() {
             </>
           ) : (
             <EmptyState
-              title="Ranking metrics require workspace scope"
+              title="Ranking metrics require workspace access"
               description="Set workspace ID and access token to unlock ranking health modules."
             />
           )}

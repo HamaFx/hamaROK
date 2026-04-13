@@ -468,7 +468,7 @@ export default function ReviewQueuePage() {
         badges={['Always-review policy', 'Field-level edits', 'Golden fixture labeling']}
       />
 
-      <Panel title="Queue Scope" subtitle="Workspace token controls queue visibility" className="mb-24">
+      <Panel title="Queue Access" subtitle="Workspace link token controls queue visibility" className="mb-24">
         <div className="grid-2">
           <div className="form-group" style={{ marginBottom: 0 }}>
             <label className="form-label">Workspace ID</label>

@@ -182,7 +182,7 @@ export default function InsightsPage() {
         }
       />
 
-      <Panel title="Analytics Scope" subtitle="Workspace-scoped v2 analytics endpoint">
+      <Panel title="Analytics Context" subtitle="Workspace-linked v2 analytics endpoint">
         <div className="grid-2">
           <div className="form-group">
             <label className="form-label">Workspace ID</label>

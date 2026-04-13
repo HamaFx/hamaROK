@@ -1,16 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  ArrowLeft,
-  ArrowRight,
-  Filter,
-  Layers,
-  RefreshCw,
-  Search,
-  SlidersHorizontal,
-  TableProperties,
-} from 'lucide-react';
+import { ArrowLeft, ArrowRight, Filter, Layers, RefreshCw, Search, SlidersHorizontal, TableProperties } from 'lucide-react';
 import {
   ActionToolbar,
   DataTableLite,
@@ -279,48 +270,42 @@ export default function RankingsPage() {
             <button className="btn btn-secondary" onClick={refresh} disabled={loading}>
               <RefreshCw size={14} /> {loading ? 'Loading...' : 'Refresh'}
             </button>
-            <button className="btn btn-secondary" onClick={() => setDense((prev) => !prev)}>
-              <SlidersHorizontal size={14} /> {dense ? 'Comfortable' : 'Dense'}
-            </button>
-            <button className="btn btn-secondary" onClick={() => setShowMetaCols((prev) => !prev)}>
-              <Layers size={14} /> {showMetaCols ? 'Hide Meta' : 'Show Meta'}
-            </button>
           </>
         }
       />
 
-      <Panel title="Scope + Filters" subtitle="Workspace scoped ranking list with stable cursor pagination" className="mb-24">
-        <div className="grid-2">
-          <div className="form-group" style={{ marginBottom: 0 }}>
-            <label className="form-label">Workspace ID</label>
+      <section className="rankings-filter-strip mb-24">
+        <FilterBar>
+          <div className="form-group" style={{ marginBottom: 0, minWidth: 190 }}>
+            <label className="form-label">Workspace</label>
             <input className="form-input" value={workspaceId} onChange={(e) => setWorkspaceId(e.target.value)} />
           </div>
-          <div className="form-group" style={{ marginBottom: 0 }}>
+          <div className="form-group" style={{ marginBottom: 0, minWidth: 190 }}>
             <label className="form-label">Access Token</label>
             <input className="form-input" value={accessToken} onChange={(e) => setAccessToken(e.target.value)} />
           </div>
-        </div>
-
-        <FilterBar className="mt-12">
-          <div className="form-group" style={{ marginBottom: 0, minWidth: 180 }}>
+          <div className="form-group" style={{ marginBottom: 0, minWidth: 170 }}>
             <label className="form-label">Event ID</label>
             <input className="form-input" value={eventId} onChange={(e) => setEventId(e.target.value)} />
           </div>
-          <div className="form-group" style={{ marginBottom: 0, minWidth: 180 }}>
+          <div className="form-group" style={{ marginBottom: 0, minWidth: 170 }}>
             <label className="form-label">Ranking Type</label>
             <input className="form-input" value={rankingType} onChange={(e) => setRankingType(e.target.value)} />
           </div>
-          <div className="form-group" style={{ marginBottom: 0, minWidth: 180 }}>
+          <div className="form-group" style={{ marginBottom: 0, minWidth: 170 }}>
             <label className="form-label">Metric Key</label>
             <input className="form-input" value={metricKey} onChange={(e) => setMetricKey(e.target.value)} />
           </div>
           <div className="search-bar" style={{ minWidth: 220 }}>
             <Search size={14} className="search-icon" />
-            <input placeholder="Search governor or alias..." value={search} onChange={(e) => setSearch(e.target.value)} />
+            <input placeholder="Search governor..." value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
+          <button className="btn btn-secondary btn-sm" onClick={refresh} disabled={loading}>
+            <Filter size={14} /> Apply
+          </button>
         </FilterBar>
 
-        <FilterBar className="mt-12">
+        <FilterBar className="mt-8">
           {ALL_STATUSES.map((status) => (
             <button
               key={status}
@@ -331,11 +316,8 @@ export default function RankingsPage() {
               {status}
             </button>
           ))}
-          <button className="btn btn-secondary btn-sm" onClick={refresh} disabled={loading}>
-            <Filter size={14} /> Apply
-          </button>
         </FilterBar>
-      </Panel>
+      </section>
 
       {summary ? (
         <div className="grid-4 mb-24">
@@ -386,6 +368,12 @@ export default function RankingsPage() {
         subtitle="Order: metricValue DESC, sourceRank ASC NULLS LAST, normalizedName ASC, rowId ASC"
         actions={
           <ActionToolbar>
+            <button className="btn btn-secondary btn-sm" onClick={() => setDense((prev) => !prev)}>
+              <SlidersHorizontal size={14} /> {dense ? 'Comfortable' : 'Dense'}
+            </button>
+            <button className="btn btn-secondary btn-sm" onClick={() => setShowMetaCols((prev) => !prev)}>
+              <Layers size={14} /> {showMetaCols ? 'Hide Meta' : 'Show Meta'}
+            </button>
             <button className="btn btn-secondary btn-sm" onClick={goBack} disabled={loading || cursorStack.length <= 1}>
               <ArrowLeft size={14} /> Prev
             </button>
