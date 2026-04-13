@@ -1,11 +1,13 @@
 import type { Metadata } from 'next';
 import './globals.css';
-import Navbar from '@/components/Navbar';
+import AppShell from '@/components/AppShell';
 
 export const metadata: Metadata = {
-  title: 'RoK Command Center — Alliance Management Tool',
-  description: 'Track Rise of Kingdoms alliance performance. Analyze governor stats via screenshot OCR, compare KvK snapshots, and rank warriors.',
-  keywords: 'Rise of Kingdoms, RoK, alliance, KvK, governor, analytics, OCR',
+  title: 'RoK Command Center v2 — Tactical Operations Dashboard',
+  description:
+    'Track Rise of Kingdoms alliance performance with ranking analytics, OCR-assisted ingestion, and deterministic comparison workflows.',
+  keywords:
+    'Rise of Kingdoms, RoK, alliance analytics, ranking review, OCR command center, KvK intelligence',
 };
 
 export default function RootLayout({
@@ -16,8 +18,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <Navbar />
-        <main>{children}</main>
+        <AppShell>{children}</AppShell>
       </body>
     </html>
   );

@@ -1,6 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { LineChart, Share2, Sparkles } from 'lucide-react';
+import { DataTableLite, EmptyState, FilterBar, KpiCard, PageHero, Panel, StatusPill } from '@/components/ui/primitives';
 
 interface EventOption {
   id: string;
@@ -57,6 +59,11 @@ interface AnalyticsPayload {
       snapshots: number;
     };
   }>;
+  seriesMeta?: Array<{
+    label: string;
+    metricKey: string;
+    colorToken: string;
+  }>;
 }
 
 export default function InsightsPage() {
@@ -72,10 +79,8 @@ export default function InsightsPage() {
   const [rankboardLink, setRankboardLink] = useState('');
 
   useEffect(() => {
-    const savedWorkspace = localStorage.getItem('workspaceId') || '';
-    const savedToken = localStorage.getItem('workspaceToken') || '';
-    setWorkspaceId(savedWorkspace);
-    setAccessToken(savedToken);
+    setWorkspaceId(localStorage.getItem('workspaceId') || '');
+    setAccessToken(localStorage.getItem('workspaceToken') || '');
   }, []);
 
   const headers = useMemo(
@@ -89,19 +94,13 @@ export default function InsightsPage() {
   const loadEvents = useCallback(async () => {
     if (!workspaceId || !accessToken) return;
     try {
-      const res = await fetch(`/api/v2/events?workspaceId=${workspaceId}&limit=200`, {
-        headers,
-      });
+      const res = await fetch(`/api/v2/events?workspaceId=${workspaceId}&limit=200`, { headers });
       const payload = await res.json();
       if (!res.ok) throw new Error(payload?.error?.message || 'Failed to load events.');
-      const next = (payload.data || []) as EventOption[];
-      setEvents(next);
-      if (!eventA && next.length >= 2) {
-        setEventA(next[1].id);
-      }
-      if (!eventB && next.length >= 1) {
-        setEventB(next[0].id);
-      }
+      const nextEvents = (payload.data || []) as EventOption[];
+      setEvents(nextEvents);
+      if (!eventA && nextEvents.length >= 2) setEventA(nextEvents[1].id);
+      if (!eventB && nextEvents.length >= 1) setEventB(nextEvents[0].id);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load events.');
     }
@@ -125,16 +124,11 @@ export default function InsightsPage() {
       localStorage.setItem('workspaceId', workspaceId);
       localStorage.setItem('workspaceToken', accessToken);
 
-      const params = new URLSearchParams({
-        workspaceId,
-        topN: String(topN),
-      });
+      const params = new URLSearchParams({ workspaceId, topN: String(topN) });
       if (eventA) params.set('eventA', eventA);
       if (eventB) params.set('eventB', eventB);
 
-      const res = await fetch(`/api/v2/analytics?${params.toString()}`, {
-        headers,
-      });
+      const res = await fetch(`/api/v2/analytics?${params.toString()}`, { headers });
       const payload = await res.json();
       if (!res.ok) throw new Error(payload?.error?.message || 'Failed to load analytics.');
       setAnalytics(payload.data as AnalyticsPayload);
@@ -148,7 +142,6 @@ export default function InsightsPage() {
 
   const createRankboard = async () => {
     if (!analytics?.selectedComparison || !workspaceId || !accessToken) return;
-
     setError('');
     setRankboardLink('');
 
@@ -174,12 +167,22 @@ export default function InsightsPage() {
 
   return (
     <div className="page-container">
-      <div className="page-header">
-        <h1>📡 Advanced Insights</h1>
-        <p>Top-N contributions, trend lines across scans, and cross-kingdom slices.</p>
-      </div>
+      <PageHero
+        title="Advanced Insights"
+        subtitle="Top-N contribution analysis, trend continuity, and cross-kingdom slices."
+        actions={
+          <>
+            <button className="btn btn-secondary" onClick={loadEvents}>
+              <LineChart size={14} /> Refresh Events
+            </button>
+            <button className="btn btn-primary" onClick={loadAnalytics} disabled={loading}>
+              <Sparkles size={14} /> {loading ? 'Loading...' : 'Load Insights'}
+            </button>
+          </>
+        }
+      />
 
-      <div className="card card-no-hover mb-24">
+      <Panel title="Analytics Scope" subtitle="Workspace-scoped v2 analytics endpoint">
         <div className="grid-2">
           <div className="form-group">
             <label className="form-label">Workspace ID</label>
@@ -191,26 +194,30 @@ export default function InsightsPage() {
           </div>
         </div>
 
-        <div className="grid-3">
-          <div className="form-group">
+        <FilterBar>
+          <div className="form-group" style={{ minWidth: 220, marginBottom: 0 }}>
             <label className="form-label">Event A</label>
             <select className="form-select" value={eventA} onChange={(e) => setEventA(e.target.value)}>
               <option value="">Auto</option>
               {events.map((event) => (
-                <option key={event.id} value={event.id}>{event.name}</option>
+                <option key={event.id} value={event.id}>
+                  {event.name}
+                </option>
               ))}
             </select>
           </div>
-          <div className="form-group">
+          <div className="form-group" style={{ minWidth: 220, marginBottom: 0 }}>
             <label className="form-label">Event B</label>
             <select className="form-select" value={eventB} onChange={(e) => setEventB(e.target.value)}>
               <option value="">Auto</option>
               {events.map((event) => (
-                <option key={event.id} value={event.id}>{event.name}</option>
+                <option key={event.id} value={event.id}>
+                  {event.name}
+                </option>
               ))}
             </select>
           </div>
-          <div className="form-group">
+          <div className="form-group" style={{ width: 120, marginBottom: 0 }}>
             <label className="form-label">Top N</label>
             <input
               className="form-input"
@@ -221,126 +228,136 @@ export default function InsightsPage() {
               onChange={(e) => setTopN(Math.max(3, Math.min(50, Number(e.target.value) || 10)))}
             />
           </div>
-        </div>
+        </FilterBar>
 
-        <div className="flex gap-12">
-          <button className="btn btn-primary" onClick={loadAnalytics} disabled={loading}>
-            {loading ? 'Loading...' : 'Load Insights'}
-          </button>
-          <button className="btn btn-secondary" onClick={loadEvents}>Refresh Events</button>
-        </div>
-
-        {error && <div className="mt-16 delta-negative">{error}</div>}
-        {rankboardLink && (
-          <div className="mt-16 text-sm">
-            Rankboard link: <a href={rankboardLink} target="_blank" rel="noreferrer">{rankboardLink}</a>
+        {analytics?.seriesMeta && analytics.seriesMeta.length > 0 ? (
+          <div className="mt-12">
+            <FilterBar>
+              {analytics.seriesMeta.map((series) => (
+                <StatusPill key={series.metricKey} label={`${series.label} (${series.metricKey})`} tone="info" />
+              ))}
+            </FilterBar>
           </div>
-        )}
-      </div>
+        ) : null}
 
-      {analytics?.selectedComparison && (
+        {error ? <div className="mt-16 delta-negative">{error}</div> : null}
+        {rankboardLink ? (
+          <div className="mt-12 text-sm">
+            Rankboard: <a href={rankboardLink}>{rankboardLink}</a>
+          </div>
+        ) : null}
+      </Panel>
+
+      {analytics?.selectedComparison ? (
         <>
-          <div className="grid-3 mb-24">
-            <div className="card stats-card">
-              <div className="stats-label">Compared Governors</div>
-              <div className="stats-value">{analytics.selectedComparison.summary.totalGovernors}</div>
-            </div>
-            <div className="card stats-card">
-              <div className="stats-label">Avg Score</div>
-              <div className="stats-value">{analytics.selectedComparison.summary.avgWarriorScore}%</div>
-            </div>
-            <div className="card stats-card">
-              <div className="stats-label">Anomalies</div>
-              <div className="stats-value">{analytics.selectedComparison.summary.anomalyCount}</div>
-            </div>
+          <div className="grid-3 mt-24 mb-24">
+            <KpiCard
+              label="Compared Governors"
+              value={analytics.selectedComparison.summary.totalGovernors}
+              hint="Matched between selected events"
+              tone="info"
+            />
+            <KpiCard
+              label="Average Score"
+              value={`${analytics.selectedComparison.summary.avgWarriorScore}%`}
+              hint="Weighted total score"
+              tone="good"
+            />
+            <KpiCard
+              label="Anomalies"
+              value={analytics.selectedComparison.summary.anomalyCount}
+              hint="Potential regressions or outliers"
+              tone={analytics.selectedComparison.summary.anomalyCount > 0 ? 'warn' : 'good'}
+            />
           </div>
 
-          <div className="card card-no-hover mb-24">
-            <div className="flex justify-between items-center mb-16">
-              <h3>Top Contributors</h3>
-              <button className="btn btn-primary btn-sm" onClick={createRankboard}>Create Shareable Rankboard</button>
-            </div>
-            <div className="data-table-wrap">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Governor</th>
-                    <th>Score</th>
-                    <th>Actual DKP</th>
-                    <th>KP Δ</th>
-                    <th>Deads Δ</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {analytics.selectedComparison.topContributors.map((item) => (
-                    <tr key={item.governorId}>
-                      <td>{item.governorName}</td>
-                      <td>{item.score}%</td>
-                      <td>{item.actualDkp.toLocaleString()}</td>
-                      <td>{item.killPointsDelta.toLocaleString()}</td>
-                      <td>{item.deadsDelta.toLocaleString()}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          <Panel
+            title="Top Contributors"
+            subtitle="Top-N by warrior score"
+            actions={
+              <button className="btn btn-primary btn-sm" onClick={createRankboard}>
+                <Share2 size={14} /> Create Shareable Rankboard
+              </button>
+            }
+            className="mb-24"
+          >
+            <DataTableLite
+              rows={analytics.selectedComparison.topContributors}
+              rowKey={(row) => row.governorId}
+              columns={[
+                { key: 'governor', label: 'Governor', render: (row) => row.governorName },
+                { key: 'score', label: 'Score', className: 'num', render: (row) => `${row.score}%` },
+                {
+                  key: 'actual',
+                  label: 'Actual DKP',
+                  className: 'num',
+                  render: (row) => row.actualDkp.toLocaleString(),
+                },
+                {
+                  key: 'kp',
+                  label: 'KP Delta',
+                  className: 'num',
+                  render: (row) => row.killPointsDelta.toLocaleString(),
+                },
+                {
+                  key: 'deads',
+                  label: 'Deads Delta',
+                  className: 'num',
+                  render: (row) => row.deadsDelta.toLocaleString(),
+                },
+              ]}
+            />
+          </Panel>
         </>
-      )}
+      ) : null}
 
-      {analytics && (
+      {analytics ? (
         <div className="grid-2">
-          <div className="card card-no-hover">
-            <h3 className="mb-16">Trend Lines</h3>
-            <div className="data-table-wrap">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Pair</th>
-                    <th>Avg Score</th>
-                    <th>Governors</th>
-                    <th>Anomalies</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {analytics.trendLines.map((line, idx) => (
-                    <tr key={`${line.eventA.name}-${line.eventB.name}-${idx}`}>
-                      <td>{line.eventA.name} → {line.eventB.name}</td>
-                      <td>{line.avgWarriorScore}%</td>
-                      <td>{line.totalGovernors}</td>
-                      <td>{line.anomalyCount}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          <Panel title="Trend Lines" subtitle="Rolling event-pair averages">
+            <DataTableLite
+              rows={analytics.trendLines}
+              rowKey={(row, index) => `${row.eventA.name}-${row.eventB.name}-${index}`}
+              columns={[
+                {
+                  key: 'pair',
+                  label: 'Event Pair',
+                  render: (row) => `${row.eventA.name} -> ${row.eventB.name}`,
+                },
+                { key: 'score', label: 'Avg Score', className: 'num', render: (row) => `${row.avgWarriorScore}%` },
+                { key: 'gov', label: 'Governors', className: 'num', render: (row) => row.totalGovernors },
+                { key: 'anomaly', label: 'Anomalies', className: 'num', render: (row) => row.anomalyCount },
+              ]}
+            />
+          </Panel>
 
-          <div className="card card-no-hover">
-            <h3 className="mb-16">Kingdom/KvK Comparative Slice</h3>
-            <div className="data-table-wrap">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Kingdom</th>
-                    <th>Latest Avg</th>
-                    <th>Governors</th>
-                    <th>Events</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {analytics.kingdomSlices.map((slice) => (
-                    <tr key={slice.workspaceId}>
-                      <td>{slice.kingdomTag ? `[${slice.kingdomTag}] ` : ''}{slice.name}</td>
-                      <td>{slice.latestAvgWarriorScore ?? '—'}</td>
-                      <td>{slice.totals.governors}</td>
-                      <td>{slice.totals.events}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          <Panel title="Kingdom Slice" subtitle="Latest comparative score per workspace">
+            <DataTableLite
+              rows={analytics.kingdomSlices}
+              rowKey={(row) => row.workspaceId}
+              columns={[
+                {
+                  key: 'kingdom',
+                  label: 'Kingdom',
+                  render: (row) => `${row.kingdomTag ? `[${row.kingdomTag}] ` : ''}${row.name}`,
+                },
+                {
+                  key: 'avg',
+                  label: 'Latest Avg',
+                  className: 'num',
+                  render: (row) => row.latestAvgWarriorScore ?? '—',
+                },
+                { key: 'gov', label: 'Governors', className: 'num', render: (row) => row.totals.governors },
+                { key: 'events', label: 'Events', className: 'num', render: (row) => row.totals.events },
+              ]}
+            />
+          </Panel>
+        </div>
+      ) : (
+        <div className="mt-24">
+          <EmptyState
+            title="Insights not loaded"
+            description="Provide workspace token and click Load Insights to render trend and contribution analysis."
+          />
         </div>
       )}
     </div>

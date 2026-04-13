@@ -1,8 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { Search, TrendingUp } from 'lucide-react';
 import { abbreviateNumber } from '@/lib/utils';
 import { GrowthLineChart } from '@/components/Charts';
+import { DataTableLite, EmptyState, FilterBar, KpiCard, PageHero, Panel, SkeletonSet } from '@/components/ui/primitives';
 
 interface GovernorItem {
   id: string;
@@ -44,10 +46,12 @@ export default function GovernorsPage() {
     }
   };
 
-  useEffect(() => { fetchGovernors(); }, []);
+  useEffect(() => {
+    fetchGovernors();
+  }, []);
 
   useEffect(() => {
-    const timeout = setTimeout(() => fetchGovernors(search), 300);
+    const timeout = setTimeout(() => fetchGovernors(search), 250);
     return () => clearTimeout(timeout);
   }, [search]);
 
@@ -57,8 +61,10 @@ export default function GovernorsPage() {
       setTimeline(null);
       return;
     }
+
     setExpandedId(id);
     setTimelineLoading(true);
+
     try {
       const res = await fetch(`/api/governors/${id}/timeline`);
       const data = await res.json();
@@ -70,99 +76,121 @@ export default function GovernorsPage() {
     }
   };
 
+  const avgSnapshots = useMemo(() => {
+    if (governors.length === 0) return 0;
+    return Math.round(governors.reduce((sum, governor) => sum + governor.snapshotCount, 0) / governors.length);
+  }, [governors]);
+
   return (
     <div className="page-container">
-      <div className="page-header">
-        <h1>👥 Governor Roster</h1>
-        <p>{total} governors tracked</p>
+      <PageHero
+        title="Governor Registry"
+        subtitle="Identity-level roster with timeline drill-down for growth and contribution trends."
+      />
+
+      <div className="grid-3 mb-24">
+        <KpiCard label="Tracked Governors" value={total} hint="Roster identities indexed" tone="info" />
+        <KpiCard label="Visible in Filter" value={governors.length} hint="Current table row count" tone="neutral" />
+        <KpiCard label="Avg Snapshots" value={avgSnapshots} hint="Average snapshots per governor" tone="good" />
       </div>
 
-      <div className="flex justify-between items-center mb-24" style={{ flexWrap: 'wrap', gap: 12 }}>
-        <div className="search-bar" style={{ maxWidth: 400 }}>
-          <span className="search-icon">🔍</span>
-          <input
-            placeholder="Search by name or ID..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
+      <Panel
+        title="Governor Table"
+        subtitle="Search by governor name or governor ID"
+        actions={
+          <div className="search-bar" style={{ maxWidth: 380 }}>
+            <Search size={14} className="search-icon" />
+            <input
+              placeholder="Search governor..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+        }
+      >
+        {loading ? (
+          <SkeletonSet rows={5} />
+        ) : governors.length === 0 ? (
+          <EmptyState
+            title={search ? 'No matching governors' : 'No governors yet'}
+            description={search ? 'Try another search term.' : 'Upload profile screenshots to build the roster.'}
           />
-        </div>
-        <span className="text-muted text-sm">
-          {governors.length} of {total} shown
-        </span>
-      </div>
+        ) : (
+          <DataTableLite
+            stickyFirst
+            rows={governors}
+            rowKey={(row) => row.id}
+            columns={[
+              {
+                key: 'rank',
+                label: '#',
+                className: 'num',
+                render: (_row, index) => index + 1,
+              },
+              {
+                key: 'governor',
+                label: 'Governor',
+                render: (row) => (
+                  <>
+                    <strong>{row.name}</strong>
+                    <div className="text-sm text-muted">ID {row.governorId}</div>
+                  </>
+                ),
+              },
+              {
+                key: 'alliance',
+                label: 'Alliance',
+                render: (row) => row.alliance || '—',
+              },
+              {
+                key: 'power',
+                label: 'Latest Power',
+                className: 'num',
+                render: (row) => abbreviateNumber(row.latestPower),
+              },
+              {
+                key: 'snapshots',
+                label: 'Snapshots',
+                className: 'num',
+                render: (row) => row.snapshotCount,
+              },
+              {
+                key: 'action',
+                label: 'Action',
+                render: (row) => (
+                  <button className="btn btn-secondary btn-sm" onClick={() => toggleExpand(row.id)}>
+                    <TrendingUp size={13} /> {expandedId === row.id ? 'Hide timeline' : 'View timeline'}
+                  </button>
+                ),
+              },
+            ]}
+          />
+        )}
+      </Panel>
 
-      {loading ? (
-        <div className="card card-no-hover">
-          {[1, 2, 3, 4, 5].map((i) => (
-            <div key={i} className="shimmer shimmer-row" style={{ margin: '8px 16px' }} />
-          ))}
-        </div>
-      ) : governors.length === 0 ? (
-        <div className="empty-state">
-          <div className="empty-icon">👥</div>
-          <h3>{search ? 'No matching governors' : 'No governors yet'}</h3>
-          <p>{search ? 'Try a different search.' : 'Upload screenshots to build your roster.'}</p>
-        </div>
-      ) : (
-        <div className="data-table-wrap">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Governor</th>
-                <th>Governor ID</th>
-                <th>Alliance</th>
-                <th>Latest Power</th>
-                <th>Snapshots</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {governors.map((gov, i) => (
-                <>
-                  <tr key={gov.id} style={{ cursor: 'pointer' }} onClick={() => toggleExpand(gov.id)}>
-                    <td className="text-muted">{i + 1}</td>
-                    <td><strong>{gov.name}</strong></td>
-                    <td className="num text-muted">{gov.governorId}</td>
-                    <td>{gov.alliance || '—'}</td>
-                    <td className="num">{abbreviateNumber(gov.latestPower)}</td>
-                    <td className="text-muted">{gov.snapshotCount} events</td>
-                    <td>
-                      <button className="btn btn-secondary btn-sm">
-                        {expandedId === gov.id ? '▲ Hide' : '▼ Timeline'}
-                      </button>
-                    </td>
-                  </tr>
-                  {expandedId === gov.id && (
-                    <tr key={`${gov.id}-timeline`}>
-                      <td colSpan={7} style={{ padding: 0, background: 'var(--color-bg-tertiary)' }}>
-                        <div style={{ padding: 24 }}>
-                          {timelineLoading ? (
-                            <div className="shimmer shimmer-card" />
-                          ) : timeline && timeline.length > 0 ? (
-                            <GrowthLineChart
-                              timeline={timeline.map((t) => ({
-                                eventName: t.event.name,
-                                power: Number(t.power),
-                                killPoints: Number(t.killPoints),
-                                deads: Number(t.deads),
-                              }))}
-                            />
-                          ) : (
-                            <div className="text-muted" style={{ textAlign: 'center', padding: 24 }}>
-                              No timeline data available
-                            </div>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  )}
-                </>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      {expandedId ? (
+        <Panel title="Governor Timeline" subtitle="Power, kill points, and deads across events" className="mt-24">
+          {timelineLoading ? (
+            <SkeletonSet rows={3} />
+          ) : timeline && timeline.length > 0 ? (
+            <GrowthLineChart
+              timeline={timeline.map((entry) => ({
+                eventName: entry.event.name,
+                power: Number(entry.power),
+                killPoints: Number(entry.killPoints),
+                deads: Number(entry.deads),
+              }))}
+            />
+          ) : (
+            <EmptyState title="No timeline data" description="This governor has no comparable progression history yet." />
+          )}
+          <FilterBar className="mt-16">
+            <button className="btn btn-secondary btn-sm" onClick={() => setExpandedId(null)}>
+              Close Timeline
+            </button>
+          </FilterBar>
+        </Panel>
+      ) : null}
     </div>
   );
 }

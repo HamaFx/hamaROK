@@ -76,6 +76,9 @@ export interface ListCanonicalRankingsInput {
   workspaceId: string;
   eventId?: string | null;
   rankingType?: string | null;
+  metricKey?: string | null;
+  q?: string | null;
+  sort?: string | null;
   status?: RankingSnapshotStatus[];
   limit: number;
   cursor?: string | null;
@@ -1312,11 +1315,49 @@ export async function listRankingReviewRows(args: {
 }
 
 export async function listCanonicalRankings(args: ListCanonicalRankingsInput) {
+  const searchRaw = args.q?.trim() || null;
+  const searchNormalized = searchRaw ? normalizeGovernorAlias(searchRaw) : null;
+  const searchDigits = searchRaw ? searchRaw.replace(/[^0-9]/g, '') : '';
+
   const where: Prisma.RankingSnapshotWhereInput = {
     workspaceId: args.workspaceId,
     ...(args.eventId ? { eventId: args.eventId } : {}),
     ...(args.rankingType ? { rankingType: normalizeRankingType(args.rankingType) } : {}),
+    ...(args.metricKey ? { metricKey: normalizeMetricKey(args.metricKey) } : {}),
     ...(args.status && args.status.length > 0 ? { status: { in: args.status } } : {}),
+    ...(searchRaw
+      ? {
+          OR: [
+            {
+              governorNameRaw: {
+                contains: searchRaw,
+                mode: Prisma.QueryMode.insensitive,
+              },
+            },
+            ...(searchNormalized
+              ? [
+                  {
+                    governorNameNormalized: {
+                      contains: searchNormalized,
+                      mode: Prisma.QueryMode.insensitive,
+                    },
+                  },
+                ]
+              : []),
+            ...(searchDigits.length > 0
+              ? [
+                  {
+                    governor: {
+                      governorId: {
+                        contains: searchDigits,
+                      },
+                    },
+                  },
+                ]
+              : []),
+          ],
+        }
+      : {}),
   };
 
   const [rows, total] = await Promise.all([
@@ -1418,12 +1459,14 @@ export async function getRankingSummary(args: {
   workspaceId: string;
   eventId?: string | null;
   rankingType?: string | null;
+  metricKey?: string | null;
   topN: number;
 }) {
   const where: Prisma.RankingSnapshotWhereInput = {
     workspaceId: args.workspaceId,
     ...(args.eventId ? { eventId: args.eventId } : {}),
     ...(args.rankingType ? { rankingType: normalizeRankingType(args.rankingType) } : {}),
+    ...(args.metricKey ? { metricKey: normalizeMetricKey(args.metricKey) } : {}),
   };
 
   const [statusCounts, typeCounts, topRows] = await Promise.all([
@@ -1482,6 +1525,52 @@ export async function getRankingSummary(args: {
     )
   );
 
+  const computeBucket = (limit: number) => {
+    const bucket = sortedTop.slice(0, limit);
+    const totalMetric = bucket.reduce((sum, row) => sum + row.metricValue, BigInt(0));
+    const averageMetric =
+      bucket.length > 0 ? totalMetric / BigInt(bucket.length) : BigInt(0);
+
+    return {
+      count: bucket.length,
+      totalMetric: totalMetric.toString(),
+      averageMetric: averageMetric.toString(),
+    };
+  };
+
+  const distributionMap = new Map<
+    string,
+    {
+      rankingType: string;
+      metricKey: string;
+      count: number;
+      max: bigint;
+      min: bigint;
+      total: bigint;
+    }
+  >();
+
+  for (const row of topRows) {
+    const key = `${row.rankingType}::${row.metricKey}`;
+    const existing = distributionMap.get(key);
+    if (!existing) {
+      distributionMap.set(key, {
+        rankingType: row.rankingType,
+        metricKey: row.metricKey,
+        count: 1,
+        max: row.metricValue,
+        min: row.metricValue,
+        total: row.metricValue,
+      });
+      continue;
+    }
+
+    existing.count += 1;
+    if (row.metricValue > existing.max) existing.max = row.metricValue;
+    if (row.metricValue < existing.min) existing.min = row.metricValue;
+    existing.total += row.metricValue;
+  }
+
   return {
     total: topRows.length,
     statusCounts: statusCounts.reduce<Record<string, number>>((acc, item) => {
@@ -1506,6 +1595,21 @@ export async function getRankingSummary(args: {
       status: row.status,
       updatedAt: row.updatedAt.toISOString(),
     })),
+    topBuckets: {
+      top100: computeBucket(100),
+      top200: computeBucket(200),
+      top400: computeBucket(400),
+    },
+    metricDistributions: Array.from(distributionMap.values())
+      .map((entry) => ({
+        rankingType: entry.rankingType,
+        metricKey: entry.metricKey,
+        count: entry.count,
+        min: entry.min.toString(),
+        max: entry.max.toString(),
+        average: (entry.total / BigInt(Math.max(1, entry.count))).toString(),
+      }))
+      .sort((a, b) => b.count - a.count),
   };
 }
 

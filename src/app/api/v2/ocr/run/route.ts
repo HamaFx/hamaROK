@@ -30,6 +30,8 @@ const extractionSchema = z.object({
         sourceRank: z.number().int().min(1).max(5000).nullable().optional(),
         governorNameRaw: z.string().default(''),
         governorNameNormalized: z.string().optional(),
+        allianceRaw: z.string().optional().nullable(),
+        titleRaw: z.string().optional().nullable(),
         metricRaw: z.string().default(''),
         metricValue: z.string().default(''),
         confidence: z.number().min(0).max(100).default(0),
@@ -132,6 +134,8 @@ export async function POST(request: NextRequest) {
           governorNameNormalized:
             row.governorNameNormalized ||
             governorNameRaw.toLowerCase().replace(/[^a-z0-9]/g, ''),
+          allianceRaw: row.allianceRaw ? String(row.allianceRaw).trim() : null,
+          titleRaw: row.titleRaw ? String(row.titleRaw).trim() : null,
           metricRaw: String(row.metricRaw || metricValue),
           metricValue,
           confidence: row.confidence,

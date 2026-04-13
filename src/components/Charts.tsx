@@ -1,73 +1,97 @@
 'use client';
 
 import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
-  PieChart, Pie,
-  LineChart, Line, CartesianGrid,
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Legend,
+  Line,
+  LineChart,
+  Pie,
+  PieChart,
+  ReferenceLine,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
 } from 'recharts';
 
 import { abbreviateNumber } from '@/lib/utils';
 
 const TIER_COLORS: Record<string, string> = {
-  'War Legend': '#f59e0b',
-  'Elite Warrior': '#8b5cf6',
-  'Frontline Fighter': '#3b82f6',
-  'Support Role': '#10b981',
-  'Inactive': '#64748b',
+  'War Legend': '#f5b54a',
+  'Elite Warrior': '#ff6f83',
+  'Frontline Fighter': '#6cc5f5',
+  'Support Role': '#4ddce0',
+  Inactive: '#718aa5',
 };
 
-// Custom tooltip
+function prettyNumber(value: string | number) {
+  if (typeof value === 'number') return abbreviateNumber(value);
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? abbreviateNumber(parsed) : value;
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function CustomTooltip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null;
   return (
-    <div className="custom-tooltip">
+    <div className="custom-tooltip" role="status" aria-live="polite">
       <p className="label">{label}</p>
       {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-      {payload.map((p: any, i: number) => (
-        <p key={i} className="value" style={{ color: p.color }}>
-          {p.name}: {typeof p.value === 'number' ? abbreviateNumber(p.value) : p.value}
+      {payload.map((entry: any, index: number) => (
+        <p key={`${entry.name || 'value'}-${index}`} className="value" style={{ color: entry.color }}>
+          {entry.name}: {prettyNumber(entry.value)}
         </p>
       ))}
     </div>
   );
 }
 
-// Kill delta bar chart
 export function KillsBarChart({ data }: { data: { name: string; killDelta: number }[] }) {
-  const sorted = [...data].sort((a, b) => b.killDelta - a.killDelta).slice(0, 15);
+  const sorted = [...data]
+    .sort((a, b) => b.killDelta - a.killDelta)
+    .slice(0, 15)
+    .map((entry, index) => ({
+      ...entry,
+      tone: index < 3 ? '#f5b54a' : index < 7 ? '#4ddce0' : '#6cc5f5',
+    }));
+
   return (
-    <div className="chart-container">
-      <h3>📊 Kill Points Delta — Top 15</h3>
-      <div style={{ width: '100%', height: 350 }}>
+    <section className="chart-container" aria-label="Kill points delta chart">
+      <h3>Kill Points Delta Top 15</h3>
+      <div style={{ width: '100%', height: 340 }}>
         <ResponsiveContainer>
-          <BarChart data={sorted} layout="vertical" margin={{ left: 80, right: 20 }}>
-            <XAxis type="number" tickFormatter={(v) => abbreviateNumber(v)} stroke="#475569" />
-            <YAxis type="category" dataKey="name" stroke="#94a3b8" width={75} tick={{ fontSize: 12 }} />
+          <BarChart data={sorted} layout="vertical" margin={{ left: 70, right: 20, top: 8, bottom: 8 }}>
+            <CartesianGrid stroke="rgba(113, 138, 165, 0.16)" strokeDasharray="2 4" horizontal={false} />
+            <XAxis type="number" tickFormatter={(v) => abbreviateNumber(v)} stroke="#8da5c2" />
+            <YAxis type="category" dataKey="name" stroke="#8da5c2" width={66} tick={{ fontSize: 11 }} />
             <Tooltip content={<CustomTooltip />} />
-            <Bar dataKey="killDelta" radius={[0, 4, 4, 0]}>
-              {sorted.map((_, i) => (
-                <Cell key={i} fill={i < 3 ? '#f59e0b' : i < 7 ? '#8b5cf6' : '#3b82f6'} />
+            <Bar dataKey="killDelta" name="Kill Delta" radius={[0, 5, 5, 0]}>
+              {sorted.map((entry, idx) => (
+                <Cell key={`${entry.name}-${idx}`} fill={entry.tone} />
               ))}
             </Bar>
           </BarChart>
         </ResponsiveContainer>
       </div>
-    </div>
+    </section>
   );
 }
 
-// Tier distribution pie chart
 export function TierPieChart({ distribution }: { distribution: Record<string, number> }) {
   const data = Object.entries(distribution)
-    .filter(([, v]) => v > 0)
+    .filter(([, value]) => value > 0)
     .map(([name, value]) => ({ name, value }));
 
-  if (data.length === 0) return null;
+  if (data.length === 0) {
+    return null;
+  }
 
   return (
-    <div className="chart-container">
-      <h3>🎯 Warrior Tier Distribution</h3>
+    <section className="chart-container" aria-label="Tier distribution chart">
+      <h3>Warrior Tier Distribution</h3>
       <div style={{ width: '100%', height: 300 }}>
         <ResponsiveContainer>
           <PieChart>
@@ -75,46 +99,68 @@ export function TierPieChart({ distribution }: { distribution: Record<string, nu
               data={data}
               cx="50%"
               cy="50%"
-              innerRadius={50}
-              outerRadius={90}
-              paddingAngle={3}
+              innerRadius={48}
+              outerRadius={94}
+              paddingAngle={2}
               dataKey="value"
+              nameKey="name"
               label={({ name, percent }) => `${name} ${((percent || 0) * 100).toFixed(0)}%`}
             >
-              {data.map((entry, i) => (
-                <Cell key={i} fill={TIER_COLORS[entry.name] || '#64748b'} />
+              {data.map((entry, idx) => (
+                <Cell key={`${entry.name}-${idx}`} fill={TIER_COLORS[entry.name] || '#718aa5'} />
               ))}
             </Pie>
-            <Tooltip />
+            <Legend wrapperStyle={{ fontSize: '12px', color: '#9ab0cb' }} />
+            <Tooltip content={<CustomTooltip />} />
           </PieChart>
         </ResponsiveContainer>
       </div>
-    </div>
+    </section>
   );
 }
 
-// Growth line chart for governor timeline
 export function GrowthLineChart({
   timeline,
 }: {
   timeline: { eventName: string; power: number; killPoints: number; deads: number }[];
 }) {
+  const avgPower =
+    timeline.length > 0
+      ? timeline.reduce((sum, row) => sum + row.power, 0) / timeline.length
+      : 0;
+
   return (
-    <div className="chart-container">
-      <h3>📈 Growth Timeline</h3>
-      <div style={{ width: '100%', height: 300 }}>
+    <section className="chart-container" aria-label="Growth timeline chart">
+      <h3>Growth Timeline</h3>
+      <div style={{ width: '100%', height: 320 }}>
         <ResponsiveContainer>
           <LineChart data={timeline}>
-            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-            <XAxis dataKey="eventName" stroke="#94a3b8" tick={{ fontSize: 11 }} />
-            <YAxis tickFormatter={(v) => abbreviateNumber(v)} stroke="#475569" />
+            <CartesianGrid strokeDasharray="2 4" stroke="rgba(113, 138, 165, 0.16)" />
+            <XAxis dataKey="eventName" stroke="#8da5c2" tick={{ fontSize: 11 }} />
+            <YAxis tickFormatter={(v) => abbreviateNumber(v)} stroke="#8da5c2" />
             <Tooltip content={<CustomTooltip />} />
-            <Line type="monotone" dataKey="power" stroke="#f59e0b" strokeWidth={2} dot={{ r: 4 }} name="Power" />
-            <Line type="monotone" dataKey="killPoints" stroke="#ef4444" strokeWidth={2} dot={{ r: 4 }} name="Kill Points" />
-            <Line type="monotone" dataKey="deads" stroke="#8b5cf6" strokeWidth={2} dot={{ r: 4 }} name="Deads" />
+            <Legend wrapperStyle={{ fontSize: '12px', color: '#9ab0cb' }} />
+            {avgPower > 0 ? (
+              <ReferenceLine
+                y={Math.round(avgPower)}
+                stroke="#f5b54a"
+                strokeDasharray="5 5"
+                label={{ value: 'Avg Power', fill: '#f5b54a', fontSize: 11 }}
+              />
+            ) : null}
+            <Line type="monotone" dataKey="power" stroke="#f5b54a" strokeWidth={2.2} dot={{ r: 3 }} name="Power" />
+            <Line
+              type="monotone"
+              dataKey="killPoints"
+              stroke="#4ddce0"
+              strokeWidth={2.2}
+              dot={{ r: 3 }}
+              name="Kill Points"
+            />
+            <Line type="monotone" dataKey="deads" stroke="#ff6f83" strokeWidth={2.2} dot={{ r: 3 }} name="Deads" />
           </LineChart>
         </ResponsiveContainer>
       </div>
-    </div>
+    </section>
   );
 }

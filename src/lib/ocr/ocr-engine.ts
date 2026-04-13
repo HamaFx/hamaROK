@@ -131,6 +131,8 @@ export interface RankingRowOcrResult {
   sourceRank: number | null;
   governorNameRaw: string;
   governorNameNormalized: string;
+  allianceRaw?: string | null;
+  titleRaw?: string | null;
   metricRaw: string;
   metricValue: string;
   confidence: number;
@@ -641,6 +643,238 @@ async function recognizeRankingField(args: {
   };
 }
 
+interface RankingLayoutPreset {
+  rowStartY: number;
+  rowStep: number;
+  rowHeight: number;
+  maxRows: number;
+  rankRegion: { x: number; width: number; yOffset: number; heightFactor: number };
+  nameMainRegion: { x: number; width: number; yOffset: number; heightFactor: number };
+  nameSubRegion: { x: number; width: number; yOffset: number; heightFactor: number };
+  metricRegion: { x: number; width: number; yOffset: number; heightFactor: number };
+}
+
+interface RankingLayoutScore {
+  layout: RankingLayoutPreset;
+  score: number;
+  reasons: string[];
+}
+
+function buildRankingLayoutCandidates(aspectRatio: number): RankingLayoutPreset[] {
+  const starts = aspectRatio >= 2 ? [0.248, 0.256, 0.264] : [0.245, 0.252, 0.259];
+  const steps = aspectRatio >= 2 ? [0.108, 0.114] : [0.102, 0.108];
+
+  const candidates: RankingLayoutPreset[] = [];
+  for (const rowStartY of starts) {
+    for (const rowStep of steps) {
+      candidates.push({
+        rowStartY,
+        rowStep,
+        rowHeight: aspectRatio >= 2 ? 0.092 : 0.088,
+        maxRows: 10,
+        rankRegion: {
+          x: 0.176,
+          width: 0.09,
+          yOffset: 0.06,
+          heightFactor: 0.62,
+        },
+        nameMainRegion: {
+          x: 0.265,
+          width: 0.405,
+          yOffset: 0.08,
+          heightFactor: 0.44,
+        },
+        nameSubRegion: {
+          x: 0.265,
+          width: 0.36,
+          yOffset: 0.54,
+          heightFactor: 0.3,
+        },
+        metricRegion: {
+          x: 0.69,
+          width: 0.22,
+          yOffset: 0.1,
+          heightFactor: 0.44,
+        },
+      });
+    }
+  }
+
+  return candidates;
+}
+
+async function recognizeQuickRankingField(args: {
+  cropped: HTMLCanvasElement;
+  kind: 'name' | 'metric';
+}): Promise<{ value: string; confidence: number }> {
+  const processed = await preprocessForOCR(args.cropped, {
+    variantId: args.kind === 'name' ? 'rank-quick-name' : 'rank-quick-metric',
+    useOpenCv: false,
+    scale: args.kind === 'name' ? 1.9 : 2.0,
+    threshold: args.kind === 'name' ? 126 : 122,
+    contrast: 1.2,
+    morphology: 'none',
+  });
+  const recognized = await recognizeGenericWithPass(processed.canvas, {
+    psm: args.kind === 'name' ? '7' : '8',
+    whitelist:
+      args.kind === 'name'
+        ? 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 []()_#.-:+/\\\\|*'
+        : '0123456789',
+  });
+
+  const value =
+    args.kind === 'name'
+      ? normalizeRankingName(recognized.rawText)
+      : normalizeMetricDigits(recognized.rawText);
+
+  return {
+    value,
+    confidence: recognized.confidence,
+  };
+}
+
+function cropRankingSubRegion(args: {
+  img: HTMLImageElement;
+  rowY: number;
+  rowHeight: number;
+  region: { x: number; width: number; yOffset: number; heightFactor: number };
+}): HTMLCanvasElement {
+  return cropRegion(args.img, {
+    x: args.region.x,
+    y: args.rowY + args.rowHeight * args.region.yOffset,
+    width: args.region.width,
+    height: args.rowHeight * args.region.heightFactor,
+  });
+}
+
+async function scoreRankingLayoutCandidate(
+  img: HTMLImageElement,
+  layout: RankingLayoutPreset
+): Promise<RankingLayoutScore> {
+  let score = 0;
+  const reasons: string[] = [];
+  let emptyRows = 0;
+
+  const sampleRows = 3;
+  for (let i = 0; i < sampleRows; i++) {
+    const rowY = layout.rowStartY + i * layout.rowStep;
+    if (rowY + layout.rowHeight > 0.97) break;
+
+    const nameCrop = cropRankingSubRegion({
+      img,
+      rowY,
+      rowHeight: layout.rowHeight,
+      region: layout.nameMainRegion,
+    });
+    const metricCrop = cropRankingSubRegion({
+      img,
+      rowY,
+      rowHeight: layout.rowHeight,
+      region: layout.metricRegion,
+    });
+
+    const [nameQuick, metricQuick] = await Promise.all([
+      recognizeQuickRankingField({ cropped: nameCrop, kind: 'name' }),
+      recognizeQuickRankingField({ cropped: metricCrop, kind: 'metric' }),
+    ]);
+
+    const nameLooksValid = nameQuick.value.length >= 2;
+    const metricLooksValid = metricQuick.value.length >= 2;
+
+    if (nameLooksValid) score += 1.0;
+    if (metricLooksValid) score += 1.25;
+    score += (nameQuick.confidence + metricQuick.confidence) / 220;
+
+    if (!nameLooksValid && !metricLooksValid) {
+      emptyRows += 1;
+    }
+  }
+
+  if (emptyRows > 0) {
+    score -= emptyRows * 0.9;
+    reasons.push(`empty-samples:${emptyRows}`);
+  }
+
+  reasons.push(`start:${layout.rowStartY.toFixed(3)}`, `step:${layout.rowStep.toFixed(3)}`);
+  return {
+    layout,
+    score,
+    reasons,
+  };
+}
+
+async function selectBestRankingLayout(
+  img: HTMLImageElement
+): Promise<{ selected: RankingLayoutPreset; scores: RankingLayoutScore[] }> {
+  const aspectRatio = img.naturalWidth / Math.max(1, img.naturalHeight);
+  const candidates = buildRankingLayoutCandidates(aspectRatio);
+  const scores: RankingLayoutScore[] = [];
+
+  for (const candidate of candidates) {
+    scores.push(await scoreRankingLayoutCandidate(img, candidate));
+  }
+
+  scores.sort((a, b) => b.score - a.score);
+  return {
+    selected: scores[0]?.layout || candidates[0],
+    scores,
+  };
+}
+
+function sanitizeSubtitleValue(value: string): string {
+  const cleaned = normalizeRankingName(value).replace(/[-_]/g, '').trim();
+  return cleaned;
+}
+
+function classifySubtitle(value: string): { allianceRaw: string | null; titleRaw: string | null } {
+  const subtitle = sanitizeSubtitleValue(value);
+  if (!subtitle) return { allianceRaw: null, titleRaw: null };
+
+  const normalized = subtitle.toLowerCase();
+  const titleHints = [
+    'leader',
+    'warlord',
+    'envoy',
+    'officer',
+    'council',
+    'r4',
+    'r5',
+    'king',
+    'queen',
+  ];
+
+  if (titleHints.some((hint) => normalized === hint || normalized.startsWith(`${hint} `))) {
+    return {
+      allianceRaw: null,
+      titleRaw: subtitle,
+    };
+  }
+
+  return {
+    allianceRaw: subtitle,
+    titleRaw: null,
+  };
+}
+
+function selectBestMetricLabel(values: string[]): string {
+  const cleaned = values
+    .map((value) =>
+      String(value || '')
+        .trim()
+        .toUpperCase()
+        .replace(/\b\d[\d,]*\b/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+    )
+    .filter(Boolean)
+    .filter((value) => value !== 'NAME');
+  if (cleaned.length === 0) return 'METRIC';
+
+  cleaned.sort((a, b) => b.length - a.length);
+  return cleaned[0];
+}
+
 function scoreCandidate(field: OcrFieldKey, candidate: OcrCandidateTrace): OcrCandidateTrace {
   const confidencePart = (candidate.confidence / 100) * 0.62;
   const breakdown: Record<string, number> = {
@@ -984,132 +1218,169 @@ export async function processRankingScreenshot(
     const templateId = profile.sourceTemplateId || profile.profileKey;
     const profileId = profile.id;
 
-    const headerCanvas = cropRegion(img, {
-      x: 0.22,
-      y: 0.01,
-      width: 0.56,
-      height: 0.1,
-    });
-    const headerField = await recognizeRankingField({
-      cropped: headerCanvas,
-      kind: 'name',
-    });
-    const headerText = headerField.selectedValue.toUpperCase();
+    const headerRegions = [
+      { x: 0.2, y: 0.01, width: 0.6, height: 0.1 },
+      { x: 0.24, y: 0.015, width: 0.52, height: 0.09 },
+    ];
+    const headerReads = await Promise.all(
+      headerRegions.map((region) =>
+        recognizeRankingField({
+          cropped: cropRegion(img, region),
+          kind: 'name',
+        })
+      )
+    );
+    const headerTextCandidates = headerReads
+      .map((read) => String(read.selectedValue || '').trim().toUpperCase())
+      .filter(Boolean);
+    const headerText =
+      headerTextCandidates.find((value) => value.includes('RANK')) ||
+      [...headerTextCandidates].sort((a, b) => b.length - a.length)[0] ||
+      'RANKINGS';
     const rankingType = normalizeRankingTypeLabel(headerText);
 
-    const metricHeaderCanvas = cropRegion(img, {
-      x: 0.66,
-      y: 0.2,
-      width: 0.23,
-      height: 0.06,
-    });
-    const metricHeaderField = await recognizeRankingField({
-      cropped: metricHeaderCanvas,
-      kind: 'name',
-    });
-    const metricHeaderText = metricHeaderField.selectedValue.toUpperCase();
+    const metricHeaderRegions = [
+      { x: 0.585, y: 0.132, width: 0.31, height: 0.068 },
+      { x: 0.66, y: 0.2, width: 0.23, height: 0.06 },
+    ];
+    const metricHeaderReads = await Promise.all(
+      metricHeaderRegions.map((region) =>
+        recognizeRankingField({
+          cropped: cropRegion(img, region),
+          kind: 'name',
+        })
+      )
+    );
+    const metricHeaderText = selectBestMetricLabel(
+      metricHeaderReads.map((read) => read.selectedValue)
+    );
     const metricKey = normalizeMetricLabel(metricHeaderText || headerText);
+
+    const layoutSelection = await selectBestRankingLayout(img);
+    const layout = layoutSelection.selected;
 
     const rows: RankingRowOcrResult[] = [];
     const preprocessingTrace: Record<string, unknown> = {
-      header: headerField.traces,
-      metricHeader: metricHeaderField.traces,
+      header: headerReads.map((read) => read.traces),
+      metricHeader: metricHeaderReads.map((read) => read.traces),
+      layout: layoutSelection.scores.map((entry) => ({
+        score: entry.score,
+        reasons: entry.reasons,
+      })),
+      selectedLayout: {
+        rowStartY: layout.rowStartY,
+        rowStep: layout.rowStep,
+        rowHeight: layout.rowHeight,
+      },
     };
     const rowCandidates: Record<string, unknown> = {};
 
-    const rowStartY = 0.255;
-    const rowStep = 0.116;
-    const rowHeight = 0.088;
-    const maxRows = 8;
+    const dedupeKeys = new Set<string>();
+    for (let rowIndex = 0; rowIndex < layout.maxRows; rowIndex++) {
+      const rowY = layout.rowStartY + rowIndex * layout.rowStep;
+      if (rowY + layout.rowHeight > 0.98) break;
 
-    for (let rowIndex = 0; rowIndex < maxRows; rowIndex++) {
-      const y = rowStartY + rowIndex * rowStep;
-      if (y + rowHeight > 0.98) break;
+      const rankCrop = cropRankingSubRegion({
+        img,
+        rowY,
+        rowHeight: layout.rowHeight,
+        region: layout.rankRegion,
+      });
+      const nameMainCrop = cropRankingSubRegion({
+        img,
+        rowY,
+        rowHeight: layout.rowHeight,
+        region: layout.nameMainRegion,
+      });
+      const nameSubCrop = cropRankingSubRegion({
+        img,
+        rowY,
+        rowHeight: layout.rowHeight,
+        region: layout.nameSubRegion,
+      });
+      const metricCrop = cropRankingSubRegion({
+        img,
+        rowY,
+        rowHeight: layout.rowHeight,
+        region: layout.metricRegion,
+      });
 
-      const rankCrop = cropRegion(img, {
-        x: 0.175,
-        y,
-        width: 0.095,
-        height: rowHeight,
-      });
-      const nameCrop = cropRegion(img, {
-        x: 0.265,
-        y,
-        width: 0.4,
-        height: rowHeight,
-      });
-      const metricCrop = cropRegion(img, {
-        x: 0.69,
-        y,
-        width: 0.22,
-        height: rowHeight,
-      });
-
-      const [rankField, nameField, metricField] = await Promise.all([
+      const [rankField, nameMainField, nameSubField, metricField] = await Promise.all([
         recognizeRankingField({ cropped: rankCrop, kind: 'rank' }),
-        recognizeRankingField({ cropped: nameCrop, kind: 'name' }),
+        recognizeRankingField({ cropped: nameMainCrop, kind: 'name' }),
+        recognizeRankingField({ cropped: nameSubCrop, kind: 'name' }),
         recognizeRankingField({ cropped: metricCrop, kind: 'metric' }),
       ]);
 
-      let sourceRank: number | null = rankField.selectedValue
-        ? Number(rankField.selectedValue)
-        : null;
-      if (!sourceRank || !Number.isFinite(sourceRank)) {
-        sourceRank = rowIndex + 1;
-      }
-      if (sourceRank < 1 || sourceRank > 5000) {
-        sourceRank = null;
+      const rankDigits = normalizeRankDigits(rankField.selectedValue);
+      let sourceRank: number | null = rankDigits ? Number(rankDigits) : null;
+      if (!sourceRank || !Number.isFinite(sourceRank) || sourceRank < 1 || sourceRank > 5000) {
+        const previous = rows[rows.length - 1]?.sourceRank ?? null;
+        sourceRank = previous && previous > 0 ? previous + 1 : rowIndex + 1;
       }
 
-      const governorNameRaw = normalizeRankingName(nameField.selectedValue);
+      const governorNameRaw = normalizeRankingName(nameMainField.selectedValue);
       const governorNameNormalized = governorNameRaw
         .toLowerCase()
         .replace(/[^a-z0-9]/g, '');
+      const subtitleRaw = sanitizeSubtitleValue(nameSubField.selectedValue);
+      const subtitleParts = classifySubtitle(subtitleRaw);
       const metricRaw = metricField.selectedValue;
       const metricValue = normalizeMetricDigits(metricRaw);
 
       const lowSignal =
         !governorNameRaw &&
         !metricValue &&
-        (nameField.selectedConfidence + metricField.selectedConfidence) / 2 < 55;
-      if (lowSignal) {
-        continue;
-      }
+        (nameMainField.selectedConfidence + metricField.selectedConfidence) / 2 < 55;
+      if (lowSignal) continue;
+
+      const dedupeKey = `${sourceRank || 0}:${governorNameNormalized}:${metricValue}`;
+      if (dedupeKeys.has(dedupeKey)) continue;
+      dedupeKeys.add(dedupeKey);
 
       const failureReasons = [
         ...rankField.failureReasons.map((reason) => `rank:${reason}`),
-        ...nameField.failureReasons.map((reason) => `name:${reason}`),
+        ...nameMainField.failureReasons.map((reason) => `name:${reason}`),
         ...metricField.failureReasons.map((reason) => `metric:${reason}`),
       ];
 
       const confidence =
-        (rankField.selectedConfidence + nameField.selectedConfidence + metricField.selectedConfidence) /
-        3;
+        (rankField.selectedConfidence +
+          nameMainField.selectedConfidence +
+          metricField.selectedConfidence +
+          nameSubField.selectedConfidence * 0.35) /
+        3.35;
 
       const row: RankingRowOcrResult = {
         rowIndex,
         sourceRank,
         governorNameRaw,
         governorNameNormalized,
+        allianceRaw: subtitleParts.allianceRaw,
+        titleRaw: subtitleParts.titleRaw,
         metricRaw: metricValue || metricRaw,
         metricValue,
         confidence,
         identityStatus: 'UNRESOLVED',
         candidates: {
           rank: rankField.candidates,
-          governorName: nameField.candidates,
+          governorName: nameMainField.candidates,
           metricValue: metricField.candidates,
         },
         failureReasons: [...new Set(failureReasons)],
         ocrTrace: {
           rank: rankField.traces,
-          governorName: nameField.traces,
+          governorName: nameMainField.traces,
+          subtitle: nameSubField.traces,
           metricValue: metricField.traces,
         },
       };
 
       rows.push(row);
-      rowCandidates[`row-${rowIndex}`] = row.candidates;
+      rowCandidates[`row-${rowIndex}`] = {
+        ...row.candidates,
+        subtitle: nameSubField.candidates,
+      };
       preprocessingTrace[`row-${rowIndex}`] = row.ocrTrace;
     }
 

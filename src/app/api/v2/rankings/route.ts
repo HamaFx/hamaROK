@@ -43,6 +43,9 @@ export async function GET(request: NextRequest) {
     const workspaceId = requireParam(url.searchParams.get('workspaceId'), 'workspaceId');
     const eventId = url.searchParams.get('eventId')?.trim() || null;
     const rankingType = url.searchParams.get('rankingType')?.trim() || null;
+    const metricKey = url.searchParams.get('metricKey')?.trim() || null;
+    const q = url.searchParams.get('q')?.trim() || null;
+    const sort = url.searchParams.get('sort')?.trim() || null;
     const cursor = url.searchParams.get('cursor')?.trim() || null;
     const status = parseStatuses(url.searchParams.get('status'));
     const limit = parseLimit(url.searchParams.get('limit'));
@@ -56,6 +59,9 @@ export async function GET(request: NextRequest) {
       workspaceId,
       eventId,
       rankingType,
+      metricKey,
+      q,
+      sort,
       status,
       limit,
       cursor,
@@ -65,6 +71,8 @@ export async function GET(request: NextRequest) {
       total: result.total,
       limit,
       nextCursor: result.nextCursor,
+      sortRequested: sort || null,
+      sortApplied: 'metricValue DESC, sourceRank ASC NULLS LAST, governorNameNormalized ASC, rowId ASC',
       sort: [
         'metricValue DESC',
         'sourceRank ASC NULLS LAST',

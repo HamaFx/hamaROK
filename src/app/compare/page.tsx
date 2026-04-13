@@ -1,11 +1,13 @@
 'use client';
 
-import { useEffect, useState, Suspense } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
+import { ArrowDownUp, Download, Medal, Send, Swords, Users } from 'lucide-react';
 import { formatDelta } from '@/lib/utils';
 import { getTierConfig, WarriorTier } from '@/lib/warrior-score';
 import TierBadge from '@/components/TierBadge';
 import { KillsBarChart, TierPieChart } from '@/components/Charts';
+import { DataTableLite, EmptyState, FilterBar, KpiCard, PageHero, Panel } from '@/components/ui/primitives';
 
 interface Comparison {
   governor: { id: string; governorId: string; name: string };
@@ -53,9 +55,10 @@ function CompareContent() {
   const [publishing, setPublishing] = useState(false);
 
   useEffect(() => {
-    fetch('/api/events').then((r) => r.json()).then((d) => setEvents(d.events || []));
+    fetch('/api/events')
+      .then((r) => r.json())
+      .then((data) => setEvents(data.events || []));
   }, []);
-
 
   useEffect(() => {
     if (!eventAId || !eventBId) return;
@@ -67,41 +70,54 @@ function CompareContent() {
       .finally(() => setLoading(false));
   }, [eventAId, eventBId]);
 
-  const toggleSort = (field: string) => {
-    if (sortField === field) setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
-    else { setSortField(field); setSortDir(field === 'rank' ? 'asc' : 'desc'); }
-  };
+  const sortedComparisons = useMemo(() => {
+    const rows = result?.comparisons || [];
 
-  const sortedComparisons = result?.comparisons
-    ?.filter((c) => !search || c.governor.name.toLowerCase().includes(search.toLowerCase()))
-    .sort((a, b) => {
-      let aVal: number, bVal: number;
-      if (sortField === 'rank') { aVal = a.warriorScore?.rank || 999; bVal = b.warriorScore?.rank || 999; }
-      else if (sortField === 'score') { aVal = a.warriorScore?.totalScore || 0; bVal = b.warriorScore?.totalScore || 0; }
-      else { aVal = Number(a.deltas[sortField] || 0); bVal = Number(b.deltas[sortField] || 0); }
-      return sortDir === 'desc' ? bVal - aVal : aVal - bVal;
-    }) || [];
+    return rows
+      .filter((item) => !search || item.governor.name.toLowerCase().includes(search.toLowerCase()))
+      .sort((a, b) => {
+        let aVal: number;
+        let bVal: number;
 
-  const sortArrow = (field: string) => sortField === field ? (sortDir === 'desc' ? ' ↓' : ' ↑') : '';
+        if (sortField === 'rank') {
+          aVal = a.warriorScore?.rank || Number.MAX_SAFE_INTEGER;
+          bVal = b.warriorScore?.rank || Number.MAX_SAFE_INTEGER;
+        } else if (sortField === 'score') {
+          aVal = a.warriorScore?.totalScore || 0;
+          bVal = b.warriorScore?.totalScore || 0;
+        } else {
+          aVal = Number(a.deltas[sortField] || 0);
+          bVal = Number(b.deltas[sortField] || 0);
+        }
+
+        return sortDir === 'desc' ? bVal - aVal : aVal - bVal;
+      });
+  }, [result?.comparisons, search, sortDir, sortField]);
 
   const exportCSV = () => {
     if (!result) return;
-    const headers = 'Rank,Governor,ID,Start Power,Power Δ,Actual DKP,Expected DKP,K/D Ratio,Score %,Tier,Deadweight\n';
-    const rows = sortedComparisons.map((c) =>
-      `${c.warriorScore?.rank || '-'},${c.governor.name},${c.governor.governorId},${c.snapshotA.power},${c.deltas.power},${c.warriorScore?.actualDkp || 0},${c.warriorScore?.expectedKp || 0},${c.warriorScore?.kdRatio || 0},${c.warriorScore?.totalScore || 0},${c.warriorScore?.tier || '-'},${c.warriorScore?.isDeadweight ? 'YES' : 'NO'}`
-    ).join('\n');
+    const headers =
+      'Rank,Governor,ID,Start Power,Power Delta,Actual DKP,Expected DKP,KD Ratio,Score,Tier,Deadweight\n';
+    const rows = sortedComparisons
+      .map(
+        (item) =>
+          `${item.warriorScore?.rank || '-'},${item.governor.name},${item.governor.governorId},${item.snapshotA.power},${item.deltas.power},${item.warriorScore?.actualDkp || 0},${item.warriorScore?.expectedKp || 0},${item.warriorScore?.kdRatio || 0},${item.warriorScore?.totalScore || 0},${item.warriorScore?.tier || '-'},${item.warriorScore?.isDeadweight ? 'YES' : 'NO'}`
+      )
+      .join('\n');
+
     const blob = new Blob([headers + rows], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `comparison_${result.eventA.name}_vs_${result.eventB.name}.csv`.replace(/\s+/g, '_');
-    a.click();
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `comparison_${result.eventA.name}_vs_${result.eventB.name}.csv`.replace(/\s+/g, '_');
+    link.click();
     URL.revokeObjectURL(url);
   };
 
   const publishToDiscord = async () => {
     if (!result) return;
     setPublishing(true);
+
     try {
       const res = await fetch('/api/discord/publish-leaderboard', {
         method: 'POST',
@@ -113,197 +129,270 @@ function CompareContent() {
           leaderboard: sortedComparisons,
         }),
       });
+
       if (res.ok) {
-        alert('Leaderboard pushed to Discord successfully! 🚀');
+        alert('Leaderboard published to Discord.');
       } else {
-        const d = await res.json();
-        alert(`Failed: ${d.error || 'Server error.'}`);
+        const payload = await res.json();
+        alert(payload?.error || 'Publish failed.');
       }
     } catch {
-      alert('Network error.');
+      alert('Network error while publishing.');
     } finally {
       setPublishing(false);
     }
   };
 
+  const onSort = (field: string) => {
+    if (sortField === field) {
+      setSortDir((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+      return;
+    }
+
+    setSortField(field);
+    setSortDir(field === 'rank' ? 'asc' : 'desc');
+  };
+
   return (
     <div className="page-container">
-      <div className="page-header">
-        <h1>⚔️ Compare Events</h1>
-        <p>Select two events to calculate deltas and warrior scores</p>
-      </div>
+      <PageHero
+        title="Compare Events"
+        subtitle="Calculate deltas, rank warrior output, and publish combat leaderboards."
+        actions={
+          <>
+            <button className="btn btn-secondary" onClick={exportCSV} disabled={!result}>
+              <Download size={14} /> Export CSV
+            </button>
+            <button className="btn btn-primary" onClick={publishToDiscord} disabled={!result || publishing}>
+              <Send size={14} /> {publishing ? 'Publishing...' : 'Publish to Discord'}
+            </button>
+          </>
+        }
+      />
 
-      {/* Event Selectors */}
-      <div className="compare-selectors animate-fade-in-up">
-        <div className="compare-selector-box">
-          <label className="form-label">Event A (Start)</label>
-          <select className="form-select" value={eventAId} onChange={(e) => setEventAId(e.target.value)}>
-            <option value="">— Select start event —</option>
-            {events.map((ev) => (
-              <option key={ev.id} value={ev.id}>{ev.name}</option>
-            ))}
-          </select>
-        </div>
-        <div className="compare-vs">VS</div>
-        <div className="compare-selector-box">
-          <label className="form-label">Event B (End)</label>
-          <select className="form-select" value={eventBId} onChange={(e) => setEventBId(e.target.value)}>
-            <option value="">— Select end event —</option>
-            {events.map((ev) => (
-              <option key={ev.id} value={ev.id}>{ev.name}</option>
-            ))}
-          </select>
-        </div>
-      </div>
+      <Panel title="Comparison Scope" subtitle="Pick baseline and current event snapshots">
+        <FilterBar>
+          <div className="form-group" style={{ flex: 1, minWidth: 220, marginBottom: 0 }}>
+            <label className="form-label">Event A (Baseline)</label>
+            <select className="form-select" value={eventAId} onChange={(e) => setEventAId(e.target.value)}>
+              <option value="">Select baseline event</option>
+              {events.map((event) => (
+                <option key={event.id} value={event.id}>
+                  {event.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="compare-vs">VS</div>
+          <div className="form-group" style={{ flex: 1, minWidth: 220, marginBottom: 0 }}>
+            <label className="form-label">Event B (Current)</label>
+            <select className="form-select" value={eventBId} onChange={(e) => setEventBId(e.target.value)}>
+              <option value="">Select current event</option>
+              {events.map((event) => (
+                <option key={event.id} value={event.id}>
+                  {event.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        </FilterBar>
+      </Panel>
 
-      {loading && (
-        <div className="card card-no-hover mt-24">
+      {loading ? (
+        <Panel title="Loading comparison" className="mt-24">
           <div className="shimmer shimmer-row" />
           <div className="shimmer shimmer-row" />
           <div className="shimmer shimmer-row" />
-        </div>
-      )}
+        </Panel>
+      ) : null}
 
-      {result && !loading && (
+      {!loading && result ? (
         <>
-          {/* Summary Cards */}
-          <div className="grid-3 mb-24 mt-24">
-            <div className="card stats-card animate-fade-in-up stagger-1">
-              <div className="stats-icon">👥</div>
-              <div className="stats-label">Governors Compared</div>
-              <div className="stats-value">{result.summary.totalGovernors}</div>
-            </div>
-            <div className="card stats-card animate-fade-in-up stagger-2">
-              <div className="stats-icon">⚔️</div>
-              <div className="stats-label">Avg Warrior Score</div>
-              <div className="stats-value">{result.summary.avgWarriorScore}</div>
-            </div>
-            <div className="card stats-card animate-fade-in-up stagger-3">
-              <div className="stats-icon">🏆</div>
-              <div className="stats-label">War Legends</div>
-              <div className="stats-value">{result.summary.tierDistribution['War Legend'] || 0}</div>
-            </div>
+          <div className="grid-3 mt-24 mb-24 animate-fade-in-up">
+            <KpiCard
+              label="Governors Compared"
+              value={result.summary.totalGovernors}
+              hint="Common governors across both events"
+              tone="info"
+            />
+            <KpiCard
+              label="Avg Warrior Score"
+              value={`${result.summary.avgWarriorScore}%`}
+              hint="Aggregate score across matched governors"
+              tone="good"
+            />
+            <KpiCard
+              label="War Legends"
+              value={result.summary.tierDistribution['War Legend'] || 0}
+              hint="Tier threshold exceeded"
+              tone="warn"
+            />
           </div>
 
-          {/* Leaderboard Top 5 */}
-          <div className="card card-no-hover mb-24 animate-fade-in-up stagger-4">
-            <h2 className="mb-16 text-gold">🏆 Warrior Leaderboard</h2>
-            {sortedComparisons.slice(0, 10).map((c) => {
-              const ws = c.warriorScore;
-              if (!ws) return null;
-              const config = getTierConfig(ws.tier);
+          <Panel title="Warrior Leaderboard" subtitle="Top 10 by weighted total score" className="mb-24">
+            {sortedComparisons.slice(0, 10).map((item) => {
+              const score = item.warriorScore;
+              if (!score) return null;
+              const config = getTierConfig(score.tier);
+
               return (
-                <div key={c.governor.id} className="leaderboard-entry">
-                  <div className={`leaderboard-rank ${ws.rank <= 3 ? 'top-3' : ''}`}>
-                    {ws.rank <= 3 ? ['🥇', '🥈', '🥉'][ws.rank - 1] : `#${ws.rank}`}
+                <div className="leaderboard-entry" key={item.governor.id}>
+                  <div className={`leaderboard-rank ${score.rank <= 3 ? 'top-3' : ''}`}>
+                    {score.rank <= 3 ? ['#1', '#2', '#3'][score.rank - 1] : `#${score.rank}`}
                   </div>
-                  <div className="leaderboard-name">{c.governor.name}</div>
+                  <div className="leaderboard-name">
+                    <strong>{item.governor.name}</strong>
+                    <div className="text-sm text-muted">ID {item.governor.governorId}</div>
+                  </div>
                   <div className="leaderboard-score">
-                    <div className="score-bar-wrap" style={{ width: 200 }}>
+                    <div className="score-bar-wrap">
                       <div className="score-bar-track">
-                        <div className="score-bar-fill" style={{ width: `${ws.totalScore}%`, background: config.color }} />
+                        <div className="score-bar-fill" style={{ width: `${score.totalScore}%`, background: config.color }} />
                       </div>
-                      <div className="score-bar-value" style={{ color: config.color }}>
-                        {ws.totalScore}
-                      </div>
+                      <span className="score-bar-value" style={{ color: config.color }}>
+                        {score.totalScore}
+                      </span>
                     </div>
-                    <TierBadge tier={ws.tier} size="sm" />
+                    <TierBadge tier={score.tier} size="sm" />
                   </div>
                 </div>
               );
             })}
-          </div>
+          </Panel>
 
-          {/* Charts */}
           <div className="grid-2 mb-24">
             <KillsBarChart
-              data={sortedComparisons.map((c) => ({
-                name: c.governor.name,
-                killDelta: Number(c.deltas.killPoints),
+              data={sortedComparisons.map((item) => ({
+                name: item.governor.name,
+                killDelta: Number(item.deltas.killPoints),
               }))}
             />
             <TierPieChart distribution={result.summary.tierDistribution} />
           </div>
 
-          {/* Full Delta Table */}
-          <div className="flex justify-between items-center mb-16" style={{ flexWrap: 'wrap', gap: 12 }}>
-            <h2 className="text-gold">📊 Full Comparison Table</h2>
-            <div className="flex gap-8">
-              <div className="search-bar">
-                <span className="search-icon">🔍</span>
-                <input placeholder="Search..." value={search} onChange={(e) => setSearch(e.target.value)} />
-              </div>
-              <button 
-                className="btn btn-primary btn-sm btn-discord" 
-                onClick={publishToDiscord} 
-                disabled={publishing}
-                style={{ background: '#5865F2' }}
-              >
-                {publishing ? 'Publishing...' : '🤖 Publish to Discord'}
-              </button>
-              <button className="btn btn-secondary btn-sm" onClick={exportCSV}>📤 Export CSV</button>
-            </div>
-          </div>
-
-          <div className="data-table-wrap">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th onClick={() => toggleSort('rank')}>Rank{sortArrow('rank')}</th>
-                  <th>Governor</th>
-                  <th onClick={() => toggleSort('power')}>Power Δ{sortArrow('power')}</th>
-                  <th>Target DKP</th>
-                  <th>Actual DKP</th>
-                  <th>K/D Ratio</th>
-                  <th onClick={() => toggleSort('score')}>Score %{sortArrow('score')}</th>
-                  <th>Tier</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sortedComparisons.map((c) => {
-                  const ws = c.warriorScore;
-                  return (
-                    <tr key={c.governor.id}>
-                      <td className="text-muted">{ws?.rank || '-'}</td>
-                      <td>
-                        <strong>{c.governor.name}</strong> 
-                        {ws?.isDeadweight && <span title="Potential Deadweight / Zeroed" style={{marginLeft: 5, fontSize: '1.2em'}}>☠️</span>}
-                        <div className="text-muted text-sm">ID: {c.governor.governorId} | Start: {formatDelta(c.snapshotA.power)}</div>
-                      </td>
-                      <td className={`num ${Number(c.deltas.power) >= 0 ? 'delta-positive' : 'delta-negative'}`}>
-                        {formatDelta(c.deltas.power)}
-                      </td>
-                      <td className="num text-muted">{formatDelta(ws?.expectedKp || 0)}</td>
-                      <td className={`num ${ws && ws.actualDkp >= ws.expectedKp ? 'text-gold' : 'delta-negative'}`}>
-                        {formatDelta(ws?.actualDkp || 0)}
-                      </td>
-                      <td className="num">{ws?.kdRatio || 0}</td>
-                      <td className="num" style={{ color: ws ? getTierConfig(ws.tier).color : 'inherit' }}>
-                        {ws?.totalScore || '—'}%
-                      </td>
-                      <td>{ws && <TierBadge tier={ws.tier} size="sm" showLabel={false} />}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+          <Panel
+            title="Full Comparison Table"
+            subtitle="Deterministic ranking and sortable combat deltas"
+            actions={
+              <FilterBar>
+                <div className="search-bar">
+                  <input
+                    placeholder="Search governor..."
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                  />
+                </div>
+                <button className="btn btn-ghost btn-sm" type="button">
+                  <ArrowDownUp size={14} /> Stable sort
+                </button>
+              </FilterBar>
+            }
+          >
+            <DataTableLite
+              stickyFirst
+              columns={[
+                {
+                  key: 'rank',
+                  label: 'Rank',
+                  sortable: true,
+                  render: (row: Comparison) => row.warriorScore?.rank || '—',
+                },
+                {
+                  key: 'governor',
+                  label: 'Governor',
+                  render: (row: Comparison) => (
+                    <>
+                      <strong>{row.governor.name}</strong>
+                      <div className="text-sm text-muted">ID {row.governor.governorId}</div>
+                    </>
+                  ),
+                },
+                {
+                  key: 'power',
+                  label: 'Power Delta',
+                  sortable: true,
+                  className: 'num',
+                  render: (row: Comparison) => (
+                    <span className={Number(row.deltas.power) >= 0 ? 'delta-positive' : 'delta-negative'}>
+                      {formatDelta(row.deltas.power)}
+                    </span>
+                  ),
+                },
+                {
+                  key: 'target',
+                  label: 'Target DKP',
+                  className: 'num',
+                  render: (row: Comparison) => formatDelta(row.warriorScore?.expectedKp || 0),
+                },
+                {
+                  key: 'actual',
+                  label: 'Actual DKP',
+                  className: 'num',
+                  render: (row: Comparison) => formatDelta(row.warriorScore?.actualDkp || 0),
+                },
+                {
+                  key: 'kd',
+                  label: 'KD Ratio',
+                  className: 'num',
+                  render: (row: Comparison) => row.warriorScore?.kdRatio || 0,
+                },
+                {
+                  key: 'score',
+                  label: 'Score',
+                  sortable: true,
+                  className: 'num',
+                  render: (row: Comparison) => `${row.warriorScore?.totalScore || 0}%`,
+                },
+                {
+                  key: 'tier',
+                  label: 'Tier',
+                  render: (row: Comparison) =>
+                    row.warriorScore ? (
+                      <>
+                        <TierBadge tier={row.warriorScore.tier} size="sm" showLabel={false} />
+                        {row.warriorScore.rank <= 3 ? <Medal size={13} style={{ marginLeft: 6 }} /> : null}
+                      </>
+                    ) : (
+                      '—'
+                    ),
+                },
+              ]}
+              rows={sortedComparisons}
+              rowKey={(row) => row.governor.id}
+              onSort={onSort}
+              sortKey={sortField}
+              sortDir={sortDir}
+              emptyLabel="No governors matched the current filter."
+            />
+          </Panel>
         </>
-      )}
+      ) : null}
 
-      {!result && !loading && eventAId && eventBId && (
-        <div className="empty-state mt-32">
-          <div className="empty-icon">📊</div>
-          <h3>No comparison data</h3>
-          <p>Make sure both events have governor snapshots.</p>
+      {!loading && !result && (!eventAId || !eventBId) ? (
+        <div className="mt-24">
+          <EmptyState
+            title="Select two events to start comparison"
+            description="Choose baseline and current events to compute ranking and combat deltas."
+            action={
+              <button className="btn btn-secondary" type="button">
+                <Users size={14} /> Waiting for selection
+              </button>
+            }
+          />
         </div>
-      )}
+      ) : null}
 
-      {!eventAId || !eventBId ? (
-        <div className="empty-state mt-32">
-          <div className="empty-icon">⚔️</div>
-          <h3>Select Two Events</h3>
-          <p>Choose a start and end event above to compare governor performance.</p>
+      {!loading && !result && eventAId && eventBId ? (
+        <div className="mt-24">
+          <EmptyState
+            title="No comparison data found"
+            description="One or both events may not have compatible snapshots yet."
+            action={
+              <button className="btn btn-secondary" type="button">
+                <Swords size={14} /> Check ingestion
+              </button>
+            }
+          />
         </div>
       ) : null}
     </div>

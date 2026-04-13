@@ -1,9 +1,11 @@
 'use client';
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
+import { Camera } from 'lucide-react';
 import { EVENT_TYPE_LABELS } from '@/lib/utils';
 import { cleanNumericOcr, validateGovernorData, ValidationResult } from '@/lib/ocr/validators';
 import type { OcrRuntimeProfile } from '@/lib/ocr/profiles';
+import { FilterBar, KpiCard, PageHero, Panel, StatusPill } from '@/components/ui/primitives';
 
 interface OcrEntry {
   id: string;
@@ -43,6 +45,8 @@ interface OcrEntry {
       rowIndex: number;
       sourceRank: string;
       governorNameRaw: string;
+      allianceRaw?: string | null;
+      titleRaw?: string | null;
       metricRaw: string;
       confidence: number;
       failureReasons: string[];
@@ -233,6 +237,8 @@ export default function UploadPage() {
                         rowIndex: row.rowIndex,
                         sourceRank: row.sourceRank?.toString() || '',
                         governorNameRaw: row.governorNameRaw,
+                        allianceRaw: row.allianceRaw || null,
+                        titleRaw: row.titleRaw || null,
                         metricRaw: row.metricRaw || row.metricValue,
                         confidence: row.confidence,
                         failureReasons: row.failureReasons,
@@ -392,7 +398,7 @@ export default function UploadPage() {
   const updateRankingRow = (
     entryId: string,
     rowIndex: number,
-    key: 'sourceRank' | 'governorNameRaw' | 'metricRaw',
+    key: 'sourceRank' | 'governorNameRaw' | 'allianceRaw' | 'titleRaw' | 'metricRaw',
     value: string
   ) => {
     setEntries((prev) =>
@@ -580,6 +586,8 @@ export default function UploadPage() {
           return {
             sourceRank,
             governorNameRaw: row.governorNameRaw,
+            allianceRaw: row.allianceRaw || null,
+            titleRaw: row.titleRaw || null,
             metricRaw: row.metricRaw,
             metricValue: metricValue || row.metricRaw,
             confidence: row.confidence,
@@ -700,14 +708,39 @@ export default function UploadPage() {
 
   return (
     <div className="page-container">
-      <div className="page-header">
-        <h1>📸 Upload Screenshots</h1>
-        <p>Upload governor screenshots, review OCR results, and save to an event</p>
+      <PageHero
+        title="Ingestion Workspace"
+        subtitle="Auto-detect Governor Profile vs Ranking Board screenshots, then queue everything through review-safe workflows."
+        badges={['Governor profile lane', 'Ranking board lane', 'Always-review policy']}
+      />
+
+      <div className="grid-3 mb-24">
+        <KpiCard
+          label="Queued Files"
+          value={entries.length}
+          hint="Current batch entries"
+          tone="info"
+        />
+        <KpiCard
+          label="Ready to Queue"
+          value={confirmedCount}
+          hint="Confirmed rows ready for save"
+          tone={confirmedCount > 0 ? 'good' : 'neutral'}
+        />
+        <KpiCard
+          label="Processing"
+          value={processingCount}
+          hint="OCR currently running"
+          tone={processingCount > 0 ? 'warn' : 'neutral'}
+        />
       </div>
 
       {/* Step 1: Select Event */}
-      <div className="card card-no-hover mb-24 animate-fade-in-up">
-        <h3 className="mb-16">Step 1: Select Event</h3>
+      <Panel
+        title="Step 1 · Event + Access Scope"
+        subtitle="Workspace scoped link access is required for v2 review queues."
+        className="mb-24 animate-fade-in-up"
+      >
         <div className="flex gap-12" style={{ flexWrap: 'wrap', alignItems: 'flex-end' }}>
           <div className="form-group" style={{ flex: 1, minWidth: 200, marginBottom: 0 }}>
             <label className="form-label">Event</label>
@@ -728,6 +761,12 @@ export default function UploadPage() {
             + New Event
           </button>
         </div>
+
+        <FilterBar className="mt-12">
+          <StatusPill label="Governor Profile" tone="info" />
+          <StatusPill label="Ranking Board" tone="warn" />
+        </FilterBar>
+
         <div className="grid-2 mt-16">
           <div className="form-group" style={{ marginBottom: 0 }}>
             <label className="form-label">Workspace ID (required)</label>
@@ -768,11 +807,10 @@ export default function UploadPage() {
         <div className="text-sm text-muted mt-12">
           Always-review policy is active: profile screenshots go to OCR review queue, ranking boards go to ranking review/canonical merge flow.
         </div>
-      </div>
+      </Panel>
 
       {/* Step 2: Upload */}
-      <div className="mb-24 animate-fade-in-up stagger-2">
-        <h3 className="mb-16">Step 2: Upload Screenshots</h3>
+      <Panel title="Step 2 · Upload Screenshots" className="mb-24 animate-fade-in-up stagger-2">
         <div
           className={`drop-zone ${isDragging ? 'dragging' : ''}`}
           onDragOver={onDragOver}
@@ -780,7 +818,7 @@ export default function UploadPage() {
           onDrop={onDrop}
           onClick={() => fileInputRef.current?.click()}
         >
-          <div className="drop-icon">📸</div>
+          <div className="drop-icon"><Camera size={28} /></div>
           <div className="drop-text">
             {isDragging ? 'Release to upload' : 'Drag & Drop Screenshots Here'}
           </div>
@@ -798,7 +836,7 @@ export default function UploadPage() {
             }}
           />
         </div>
-      </div>
+      </Panel>
 
       {/* Processing indicator */}
       {processingCount > 0 && (
@@ -908,6 +946,7 @@ export default function UploadPage() {
                             <tr>
                               <th style={{ textAlign: 'left', padding: '6px 4px' }}>Rank</th>
                               <th style={{ textAlign: 'left', padding: '6px 4px' }}>Governor</th>
+                              <th style={{ textAlign: 'left', padding: '6px 4px' }}>Alliance/Title</th>
                               <th style={{ textAlign: 'left', padding: '6px 4px' }}>Metric</th>
                               <th style={{ textAlign: 'left', padding: '6px 4px' }}>Conf</th>
                             </tr>
@@ -942,6 +981,27 @@ export default function UploadPage() {
                                         e.target.value
                                       )
                                     }
+                                  />
+                                </td>
+                                <td style={{ padding: '6px 4px' }}>
+                                  <input
+                                    className="ocr-field-input"
+                                    value={row.allianceRaw || row.titleRaw || ''}
+                                    onChange={(e) => {
+                                      const value = e.target.value;
+                                      updateRankingRow(
+                                        entry.id,
+                                        row.rowIndex,
+                                        'allianceRaw',
+                                        value
+                                      );
+                                      updateRankingRow(
+                                        entry.id,
+                                        row.rowIndex,
+                                        'titleRaw',
+                                        ''
+                                      );
+                                    }}
                                   />
                                 </td>
                                 <td style={{ padding: '6px 4px' }}>

@@ -10,6 +10,7 @@ export async function GET(request: NextRequest) {
     const workspaceId = requireParam(url.searchParams.get('workspaceId'), 'workspaceId');
     const eventId = url.searchParams.get('eventId')?.trim() || null;
     const rankingType = url.searchParams.get('rankingType')?.trim() || null;
+    const metricKey = url.searchParams.get('metricKey')?.trim() || null;
     const topN = parseIntQuery(url.searchParams.get('topN'), 20, 1, 100);
 
     const auth = await authorizeWorkspaceAccess(request, workspaceId, WorkspaceRole.VIEWER);
@@ -21,6 +22,7 @@ export async function GET(request: NextRequest) {
       workspaceId,
       eventId,
       rankingType,
+      metricKey,
       topN,
     });
 

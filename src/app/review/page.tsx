@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import React from 'react';
+import { AlertTriangle, CheckCircle2, RefreshCw, Save, ShieldCheck, XCircle } from 'lucide-react';
 import type { OcrRuntimeProfile } from '@/lib/ocr/profiles';
+import { EmptyState, FilterBar, KpiCard, PageHero, Panel, StatusPill } from '@/components/ui/primitives';
 
 type Severity = 'HIGH' | 'MEDIUM' | 'LOW';
 type ExtractionStatus = 'RAW' | 'REVIEWED' | 'APPROVED' | 'REJECTED';
@@ -75,10 +77,10 @@ const defaultDraft = {
   deads: '',
 };
 
-function severityClass(level: Severity) {
-  if (level === 'HIGH') return 'delta-negative';
-  if (level === 'MEDIUM') return 'text-gold';
-  return 'text-muted';
+function statusTone(level: Severity): 'warn' | 'bad' | 'neutral' {
+  if (level === 'HIGH') return 'bad';
+  if (level === 'MEDIUM') return 'warn';
+  return 'neutral';
 }
 
 export default function ReviewQueuePage() {
@@ -103,10 +105,7 @@ export default function ReviewQueuePage() {
   useEffect(() => {
     const url = new URL(window.location.href);
     const fromQueryWorkspace = url.searchParams.get('workspaceId') || '';
-    const fromQueryToken =
-      url.searchParams.get('accessToken') ||
-      url.searchParams.get('token') ||
-      '';
+    const fromQueryToken = url.searchParams.get('accessToken') || url.searchParams.get('token') || '';
 
     const savedWorkspace = localStorage.getItem('workspaceId') || '';
     const savedToken = localStorage.getItem('workspaceToken') || '';
@@ -139,18 +138,18 @@ export default function ReviewQueuePage() {
       sortBy: 'createdAt',
       sortDir: 'desc',
     });
+
     if (severity) params.set('severity', severity);
 
     try {
       const res = await fetch(`/api/v2/review-queue?${params.toString()}`, {
-        headers: {
-          'x-access-token': accessToken,
-        },
+        headers: { 'x-access-token': accessToken },
       });
       const payload = await res.json();
       if (!res.ok) {
         throw new Error(payload?.error?.message || 'Failed to load review queue.');
       }
+
       const data = (payload.data || []) as QueueItem[];
       setItems(data);
 
@@ -168,6 +167,7 @@ export default function ReviewQueuePage() {
         };
         nextRerunProfiles[item.id] = item.profileId || '';
       }
+
       setDrafts(nextDrafts);
       setRerunProfileByItem(nextRerunProfiles);
       setRerunPayloadByItem({});
@@ -175,9 +175,7 @@ export default function ReviewQueuePage() {
       try {
         const metricParams = new URLSearchParams({ workspaceId, days: '30' });
         const metricRes = await fetch(`/api/v2/ocr/metrics?${metricParams.toString()}`, {
-          headers: {
-            'x-access-token': accessToken,
-          },
+          headers: { 'x-access-token': accessToken },
         });
         const metricPayload = await metricRes.json();
         if (metricRes.ok && metricPayload?.data?.rates) {
@@ -198,9 +196,7 @@ export default function ReviewQueuePage() {
   }, [workspaceId, accessToken, severity, statusFilter]);
 
   useEffect(() => {
-    if (workspaceId && accessToken) {
-      loadQueue();
-    }
+    if (workspaceId && accessToken) loadQueue();
   }, [workspaceId, accessToken, loadQueue]);
 
   useEffect(() => {
@@ -208,14 +204,13 @@ export default function ReviewQueuePage() {
       setProfiles([]);
       return;
     }
+
     let cancelled = false;
     const run = async () => {
       try {
         const params = new URLSearchParams({ workspaceId });
         const res = await fetch(`/api/v2/ocr/profiles?${params.toString()}`, {
-          headers: {
-            'x-access-token': accessToken,
-          },
+          headers: { 'x-access-token': accessToken },
         });
         const payload = await res.json();
         if (!res.ok) return;
@@ -226,16 +221,18 @@ export default function ReviewQueuePage() {
         if (!cancelled) setProfiles([]);
       }
     };
+
     run();
+
     return () => {
       cancelled = true;
     };
   }, [workspaceId, accessToken]);
 
   const summary = useMemo(() => {
-    const high = items.filter((i) => i.severity.level === 'HIGH').length;
-    const medium = items.filter((i) => i.severity.level === 'MEDIUM').length;
-    const low = items.filter((i) => i.severity.level === 'LOW').length;
+    const high = items.filter((item) => item.severity.level === 'HIGH').length;
+    const medium = items.filter((item) => item.severity.level === 'MEDIUM').length;
+    const low = items.filter((item) => item.severity.level === 'LOW').length;
     return { high, medium, low, total: items.length };
   }, [items]);
 
@@ -257,14 +254,13 @@ export default function ReviewQueuePage() {
     }
 
     const profileId = rerunProfileByItem[item.id] || undefined;
-    setActionBusy(item.id + ':rerun');
+    setActionBusy(`${item.id}:rerun`);
     setError(null);
 
     try {
       const imageRes = await fetch(item.artifact.url);
-      if (!imageRes.ok) {
-        throw new Error('Failed to download screenshot artifact for rerun.');
-      }
+      if (!imageRes.ok) throw new Error('Failed to download screenshot artifact for rerun.');
+
       const blob = await imageRes.blob();
       const ext = blob.type.includes('png') ? 'png' : blob.type.includes('webp') ? 'webp' : 'jpg';
       const file = new File([blob], `rerun-${item.id}.${ext}`, { type: blob.type || 'image/png' });
@@ -284,6 +280,7 @@ export default function ReviewQueuePage() {
         t5Kills: result.t5Kills.value,
         deads: result.deads.value,
       };
+
       setDrafts((prev) => ({
         ...prev,
         [item.id]: nextDraft,
@@ -301,6 +298,7 @@ export default function ReviewQueuePage() {
           extraction: result,
         }),
       });
+
       const diagnosticsPayload = await diagnosticsRes.json();
       const rerunPayload = {
         profileId: result.profileId,
@@ -309,11 +307,10 @@ export default function ReviewQueuePage() {
         preprocessingTrace: result.preprocessingTrace,
         candidates: result.candidates,
         fusionDecision: result.fusionDecision,
-        failureReasons:
-          diagnosticsPayload?.data?.failureReasons || result.failureReasons || [],
-        lowConfidence:
-          diagnosticsPayload?.data?.lowConfidence ?? result.lowConfidence ?? false,
+        failureReasons: diagnosticsPayload?.data?.failureReasons || result.failureReasons || [],
+        lowConfidence: diagnosticsPayload?.data?.lowConfidence ?? result.lowConfidence ?? false,
       };
+
       setRerunPayloadByItem((prev) => ({
         ...prev,
         [item.id]: rerunPayload,
@@ -351,10 +348,12 @@ export default function ReviewQueuePage() {
                 : 'Reviewed and pending final approval',
         }),
       });
+
       const payload = await res.json();
       if (!res.ok) {
         throw new Error(payload?.error?.message || 'Failed to update review status.');
       }
+
       await loadQueue();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update review status.');
@@ -369,8 +368,10 @@ export default function ReviewQueuePage() {
       setError('Cannot save golden fixture without screenshot artifact.');
       return;
     }
-    setActionBusy(item.id + ':fixture');
+
+    setActionBusy(`${item.id}:fixture`);
     setError(null);
+
     try {
       const draft = drafts[item.id] || defaultDraft;
       const res = await fetch('/api/v2/ocr/golden-fixtures', {
@@ -392,6 +393,7 @@ export default function ReviewQueuePage() {
           },
         }),
       });
+
       const payload = await res.json();
       if (!res.ok) {
         throw new Error(payload?.error?.message || 'Failed to save golden fixture.');
@@ -405,42 +407,27 @@ export default function ReviewQueuePage() {
 
   return (
     <div className="page-container">
-      <div className="page-header">
-        <h1>🧪 OCR Review Queue</h1>
-        <p>Triage low-confidence OCR entries, compare against previous values, then approve or reject.</p>
-      </div>
+      <PageHero
+        title="OCR Review Queue"
+        subtitle="Always-review workflow with field-level corrections, reruns, and confidence evidence."
+      />
 
-      <div className="card card-no-hover mb-24">
-        <h3 className="mb-16">Workspace Access</h3>
+      <Panel title="Queue Filters" subtitle="Workspace token controls visibility" className="mb-24">
         <div className="grid-2">
-          <div className="form-group">
+          <div className="form-group" style={{ marginBottom: 0 }}>
             <label className="form-label">Workspace ID</label>
-            <input
-              className="form-input"
-              value={workspaceId}
-              onChange={(e) => setWorkspaceId(e.target.value)}
-              placeholder="workspace_cuid"
-            />
+            <input className="form-input" value={workspaceId} onChange={(e) => setWorkspaceId(e.target.value)} />
           </div>
-          <div className="form-group">
+          <div className="form-group" style={{ marginBottom: 0 }}>
             <label className="form-label">Access Token</label>
-            <input
-              className="form-input"
-              value={accessToken}
-              onChange={(e) => setAccessToken(e.target.value)}
-              placeholder="paste editor/viewer link token"
-            />
+            <input className="form-input" value={accessToken} onChange={(e) => setAccessToken(e.target.value)} />
           </div>
         </div>
 
-        <div className="flex gap-12 items-end" style={{ flexWrap: 'wrap' }}>
+        <FilterBar className="mt-12">
           <div className="form-group" style={{ marginBottom: 0 }}>
             <label className="form-label">Severity</label>
-            <select
-              className="form-select"
-              value={severity}
-              onChange={(e) => setSeverity(e.target.value as '' | Severity)}
-            >
+            <select className="form-select" value={severity} onChange={(e) => setSeverity(e.target.value as '' | Severity)}>
               <option value="">All</option>
               <option value="HIGH">High</option>
               <option value="MEDIUM">Medium</option>
@@ -449,11 +436,7 @@ export default function ReviewQueuePage() {
           </div>
           <div className="form-group" style={{ marginBottom: 0 }}>
             <label className="form-label">Statuses</label>
-            <select
-              className="form-select"
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-            >
+            <select className="form-select" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
               <option value="RAW,REVIEWED">Pending (RAW + REVIEWED)</option>
               <option value="RAW">RAW only</option>
               <option value="REVIEWED">REVIEWED only</option>
@@ -461,209 +444,187 @@ export default function ReviewQueuePage() {
               <option value="REJECTED">REJECTED</option>
             </select>
           </div>
-
           <button className="btn btn-primary" onClick={loadQueue} disabled={loading}>
             {loading ? 'Loading...' : 'Refresh Queue'}
           </button>
-        </div>
+        </FilterBar>
 
-        <div className="mt-16 text-sm text-muted">
-          Queue summary: {summary.total} total • {summary.high} high • {summary.medium} medium • {summary.low} low
-        </div>
-        {metricsSummary && (
-          <div className="mt-8 text-sm text-muted">
-            OCR quality (30d): pass {Math.round(metricsSummary.reviewPassRate * 100)}% • low-confidence{' '}
-            {Math.round(metricsSummary.lowConfidenceRate * 100)}% • reviewer edits{' '}
-            {Math.round(metricsSummary.reviewerEditRate * 100)}%
-          </div>
-        )}
+        {error ? <div className="delta-negative mt-12">{error}</div> : null}
+      </Panel>
 
-        {error && <div className="mt-16 delta-negative">{error}</div>}
+      <div className="grid-4 mb-24">
+        <KpiCard label="Queue Total" value={summary.total} hint="Pending rows in current filter" tone="info" />
+        <KpiCard label="High Severity" value={summary.high} hint="Likely OCR correction needed" tone="bad" />
+        <KpiCard label="Medium Severity" value={summary.medium} hint="Validate before approve" tone="warn" />
+        <KpiCard label="Low Severity" value={summary.low} hint="Likely ready to approve" tone="good" />
       </div>
 
-      {items.length === 0 ? (
-        <div className="empty-state">
-          <div className="empty-icon">✅</div>
-          <h3>No entries in queue</h3>
-          <p>Try changing filters or refresh after new scan jobs are uploaded.</p>
-        </div>
-      ) : (
-        <div className="flex" style={{ flexDirection: 'column', gap: 16 }}>
-          {items.map((item) => {
-            const draft = drafts[item.id] || defaultDraft;
-            return (
-              <div key={item.id} className="ocr-review">
-                <div className="ocr-review-header">
-                  <div className="flex items-center gap-12" style={{ flexWrap: 'wrap' }}>
-                    <strong>{item.values.governorName.value || 'Unknown Governor'}</strong>
-                    <span className="text-muted text-sm">ID: {item.values.governorId.value || '—'}</span>
-                    <span className={`text-sm ${severityClass(item.severity.level)}`}>
-                      {item.severity.level}
-                    </span>
-                    {item.profile ? (
-                      <span className="text-muted text-sm">
-                        Profile: {item.profile.name} v{item.profile.version}
-                      </span>
-                    ) : item.profileId ? (
-                      <span className="text-muted text-sm">Profile: {item.profileId}</span>
-                    ) : null}
-                    {item.engineVersion ? (
-                      <span className="text-muted text-sm">{item.engineVersion}</span>
-                    ) : null}
-                    <span className="text-muted text-sm">Status: {item.status}</span>
-                    <span className="text-muted text-sm">Confidence: {Math.round(item.confidence * (item.confidence <= 1 ? 100 : 1))}%</span>
-                    <span className="text-muted text-sm">Created: {new Date(item.createdAt).toLocaleString()}</span>
-                  </div>
-                </div>
+      {metricsSummary ? (
+        <Panel title="OCR Quality (30 days)" subtitle="Review funnel metrics" className="mb-24">
+          <FilterBar>
+            <StatusPill label={`Pass ${Math.round(metricsSummary.reviewPassRate * 100)}%`} tone="good" />
+            <StatusPill label={`Low-confidence ${Math.round(metricsSummary.lowConfidenceRate * 100)}%`} tone="warn" />
+            <StatusPill label={`Reviewer edits ${Math.round(metricsSummary.reviewerEditRate * 100)}%`} tone="info" />
+          </FilterBar>
+        </Panel>
+      ) : null}
 
-                <div className="ocr-review-body" style={{ gridTemplateColumns: '180px 1fr 1fr 80px' }}>
-                  {Object.entries(draft).map(([field, value]) => {
-                    const source = item.values[field as keyof QueueItem['values']];
-                    return (
-                      <React.Fragment key={`${item.id}-${field}`}>
-                        <label className="ocr-field-label" key={`${item.id}-${field}-label`}>
-                          {field}
-                        </label>
-                        <div className="ocr-field-value" key={`${item.id}-${field}-current`}>
-                          <input
-                            className="ocr-field-input"
-                            value={value}
-                            onChange={(e) =>
-                              updateDraft(item.id, field as keyof typeof defaultDraft, e.target.value)
-                            }
-                          />
-                        </div>
-                        <div className="text-muted text-sm" key={`${item.id}-${field}-previous`}>
-                          Prev: {source?.previousValue ?? '—'}
-                          {source?.changed ? <span className="delta-negative"> (changed)</span> : null}
-                          {source?.croppedImage ? (
-                            <>
-                              {' '}
-                              <a href={source.croppedImage} target="_blank" rel="noreferrer">
-                                crop
-                              </a>
-                            </>
-                          ) : null}
-                          {Array.isArray(source?.candidates) && source.candidates.length > 0 ? (
-                            <div>
-                              Alt:{' '}
-                              {source.candidates
-                                .slice(0, 2)
-                                .map((candidate) =>
-                                  candidate?.normalizedValue
-                                    ? `${candidate.normalizedValue} (${Math.round(
-                                        Number(candidate.confidence || 0)
-                                      )}%)`
-                                    : null
-                                )
-                                .filter(Boolean)
-                                .join(' • ') || '—'}
-                            </div>
-                          ) : null}
-                        </div>
-                        <div className="text-muted text-sm" key={`${item.id}-${field}-confidence`}>
-                          {Math.round(source?.confidence ?? 0)}%
-                        </div>
-                      </React.Fragment>
-                    );
-                  })}
-                </div>
-
-                {item.severity.reasons.length > 0 && (
-                  <div style={{ padding: '0 20px 12px' }}>
-                    {item.severity.reasons.map((reason, idx) => (
-                      <div key={`${item.id}-reason-${idx}`} className="text-sm text-muted">
-                        • {reason}
+      <Panel title="Review Board" subtitle="Field edits, candidate alternatives, and rerun controls">
+        {items.length === 0 ? (
+          <EmptyState title="No entries in queue" description="Try refreshing or broadening queue filters." />
+        ) : (
+          <div className="flex" style={{ flexDirection: 'column', gap: 14 }}>
+            {items.map((item) => {
+              const draft = drafts[item.id] || defaultDraft;
+              return (
+                <article key={item.id} className="ocr-review">
+                  <header className="ocr-review-header">
+                    <div>
+                      <div className="flex items-center gap-8" style={{ flexWrap: 'wrap' }}>
+                        <strong>{item.values.governorName.value || 'Unknown Governor'}</strong>
+                        <StatusPill label={item.severity.level} tone={statusTone(item.severity.level)} />
+                        <StatusPill label={item.status} tone="info" />
+                        <span className="text-sm text-muted">
+                          {Math.round(item.confidence * (item.confidence <= 1 ? 100 : 1))}% confidence
+                        </span>
                       </div>
-                    ))}
-                  </div>
-                )}
-
-                {item.failureReasons && item.failureReasons.length > 0 && (
-                  <div style={{ padding: '0 20px 12px' }}>
-                    {item.failureReasons.slice(0, 5).map((reason, idx) => (
-                      <div key={`${item.id}-failure-${idx}`} className="text-sm text-muted">
-                        • {reason}
+                      <div className="text-sm text-muted mt-4">
+                        ID {item.values.governorId.value || '—'} • {item.engineVersion || item.provider} •{' '}
+                        {new Date(item.createdAt).toLocaleString()}
                       </div>
-                    ))}
-                  </div>
-                )}
+                    </div>
+                  </header>
 
-                {item.validation.filter((v) => v.severity !== 'ok').length > 0 && (
-                  <div style={{ padding: '0 20px 12px' }}>
-                    {item.validation
-                      .filter((v) => v.severity !== 'ok')
-                      .map((entry, idx) => (
-                        <div
-                          key={`${item.id}-val-${idx}`}
-                          className={`text-sm ${entry.severity === 'error' ? 'delta-negative' : 'text-gold'}`}
-                        >
-                          {entry.severity === 'error' ? '❌' : '⚠️'} {entry.field}: {entry.warning || 'Check value'}
+                  <div className="ocr-review-body" style={{ gridTemplateColumns: '170px 1fr 1fr 72px' }}>
+                    {Object.entries(draft).map(([field, value]) => {
+                      const source = item.values[field as keyof QueueItem['values']];
+                      return (
+                        <React.Fragment key={`${item.id}-${field}`}>
+                          <label className="ocr-field-label">{field}</label>
+                          <div className="ocr-field-value">
+                            <input
+                              className="ocr-field-input"
+                              value={value}
+                              onChange={(e) => updateDraft(item.id, field as keyof typeof defaultDraft, e.target.value)}
+                            />
+                          </div>
+                          <div className="text-sm text-muted">
+                            Prev {source?.previousValue ?? '—'}
+                            {source?.changed ? <span className="delta-negative"> changed</span> : null}
+                            {source?.croppedImage ? (
+                              <>
+                                {' '}
+                                <a href={source.croppedImage} target="_blank" rel="noreferrer">
+                                  crop
+                                </a>
+                              </>
+                            ) : null}
+                            {Array.isArray(source?.candidates) && source.candidates.length > 0 ? (
+                              <div>
+                                Alt{' '}
+                                {source.candidates
+                                  .slice(0, 2)
+                                  .map((candidate) =>
+                                    candidate?.normalizedValue
+                                      ? `${candidate.normalizedValue} (${Math.round(Number(candidate.confidence || 0))}%)`
+                                      : null
+                                  )
+                                  .filter(Boolean)
+                                  .join(' • ') || '—'}
+                              </div>
+                            ) : null}
+                          </div>
+                          <div className="text-sm text-muted">{Math.round(source?.confidence ?? 0)}%</div>
+                        </React.Fragment>
+                      );
+                    })}
+                  </div>
+
+                  {item.severity.reasons.length > 0 ? (
+                    <div style={{ padding: '0 14px 10px' }}>
+                      {item.severity.reasons.map((reason, idx) => (
+                        <div key={`${item.id}-reason-${idx}`} className="text-sm text-muted">
+                          • {reason}
                         </div>
                       ))}
-                  </div>
-                )}
+                    </div>
+                  ) : null}
 
-                <div className="flex gap-8" style={{ padding: '0 20px 18px' }}>
-                  <select
-                    className="form-select"
-                    value={rerunProfileByItem[item.id] || ''}
-                    onChange={(e) =>
-                      setRerunProfileByItem((prev) => ({
-                        ...prev,
-                        [item.id]: e.target.value,
-                      }))
-                    }
-                    style={{ minWidth: 220 }}
-                  >
-                    <option value="">Auto-select profile</option>
-                    {profiles.map((profile) => (
-                      <option key={profile.id} value={profile.id}>
-                        {profile.name} ({profile.profileKey} v{profile.version})
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    className="btn btn-secondary btn-sm"
-                    disabled={Boolean(actionBusy)}
-                    onClick={() => rerunOcr(item)}
-                  >
-                    {actionBusy === item.id + ':rerun' ? 'Re-running...' : 'Re-run OCR'}
-                  </button>
-                  <button
-                    className="btn btn-secondary btn-sm"
-                    disabled={Boolean(actionBusy)}
-                    onClick={() => saveGoldenFixture(item)}
-                  >
-                    {actionBusy === item.id + ':fixture' ? 'Saving...' : 'Save Golden'}
-                  </button>
-                  <button
-                    className="btn btn-secondary btn-sm"
-                    disabled={Boolean(actionBusy)}
-                    onClick={() => submitReview(item.id, 'REVIEWED')}
-                  >
-                    {actionBusy === item.id + 'REVIEWED' ? 'Saving...' : 'Mark Reviewed'}
-                  </button>
-                  <button
-                    className="btn btn-primary btn-sm"
-                    disabled={Boolean(actionBusy)}
-                    onClick={() => submitReview(item.id, 'APPROVED')}
-                  >
-                    {actionBusy === item.id + 'APPROVED' ? 'Approving...' : 'Approve'}
-                  </button>
-                  <button
-                    className="btn btn-danger btn-sm"
-                    disabled={Boolean(actionBusy)}
-                    onClick={() => submitReview(item.id, 'REJECTED')}
-                  >
-                    {actionBusy === item.id + 'REJECTED' ? 'Rejecting...' : 'Reject'}
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
+                  {item.failureReasons && item.failureReasons.length > 0 ? (
+                    <div style={{ padding: '0 14px 10px' }}>
+                      {item.failureReasons.slice(0, 5).map((reason, idx) => (
+                        <div key={`${item.id}-failure-${idx}`} className="text-sm text-muted">
+                          • {reason}
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+
+                  {item.validation.filter((entry) => entry.severity !== 'ok').length > 0 ? (
+                    <div style={{ padding: '0 14px 10px' }}>
+                      {item.validation
+                        .filter((entry) => entry.severity !== 'ok')
+                        .map((entry, idx) => (
+                          <div
+                            key={`${item.id}-validation-${idx}`}
+                            className={`text-sm ${entry.severity === 'error' ? 'delta-negative' : 'text-gold'}`}
+                          >
+                            {entry.severity === 'error' ? 'Error' : 'Warning'} {entry.field}:{' '}
+                            {entry.warning || 'Check value'}
+                          </div>
+                        ))}
+                    </div>
+                  ) : null}
+
+                  <FilterBar style={{ padding: '0 14px 14px' } as React.CSSProperties}>
+                    <select
+                      className="form-select"
+                      value={rerunProfileByItem[item.id] || ''}
+                      onChange={(e) =>
+                        setRerunProfileByItem((prev) => ({
+                          ...prev,
+                          [item.id]: e.target.value,
+                        }))
+                      }
+                      style={{ minWidth: 220 }}
+                    >
+                      <option value="">Auto-select profile</option>
+                      {profiles.map((profile) => (
+                        <option key={profile.id} value={profile.id}>
+                          {profile.name} ({profile.profileKey} v{profile.version})
+                        </option>
+                      ))}
+                    </select>
+
+                    <button className="btn btn-secondary btn-sm" disabled={Boolean(actionBusy)} onClick={() => rerunOcr(item)}>
+                      <RefreshCw size={14} /> {actionBusy === `${item.id}:rerun` ? 'Re-running...' : 'Re-run OCR'}
+                    </button>
+                    <button className="btn btn-secondary btn-sm" disabled={Boolean(actionBusy)} onClick={() => saveGoldenFixture(item)}>
+                      <Save size={14} /> {actionBusy === `${item.id}:fixture` ? 'Saving...' : 'Save Golden'}
+                    </button>
+                    <button className="btn btn-secondary btn-sm" disabled={Boolean(actionBusy)} onClick={() => submitReview(item.id, 'REVIEWED')}>
+                      <CheckCircle2 size={14} /> {actionBusy === item.id + 'REVIEWED' ? 'Saving...' : 'Mark Reviewed'}
+                    </button>
+                    <button className="btn btn-primary btn-sm" disabled={Boolean(actionBusy)} onClick={() => submitReview(item.id, 'APPROVED')}>
+                      <ShieldCheck size={14} /> {actionBusy === item.id + 'APPROVED' ? 'Approving...' : 'Approve'}
+                    </button>
+                    <button className="btn btn-danger btn-sm" disabled={Boolean(actionBusy)} onClick={() => submitReview(item.id, 'REJECTED')}>
+                      <XCircle size={14} /> {actionBusy === item.id + 'REJECTED' ? 'Rejecting...' : 'Reject'}
+                    </button>
+                  </FilterBar>
+
+                  {item.lowConfidence ? (
+                    <div style={{ padding: '0 14px 12px' }} className="text-sm text-gold">
+                      <AlertTriangle size={14} style={{ verticalAlign: 'middle', marginRight: 6 }} />
+                      Low-confidence extraction flagged by OCR pipeline.
+                    </div>
+                  ) : null}
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </Panel>
     </div>
   );
 }

@@ -1,6 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link2, PencilLine, ShieldAlert, UserPlus, XCircle } from 'lucide-react';
+import { EmptyState, FilterBar, KpiCard, PageHero, Panel, StatusPill } from '@/components/ui/primitives';
 
 type IdentityStatus = 'UNRESOLVED' | 'AUTO_LINKED' | 'MANUAL_LINKED' | 'REJECTED';
 type ReviewAction = 'LINK_TO_GOVERNOR' | 'CREATE_ALIAS' | 'CORRECT_ROW' | 'REJECT_ROW';
@@ -10,6 +12,8 @@ interface ReviewRow {
   runId: string;
   sourceRank: number | null;
   governorNameRaw: string;
+  allianceRaw?: string | null;
+  titleRaw?: string | null;
   metricRaw: string;
   metricValue: string;
   confidence: number;
@@ -67,25 +71,28 @@ export default function RankingReviewPage() {
 
   const loadRows = useCallback(async () => {
     if (!workspaceId || !accessToken) return;
+
     setLoading(true);
     setError(null);
+
     try {
       const params = new URLSearchParams({
         workspaceId,
         status: statusFilter,
         limit: '80',
       });
+
       const res = await fetch(`/api/v2/rankings/review?${params.toString()}`, {
-        headers: {
-          'x-access-token': accessToken,
-        },
+        headers: { 'x-access-token': accessToken },
       });
       const payload = await res.json();
       if (!res.ok) {
         throw new Error(payload?.error?.message || 'Failed to load ranking review queue.');
       }
+
       const data = Array.isArray(payload?.data) ? (payload.data as ReviewRow[]) : [];
       setRows(data);
+
       const nextDrafts: Record<string, DraftState> = {};
       for (const row of data) {
         nextDrafts[row.id] = {
@@ -105,10 +112,15 @@ export default function RankingReviewPage() {
   }, [workspaceId, accessToken, statusFilter]);
 
   useEffect(() => {
-    if (workspaceId && accessToken) {
-      loadRows();
-    }
+    if (workspaceId && accessToken) loadRows();
   }, [workspaceId, accessToken, loadRows]);
+
+  const summary = useMemo(() => {
+    const unresolved = rows.filter((row) => row.identityStatus === 'UNRESOLVED').length;
+    const linked = rows.filter((row) => row.identityStatus === 'MANUAL_LINKED' || row.identityStatus === 'AUTO_LINKED').length;
+    const rejected = rows.filter((row) => row.identityStatus === 'REJECTED').length;
+    return { unresolved, linked, rejected };
+  }, [rows]);
 
   const updateDraft = (rowId: string, key: keyof DraftState, value: string) => {
     setDrafts((prev) => ({
@@ -122,8 +134,8 @@ export default function RankingReviewPage() {
 
   const runAction = async (row: ReviewRow, action: ReviewAction) => {
     if (!workspaceId || !accessToken) return;
-    const draft = drafts[row.id] || defaultDraft;
 
+    const draft = drafts[row.id] || defaultDraft;
     setBusyRow(`${row.id}:${action}`);
     setError(null);
 
@@ -135,7 +147,7 @@ export default function RankingReviewPage() {
 
       if (action === 'LINK_TO_GOVERNOR' || action === 'CREATE_ALIAS') {
         if (!draft.governorGameId.trim()) {
-          throw new Error('Governor game ID is required for link/alias actions.');
+          throw new Error('Governor game ID is required for this action.');
         }
         body.governorGameId = draft.governorGameId.trim();
       }
@@ -164,6 +176,7 @@ export default function RankingReviewPage() {
         },
         body: JSON.stringify(body),
       });
+
       const payload = await res.json();
       if (!res.ok) {
         throw new Error(payload?.error?.message || 'Failed to apply review action.');
@@ -171,7 +184,7 @@ export default function RankingReviewPage() {
 
       await loadRows();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to apply ranking action.');
+      setError(err instanceof Error ? err.message : 'Failed to apply review action.');
     } finally {
       setBusyRow(null);
     }
@@ -179,12 +192,12 @@ export default function RankingReviewPage() {
 
   return (
     <div className="page-container">
-      <div className="page-header">
-        <h1>🧩 Ranking Review Queue</h1>
-        <p>Resolve ambiguous rows, create aliases, and keep canonical rankings clean.</p>
-      </div>
+      <PageHero
+        title="Ranking Review Queue"
+        subtitle="Resolve identity ambiguity, apply corrective edits, and keep canonical rankings clean."
+      />
 
-      <div className="card card-no-hover mb-24">
+      <Panel title="Queue Scope" subtitle="Workspace-secured unresolved ranking rows" className="mb-24">
         <div className="grid-2">
           <div className="form-group" style={{ marginBottom: 0 }}>
             <label className="form-label">Workspace ID</label>
@@ -196,123 +209,149 @@ export default function RankingReviewPage() {
           </div>
         </div>
 
-        <div className="flex gap-12 mt-12" style={{ flexWrap: 'wrap', alignItems: 'end' }}>
-          <div className="form-group" style={{ marginBottom: 0 }}>
+        <FilterBar className="mt-12">
+          <div className="form-group" style={{ marginBottom: 0, width: 260 }}>
             <label className="form-label">Status Filter</label>
             <input className="form-input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} />
           </div>
           <button className="btn btn-primary" onClick={loadRows} disabled={loading}>
             {loading ? 'Loading...' : 'Refresh'}
           </button>
-        </div>
+        </FilterBar>
+
+        {error ? <div className="delta-negative mt-12">{error}</div> : null}
+      </Panel>
+
+      <div className="grid-3 mb-24">
+        <KpiCard label="Unresolved" value={summary.unresolved} hint="Needs manual identity action" tone="warn" />
+        <KpiCard label="Linked" value={summary.linked} hint="Auto or manual link ready" tone="good" />
+        <KpiCard label="Rejected" value={summary.rejected} hint="Discarded ranking rows" tone="bad" />
       </div>
 
-      <div className="card card-no-hover">
-        {error && <div className="delta-negative mb-12">{error}</div>}
+      <Panel title="Triage Board" subtitle="Field-level corrections with review actions">
+        {rows.length === 0 && !loading ? (
+          <EmptyState title="Queue is clear" description="No ranking rows in the selected status filter." />
+        ) : (
+          rows.map((row) => {
+            const draft = drafts[row.id] || defaultDraft;
+            const tone =
+              row.identityStatus === 'UNRESOLVED'
+                ? 'warn'
+                : row.identityStatus === 'REJECTED'
+                  ? 'bad'
+                  : 'good';
 
-        {rows.map((row) => {
-          const draft = drafts[row.id] || defaultDraft;
-          return (
-            <div key={row.id} className="ocr-review mb-12">
-              <div className="ocr-review-header">
-                <div>
-                  <strong>{row.governorNameRaw || 'Unknown'}</strong>
-                  <div className="text-sm text-muted">
-                    {row.run.rankingType} / {row.run.metricKey} • sourceRank {row.sourceRank ?? '—'} • metric {row.metricValue}
+            return (
+              <article key={row.id} className="ocr-review mb-12">
+                <header className="ocr-review-header">
+                  <div>
+                    <div className="flex items-center gap-8" style={{ flexWrap: 'wrap' }}>
+                      <strong>{row.governorNameRaw || 'Unknown'}</strong>
+                      <StatusPill label={row.identityStatus} tone={tone} />
+                      <span className="text-sm text-muted">{Math.round(row.confidence)}% confidence</span>
+                    </div>
+                    <div className="text-sm text-muted mt-4">
+                      {row.run.rankingType} / {row.run.metricKey} • source rank {row.sourceRank ?? '—'} • metric {row.metricValue}
+                    </div>
+                    {(row.allianceRaw || row.titleRaw) && (
+                      <div className="text-sm text-muted mt-4">
+                        {row.allianceRaw ? `Alliance ${row.allianceRaw}` : `Title ${row.titleRaw}`}
+                      </div>
+                    )}
                   </div>
-                  <div className="text-sm text-muted">
-                    status {row.identityStatus} • conf {Math.round(row.confidence)}% • run {row.runId}
+                </header>
+
+                <div style={{ padding: '12px 14px' }}>
+                  <div className="grid-2">
+                    <div className="form-group" style={{ marginBottom: 8 }}>
+                      <label className="form-label">Governor Game ID</label>
+                      <input
+                        className="form-input"
+                        value={draft.governorGameId}
+                        onChange={(e) => updateDraft(row.id, 'governorGameId', e.target.value)}
+                        placeholder="e.g. 222067061"
+                      />
+                    </div>
+                    <div className="form-group" style={{ marginBottom: 8 }}>
+                      <label className="form-label">Alias for Create Alias</label>
+                      <input
+                        className="form-input"
+                        value={draft.aliasRaw}
+                        onChange={(e) => updateDraft(row.id, 'aliasRaw', e.target.value)}
+                      />
+                    </div>
                   </div>
+
+                  <div className="grid-3">
+                    <div className="form-group" style={{ marginBottom: 8 }}>
+                      <label className="form-label">Corrected Rank</label>
+                      <input
+                        className="form-input"
+                        value={draft.sourceRank}
+                        onChange={(e) => updateDraft(row.id, 'sourceRank', e.target.value)}
+                      />
+                    </div>
+                    <div className="form-group" style={{ marginBottom: 8 }}>
+                      <label className="form-label">Corrected Name</label>
+                      <input
+                        className="form-input"
+                        value={draft.governorNameRaw}
+                        onChange={(e) => updateDraft(row.id, 'governorNameRaw', e.target.value)}
+                      />
+                    </div>
+                    <div className="form-group" style={{ marginBottom: 8 }}>
+                      <label className="form-label">Corrected Metric</label>
+                      <input
+                        className="form-input"
+                        value={draft.metricRaw}
+                        onChange={(e) => updateDraft(row.id, 'metricRaw', e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  <FilterBar>
+                    <button
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => runAction(row, 'LINK_TO_GOVERNOR')}
+                      disabled={busyRow != null}
+                    >
+                      <Link2 size={14} /> {busyRow === `${row.id}:LINK_TO_GOVERNOR` ? 'Linking...' : 'Link Governor'}
+                    </button>
+                    <button
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => runAction(row, 'CREATE_ALIAS')}
+                      disabled={busyRow != null}
+                    >
+                      <UserPlus size={14} /> {busyRow === `${row.id}:CREATE_ALIAS` ? 'Saving...' : 'Create Alias'}
+                    </button>
+                    <button
+                      className="btn btn-primary btn-sm"
+                      onClick={() => runAction(row, 'CORRECT_ROW')}
+                      disabled={busyRow != null}
+                    >
+                      <PencilLine size={14} /> {busyRow === `${row.id}:CORRECT_ROW` ? 'Applying...' : 'Correct Row'}
+                    </button>
+                    <button
+                      className="btn btn-danger btn-sm"
+                      onClick={() => runAction(row, 'REJECT_ROW')}
+                      disabled={busyRow != null}
+                    >
+                      <XCircle size={14} /> {busyRow === `${row.id}:REJECT_ROW` ? 'Rejecting...' : 'Reject'}
+                    </button>
+                  </FilterBar>
+
+                  {row.identityStatus === 'UNRESOLVED' ? (
+                    <div className="text-sm mt-8 text-muted">
+                      <ShieldAlert size={14} style={{ verticalAlign: 'middle', marginRight: 6 }} />
+                      Ambiguous identity, manual confirmation required before merge confidence improves.
+                    </div>
+                  ) : null}
                 </div>
-              </div>
-
-              <div style={{ padding: '12px 16px' }}>
-                <div className="grid-2">
-                  <div className="form-group" style={{ marginBottom: 8 }}>
-                    <label className="form-label">Governor Game ID</label>
-                    <input
-                      className="form-input"
-                      value={draft.governorGameId}
-                      onChange={(e) => updateDraft(row.id, 'governorGameId', e.target.value)}
-                      placeholder="e.g. 222067061"
-                    />
-                  </div>
-                  <div className="form-group" style={{ marginBottom: 8 }}>
-                    <label className="form-label">Alias (for CREATE_ALIAS)</label>
-                    <input
-                      className="form-input"
-                      value={draft.aliasRaw}
-                      onChange={(e) => updateDraft(row.id, 'aliasRaw', e.target.value)}
-                    />
-                  </div>
-                </div>
-
-                <div className="grid-3">
-                  <div className="form-group" style={{ marginBottom: 8 }}>
-                    <label className="form-label">Corrected Rank</label>
-                    <input
-                      className="form-input"
-                      value={draft.sourceRank}
-                      onChange={(e) => updateDraft(row.id, 'sourceRank', e.target.value)}
-                    />
-                  </div>
-                  <div className="form-group" style={{ marginBottom: 8 }}>
-                    <label className="form-label">Corrected Name</label>
-                    <input
-                      className="form-input"
-                      value={draft.governorNameRaw}
-                      onChange={(e) => updateDraft(row.id, 'governorNameRaw', e.target.value)}
-                    />
-                  </div>
-                  <div className="form-group" style={{ marginBottom: 8 }}>
-                    <label className="form-label">Corrected Metric</label>
-                    <input
-                      className="form-input"
-                      value={draft.metricRaw}
-                      onChange={(e) => updateDraft(row.id, 'metricRaw', e.target.value)}
-                    />
-                  </div>
-                </div>
-
-                <div className="flex gap-8" style={{ flexWrap: 'wrap' }}>
-                  <button
-                    className="btn btn-secondary btn-sm"
-                    onClick={() => runAction(row, 'LINK_TO_GOVERNOR')}
-                    disabled={busyRow != null}
-                  >
-                    {busyRow === `${row.id}:LINK_TO_GOVERNOR` ? '...' : 'Link Governor'}
-                  </button>
-                  <button
-                    className="btn btn-secondary btn-sm"
-                    onClick={() => runAction(row, 'CREATE_ALIAS')}
-                    disabled={busyRow != null}
-                  >
-                    {busyRow === `${row.id}:CREATE_ALIAS` ? '...' : 'Create Alias'}
-                  </button>
-                  <button
-                    className="btn btn-primary btn-sm"
-                    onClick={() => runAction(row, 'CORRECT_ROW')}
-                    disabled={busyRow != null}
-                  >
-                    {busyRow === `${row.id}:CORRECT_ROW` ? '...' : 'Correct Row'}
-                  </button>
-                  <button
-                    className="btn btn-danger btn-sm"
-                    onClick={() => runAction(row, 'REJECT_ROW')}
-                    disabled={busyRow != null}
-                  >
-                    {busyRow === `${row.id}:REJECT_ROW` ? '...' : 'Reject Row'}
-                  </button>
-                </div>
-              </div>
-            </div>
-          );
-        })}
-
-        {rows.length === 0 && !loading && (
-          <div className="text-muted">No ranking rows in the selected review state.</div>
+              </article>
+            );
+          })
         )}
-      </div>
+      </Panel>
     </div>
   );
 }

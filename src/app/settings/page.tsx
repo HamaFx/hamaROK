@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { Save, Settings2, Shield, Webhook } from 'lucide-react';
+import { FilterBar, KpiCard, PageHero, Panel } from '@/components/ui/primitives';
 
 export default function SettingsPage() {
   const [config, setConfig] = useState({
@@ -16,33 +18,33 @@ export default function SettingsPage() {
 
   useEffect(() => {
     fetch('/api/settings')
-      .then(res => res.json())
-      .then(data => {
-        if (!data.error) setConfig({
-          t4Weight: data.t4Weight ?? 0.5,
-          t5Weight: data.t5Weight ?? 1.0,
-          deadWeight: data.deadWeight ?? 5.0,
-          kpPerPowerRatio: data.kpPerPowerRatio ?? 0.3,
-          deadPerPowerRatio: data.deadPerPowerRatio ?? 0.02,
-          discordWebhook: data.discordWebhook ?? '',
-        });
+      .then((res) => res.json())
+      .then((data) => {
+        if (!data.error)
+          setConfig({
+            t4Weight: data.t4Weight ?? 0.5,
+            t5Weight: data.t5Weight ?? 1.0,
+            deadWeight: data.deadWeight ?? 5.0,
+            kpPerPowerRatio: data.kpPerPowerRatio ?? 0.3,
+            deadPerPowerRatio: data.deadPerPowerRatio ?? 0.02,
+            discordWebhook: data.discordWebhook ?? '',
+          });
       });
   }, []);
 
   const handleSave = async () => {
     setSaving(true);
     setMessage('');
+
     try {
       const res = await fetch('/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(config),
       });
-      if (res.ok) {
-        setMessage('Settings saved successfully!');
-      } else {
-        setMessage('Failed to save settings.');
-      }
+
+      if (res.ok) setMessage('Settings saved.');
+      else setMessage('Failed to save settings.');
     } catch {
       setMessage('Network error.');
     } finally {
@@ -53,73 +55,94 @@ export default function SettingsPage() {
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
-    setConfig(prev => ({ ...prev, [name]: name === 'discordWebhook' ? value : Number(value) }));
+    setConfig((prev) => ({
+      ...prev,
+      [name]: name === 'discordWebhook' ? value : Number(value),
+    }));
   };
 
   return (
     <div className="page-container">
-      <div className="page-header">
-        <h1>⚙️ Kingdom Settings</h1>
-        <p>Configure advanced DKP formulas and webhook integrations.</p>
+      <PageHero
+        title="Kingdom Settings"
+        subtitle="Configure DKP weighting formulas and outbound integrations for leaderboard publication."
+        actions={
+          <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
+            <Save size={14} /> {saving ? 'Saving...' : 'Save Settings'}
+          </button>
+        }
+      />
+
+      <div className="grid-3 mb-24">
+        <KpiCard label="T4 Weight" value={config.t4Weight} hint="Kill score multiplier" tone="info" />
+        <KpiCard label="T5 Weight" value={config.t5Weight} hint="Kill score multiplier" tone="warn" />
+        <KpiCard label="Dead Weight" value={config.deadWeight} hint="Commitment multiplier" tone="good" />
       </div>
 
       <div className="grid-2">
-        <div className="card">
-          <h2 className="mb-16">⚖️ Combat Weighting</h2>
-          <p className="text-muted text-sm mb-16">Assign the DKP multipliers for each unit tied to your KvK tracking.</p>
-
+        <Panel title="Combat Weighting" subtitle="Core score composition rules">
           <div className="mb-16">
-            <label className="form-label space-between">
+            <label className="form-label">
               <span>T4 Kill Weight</span>
-              <span className="text-gold">{config.t4Weight} DKP</span>
+              <span>{config.t4Weight} DKP</span>
             </label>
-            <input type="range" className="w-full" name="t4Weight" min="0" max="5" step="0.1" value={config.t4Weight} onChange={handleChange} />
+            <input className="w-full" type="range" name="t4Weight" min="0" max="5" step="0.1" value={config.t4Weight} onChange={handleChange} />
           </div>
 
           <div className="mb-16">
-            <label className="form-label space-between">
+            <label className="form-label">
               <span>T5 Kill Weight</span>
-              <span className="text-gold">{config.t5Weight} DKP</span>
+              <span>{config.t5Weight} DKP</span>
             </label>
-            <input type="range" className="w-full" name="t5Weight" min="0" max="10" step="0.5" value={config.t5Weight} onChange={handleChange} />
+            <input className="w-full" type="range" name="t5Weight" min="0" max="10" step="0.5" value={config.t5Weight} onChange={handleChange} />
           </div>
 
           <div className="mb-16">
-            <label className="form-label space-between">
+            <label className="form-label">
               <span>Dead Troops Weight</span>
-              <span className="text-gold">{config.deadWeight} DKP</span>
+              <span>{config.deadWeight} DKP</span>
             </label>
-            <input type="range" className="w-full" name="deadWeight" min="0" max="25" step="1" value={config.deadWeight} onChange={handleChange} />
+            <input className="w-full" type="range" name="deadWeight" min="0" max="25" step="1" value={config.deadWeight} onChange={handleChange} />
           </div>
-        </div>
 
-        <div className="card">
-          <h2 className="mb-16">📈 Power Expectations (Handicap)</h2>
-          <p className="text-muted text-sm mb-16">Determine how many targeted points are expected per 1 Million Power.</p>
+          <FilterBar>
+            <Settings2 size={14} />
+            <span className="text-sm text-muted">These multipliers directly affect warrior score output.</span>
+          </FilterBar>
+        </Panel>
+
+        <Panel title="Power Expectation Ratios" subtitle="Expected KP/deads per million power">
+          <div className="mb-16">
+            <label className="form-label">
+              <span>Expected KP per 1M power</span>
+              <span>{(config.kpPerPowerRatio * 1000).toLocaleString()}k</span>
+            </label>
+            <input className="w-full" type="range" name="kpPerPowerRatio" min="0" max="2" step="0.05" value={config.kpPerPowerRatio} onChange={handleChange} />
+            <div className="text-sm text-muted mt-4">
+              Example: 100M power expects {(config.kpPerPowerRatio * 100).toLocaleString()}M KP.
+            </div>
+          </div>
 
           <div className="mb-16">
-            <label className="form-label space-between">
-              <span>Expected KP per 1M Power</span>
-              <span className="text-gold">{(config.kpPerPowerRatio * 1000).toLocaleString()}k</span>
+            <label className="form-label">
+              <span>Expected Deads per 1M power</span>
+              <span>{(config.deadPerPowerRatio * 1000).toLocaleString()}k</span>
             </label>
-            <input type="range" className="w-full" name="kpPerPowerRatio" min="0" max="2" step="0.05" value={config.kpPerPowerRatio} onChange={handleChange} />
-            <div className="text-muted text-sm mt-4">Example: 100M power requires {(config.kpPerPowerRatio * 100).toLocaleString()}M expected DKP.</div>
+            <input className="w-full" type="range" name="deadPerPowerRatio" min="0" max="0.5" step="0.01" value={config.deadPerPowerRatio} onChange={handleChange} />
+            <div className="text-sm text-muted mt-4">
+              Example: 100M power expects {(config.deadPerPowerRatio * 100000).toLocaleString()} deads.
+            </div>
           </div>
 
-          <div className="mb-16">
-            <label className="form-label space-between">
-              <span>Expected Deads per 1M Power</span>
-              <span className="text-gold">{(config.deadPerPowerRatio * 1000).toLocaleString()}k</span>
-            </label>
-            <input type="range" className="w-full" name="deadPerPowerRatio" min="0" max="0.5" step="0.01" value={config.deadPerPowerRatio} onChange={handleChange} />
-            <div className="text-muted text-sm mt-4">Example: 100M power requires {(config.deadPerPowerRatio * 100000).toLocaleString()} Deads.</div>
-          </div>
-        </div>
+          <FilterBar>
+            <Shield size={14} />
+            <span className="text-sm text-muted">Use consistent ratios to reduce ranking volatility across events.</span>
+          </FilterBar>
+        </Panel>
       </div>
 
-      <div className="card mt-24">
-        <h2 className="mb-16">🤖 Discord Integration</h2>
-        <div className="mb-16">
+      <Panel title="Discord Integration" subtitle="Leaderboard publication endpoint" className="mt-24">
+        <div className="form-group" style={{ marginBottom: 0 }}>
           <label className="form-label">Webhook URL</label>
           <input
             type="text"
@@ -130,14 +153,13 @@ export default function SettingsPage() {
             placeholder="https://discord.com/api/webhooks/..."
           />
         </div>
-      </div>
+        <FilterBar className="mt-12">
+          <Webhook size={14} />
+          <span className="text-sm text-muted">Used by Discord publish endpoints and queue retries.</span>
+        </FilterBar>
+      </Panel>
 
-      <div className="mt-24 flex items-center gap-16">
-        <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
-          {saving ? 'Saving...' : '💾 Save Settings'}
-        </button>
-        {message && <span className="text-gold animate-fade-in-up">{message}</span>}
-      </div>
+      {message ? <div className="mt-16 text-sm text-gold">{message}</div> : null}
     </div>
   );
 }

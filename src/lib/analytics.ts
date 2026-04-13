@@ -249,5 +249,27 @@ export async function buildWorkspaceAnalytics({
     selectedComparison,
     trendLines,
     kingdomSlices,
+    seriesMeta: [
+      {
+        label: 'Warrior Score',
+        metricKey: 'score',
+        colorToken: 'accent-gold',
+      },
+      {
+        label: 'Kill Points Delta',
+        metricKey: 'killPointsDelta',
+        colorToken: 'accent-teal',
+      },
+      {
+        label: 'Deads Delta',
+        metricKey: 'deadsDelta',
+        colorToken: 'accent-rose',
+      },
+      {
+        label: 'Average Score Trend',
+        metricKey: 'avgWarriorScore',
+        colorToken: 'accent-slate',
+      },
+    ],
   };
 }
