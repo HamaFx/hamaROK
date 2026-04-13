@@ -5,9 +5,11 @@ import Link from 'next/link';
 import {
   Activity,
   ArrowRight,
+  CalendarClock,
   Database,
   FlaskConical,
   ShieldCheck,
+  ShieldAlert,
   Swords,
   Trophy,
   Users,
