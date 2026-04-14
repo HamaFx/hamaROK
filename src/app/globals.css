@@ -247,23 +247,22 @@ h6 {
 .app-topbar-main {
   display: flex;
   align-items: center;
+  gap: 10px;
   min-width: 0;
   flex: 1;
 }
 
-.app-topbar-title {
-  display: flex;
-  flex-direction: column;
+.app-header-brand {
+  display: inline-flex;
+  align-items: center;
   min-width: 0;
-  gap: 2px;
+  flex-shrink: 0;
 }
 
-.app-topbar-product {
-  color: var(--text-3);
-  font-size: 0.65rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
+.app-header-logo {
+  height: 34px;
+  width: auto;
+  display: block;
 }
 
 .app-topbar-heading {
@@ -331,37 +330,6 @@ h6 {
 
 .app-context-chip.muted {
   background: rgba(13, 22, 34, 0.52);
-}
-
-.workspace-chip {
-  border-color: rgba(96, 165, 250, 0.35);
-  background: rgba(96, 165, 250, 0.12);
-  border-radius: 999px;
-  padding: 6px 14px;
-  text-decoration: none;
-  transition: border-color var(--transition-fast), background var(--transition-fast), transform var(--transition-fast);
-}
-
-.workspace-chip:hover {
-  border-color: rgba(96, 165, 250, 0.55);
-  background: rgba(96, 165, 250, 0.18);
-  transform: translateY(-1px);
-}
-
-.workspace-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #10b981;
-  box-shadow: 0 0 10px rgba(16, 185, 129, 0.95);
-  flex-shrink: 0;
-}
-
-.workspace-copy {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
 }
 
 .app-settings-chip {
@@ -1637,20 +1605,43 @@ h6 {
 
 @media (max-width: 960px) {
   .app-topbar {
-    flex-wrap: wrap;
-    align-items: flex-start;
+    flex-wrap: nowrap;
+    align-items: center;
+    padding: 8px 12px;
   }
 
   .app-topbar-main {
-    flex: 1 1 100%;
+    flex: 1 1 auto;
+    min-width: 0;
+    gap: 8px;
+  }
+
+  .app-header-logo {
+    height: 30px;
+  }
+
+  .app-topbar-heading strong {
+    font-size: 0.92rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .app-topbar-heading span {
+    display: none;
   }
 
   .app-topbar-context {
-    width: 100%;
-    justify-content: space-between;
+    width: auto;
+    justify-content: flex-end;
   }
 
   .app-settings-chip {
+    padding: 6px;
+    width: 34px;
+    justify-content: center;
+  }
+
+  .app-settings-chip .value {
     display: none;
   }
 

@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import {
   BarChart3,
   CalendarDays,
@@ -20,7 +20,6 @@ import {
   Workflow,
   X,
 } from 'lucide-react';
-import { WORKSPACE_SESSION_EVENT } from '@/lib/workspace-session';
 
 interface NavItem {
   href: string;
@@ -96,30 +95,6 @@ function NavSection({
 export default function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
-  const [workspaceLabel, setWorkspaceLabel] = useState('Connecting...');
-
-  useEffect(() => {
-    const syncAccessContext = () => {
-      const workspaceId = localStorage.getItem('workspaceId') || '';
-      const workspaceName = localStorage.getItem('workspaceName') || '';
-      const kingdomTag = localStorage.getItem('workspaceKingdomTag') || '';
-
-      if (workspaceName) {
-        setWorkspaceLabel(kingdomTag ? `K${kingdomTag} • ${workspaceName}` : workspaceName);
-        return;
-      }
-
-      setWorkspaceLabel(workspaceId ? 'Kingdom Workspace' : 'Not connected');
-    };
-
-    syncAccessContext();
-    window.addEventListener('storage', syncAccessContext);
-    window.addEventListener(WORKSPACE_SESSION_EVENT, syncAccessContext);
-    return () => {
-      window.removeEventListener('storage', syncAccessContext);
-      window.removeEventListener(WORKSPACE_SESSION_EVENT, syncAccessContext);
-    };
-  }, []);
 
   const grouped = useMemo(() => {
     return {
@@ -157,22 +132,15 @@ export default function AppShell({ children }: { children: ReactNode }) {
       <div className="app-main">
         <header className="app-topbar">
           <div className="app-topbar-main">
-            <div className="app-topbar-title">
-              <span className="app-topbar-product">Hama Command Center</span>
-              <div className="app-topbar-heading">
-                <strong>{activeNav.label}</strong>
-                <span>{groupLabel(activeNav.group)}</span>
-              </div>
+            <Link href="/" className="app-header-brand">
+              <Image src="/hama-logo.svg" alt="Hama logo" className="app-header-logo" width={176} height={44} priority />
+            </Link>
+            <div className="app-topbar-heading">
+              <strong>{activeNav.label}</strong>
+              <span>{groupLabel(activeNav.group)}</span>
             </div>
           </div>
           <div className="app-topbar-context">
-            <Link href="/settings" className="app-context-chip workspace-chip">
-              <span className="workspace-dot" />
-              <span className="workspace-copy">
-                <span className="label">Workspace</span>
-                <span className="value">{workspaceLabel}</span>
-              </span>
-            </Link>
             <Link href="/settings" className="app-context-chip app-settings-chip">
               <Cog size={14} />
               <span className="value">Settings</span>
