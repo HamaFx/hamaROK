@@ -6,7 +6,7 @@ import { Target, Upload, Play, Save } from 'lucide-react';
 import { OCR_TEMPLATES } from '@/lib/ocr/templates';
 import type { OcrRuntimeProfile } from '@/lib/ocr/profiles';
 import { useWorkspaceSession } from '@/lib/workspace-session';
-import { FilterBar, PageHero, Panel } from '@/components/ui/primitives';
+import { PageHero, Panel } from '@/components/ui/primitives';
 
 type Region = { x: number; y: number; width: number; height: number };
 
@@ -30,7 +30,6 @@ export default function CalibrationPage() {
     ready: workspaceReady,
     loading: sessionLoading,
     error: sessionError,
-    refreshSession,
   } = useWorkspaceSession();
   const [profiles, setProfiles] = useState<OcrRuntimeProfile[]>([]);
   const [selectedProfileId, setSelectedProfileId] = useState('');
@@ -229,16 +228,11 @@ export default function CalibrationPage() {
     <div className="page-container">
       <PageHero
         title="OCR Calibration Wizard"
-        subtitle="One-time guided setup for profile offsets and overlays."
+        subtitle="Tune profile offsets and overlays for reliable OCR."
         actions={
-          <FilterBar>
-            <button className="btn btn-primary" onClick={saveProfile} disabled={saving || !workspaceReady}>
-              <Save size={14} /> {saving ? 'Saving...' : 'Save Profile'}
-            </button>
-            <button className="btn btn-secondary" onClick={() => void refreshSession()} disabled={sessionLoading}>
-              {sessionLoading ? 'Connecting...' : 'Reconnect'}
-            </button>
-          </FilterBar>
+          <button className="btn btn-primary" onClick={saveProfile} disabled={saving || !workspaceReady}>
+            <Save size={14} /> {saving ? 'Saving...' : 'Save Profile'}
+          </button>
         }
       />
 

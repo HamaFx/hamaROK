@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { CalendarPlus, RefreshCw, Search, Trash2, Upload } from 'lucide-react';
+import { CalendarPlus, Search, Trash2, Upload } from 'lucide-react';
 import { useWorkspaceSession } from '@/lib/workspace-session';
 import { formatDate, EVENT_TYPE_LABELS } from '@/lib/utils';
 import {
@@ -31,7 +31,6 @@ export default function EventsPage() {
     ready: workspaceReady,
     loading: sessionLoading,
     error: sessionError,
-    refreshSession,
   } = useWorkspaceSession();
 
   const [events, setEvents] = useState<EventItem[]>([]);
@@ -173,12 +172,9 @@ export default function EventsPage() {
     <div className="page-container">
       <PageHero
         title="Events"
-        subtitle="Manage event checkpoints used by compare, insights, and ranking merge workflows."
+        subtitle="Manage event checkpoints for compare, insights, and ranking workflows."
         actions={
           <>
-            <button className="btn btn-secondary" onClick={() => void refreshSession()} disabled={sessionLoading}>
-              <RefreshCw size={14} /> {sessionLoading ? 'Connecting...' : 'Reconnect'}
-            </button>
             <Link href="/upload" className="btn btn-secondary">
               <Upload size={14} /> Upload
             </Link>

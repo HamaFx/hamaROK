@@ -194,7 +194,6 @@ export default function RankingReviewPage() {
     ready: workspaceReady,
     loading: sessionLoading,
     error: sessionError,
-    refreshSession,
   } = useWorkspaceSession();
 
   const [statusFilter, setStatusFilter] = useState('UNRESOLVED');
@@ -501,17 +500,7 @@ export default function RankingReviewPage() {
     <div className="page-container">
       <PageHero
         title="Ranking Review Queue"
-        subtitle="Resolve identity ambiguity and correction workflow for Power, Mad Scientist, Fort Destroyer, and Kill Points screenshots."
-        actions={
-          <FilterBar>
-            <button className="btn btn-secondary" onClick={loadRows} disabled={loading || !workspaceReady}>
-              <RefreshCw size={14} /> Refresh
-            </button>
-            <button className="btn btn-secondary" onClick={() => void refreshSession()} disabled={sessionLoading}>
-              {sessionLoading ? 'Connecting...' : 'Reconnect'}
-            </button>
-          </FilterBar>
-        }
+        subtitle="Resolve identity matches and corrections for ranking screenshots."
       />
 
       {!workspaceReady ? (
@@ -570,7 +559,7 @@ export default function RankingReviewPage() {
         <KpiCard label="Rejected" value={summary.rejected} hint="Discarded ranking rows" tone="bad" />
       </div>
 
-      <Panel title="Screenshot Type Coverage" subtitle="Queue count by supported ranking screenshot types.">
+      <Panel title="Screenshot Type Coverage" subtitle="Counts by supported ranking screenshot type.">
         <div className="review-candidate-row" style={{ paddingTop: 4 }}>
           {SUPPORTED_RANKING_BOARDS.map((board) => {
             const count = summaryByType.get(`${board.rankingType}::${board.metricKey}`) || 0;

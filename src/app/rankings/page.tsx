@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, ArrowRight, Crown, Filter, RefreshCw, Search } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Crown, Filter, Search } from 'lucide-react';
 import { useWorkspaceSession } from '@/lib/workspace-session';
 import { splitGovernorNameAndAlliance } from '@/lib/alliances';
 import {
@@ -148,7 +148,6 @@ export default function RankingsPage() {
     ready: workspaceReady,
     loading: sessionLoading,
     error: sessionError,
-    refreshSession,
   } = useWorkspaceSession();
 
   const [search, setSearch] = useState('');
@@ -495,17 +494,7 @@ export default function RankingsPage() {
     <div className="page-container">
       <PageHero
         title="Rankings Board"
-        subtitle="Clean leaderboard view with tie-aware ordering and stable ranking history."
-        actions={
-          <FilterBar>
-            <button className="btn btn-secondary" onClick={refresh} disabled={loading || !workspaceReady}>
-              <RefreshCw size={14} /> {loading ? 'Loading...' : 'Refresh'}
-            </button>
-            <button className="btn btn-secondary" onClick={() => void refreshSession()} disabled={sessionLoading}>
-              {sessionLoading ? 'Connecting...' : 'Reconnect'}
-            </button>
-          </FilterBar>
-        }
+        subtitle="Leaderboard view with tie-aware ordering and weekly filters."
       />
 
       {!workspaceReady ? (

@@ -2,7 +2,7 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Download, Medal, RefreshCw, Send, Swords, Users } from 'lucide-react';
+import { Download, Medal, Send, Swords, Users } from 'lucide-react';
 import { useWorkspaceSession } from '@/lib/workspace-session';
 import { formatDelta } from '@/lib/utils';
 import { getTierConfig, WarriorTier } from '@/lib/warrior-score';
@@ -52,7 +52,6 @@ function CompareContent() {
     ready: workspaceReady,
     loading: sessionLoading,
     error: sessionError,
-    refreshSession,
   } = useWorkspaceSession();
 
   const [events, setEvents] = useState<EventOption[]>([]);
@@ -227,12 +226,9 @@ function CompareContent() {
     <div className="page-container">
       <PageHero
         title="Compare Events"
-        subtitle="Calculate deltas, rank warrior output, and publish combat leaderboards."
+        subtitle="Compare events, rank warrior output, and publish leaderboards."
         actions={
           <FilterBar>
-            <button className="btn btn-secondary" onClick={() => void refreshSession()} disabled={sessionLoading}>
-              <RefreshCw size={14} /> {sessionLoading ? 'Connecting...' : 'Reconnect'}
-            </button>
             <button className="btn btn-secondary" onClick={exportCSV} disabled={!result}>
               <Download size={14} /> Export CSV
             </button>
@@ -279,7 +275,7 @@ function CompareContent() {
             </select>
           </div>
           <button className="btn btn-secondary" onClick={() => void loadComparison()} disabled={!workspaceReady || loading || !eventAId || !eventBId}>
-            <RefreshCw size={14} /> Compare
+            <Swords size={14} /> Run Compare
           </button>
         </FilterBar>
       </Panel>

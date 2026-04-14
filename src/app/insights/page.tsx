@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Share2, Sparkles } from 'lucide-react';
+import { Share2 } from 'lucide-react';
 import { useWorkspaceSession } from '@/lib/workspace-session';
 import { DataTableLite, EmptyState, FilterBar, KpiCard, PageHero, Panel } from '@/components/ui/primitives';
 
@@ -74,13 +74,11 @@ export default function InsightsPage() {
     ready: workspaceReady,
     loading: sessionLoading,
     error: sessionError,
-    refreshSession,
   } = useWorkspaceSession();
   const [events, setEvents] = useState<EventOption[]>([]);
   const [eventA, setEventA] = useState('');
   const [eventB, setEventB] = useState('');
   const [topN, setTopN] = useState(10);
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [analytics, setAnalytics] = useState<AnalyticsPayload | null>(null);
   const [rankboardLink, setRankboardLink] = useState('');
@@ -118,7 +116,6 @@ export default function InsightsPage() {
       return;
     }
 
-    setLoading(true);
     setError('');
     setRankboardLink('');
 
@@ -134,8 +131,6 @@ export default function InsightsPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load analytics.');
       setAnalytics(null);
-    } finally {
-      setLoading(false);
     }
   }, [workspaceId, topN, eventA, eventB, headers, workspaceReady, sessionLoading]);
 
@@ -174,17 +169,7 @@ export default function InsightsPage() {
     <div className="page-container">
       <PageHero
         title="Advanced Insights"
-        subtitle="Top-N contribution analysis, trend continuity, and cross-kingdom slices."
-        actions={
-          <FilterBar>
-            <button className="btn btn-primary" onClick={loadAnalytics} disabled={loading || !workspaceReady}>
-              <Sparkles size={14} /> {loading ? 'Loading...' : 'Refresh'}
-            </button>
-            <button className="btn btn-secondary" onClick={() => void refreshSession()} disabled={sessionLoading}>
-              {sessionLoading ? 'Connecting...' : 'Reconnect'}
-            </button>
-          </FilterBar>
-        }
+        subtitle="Top-N contribution trends and cross-kingdom analytics."
       />
 
       {!workspaceReady ? (
@@ -358,7 +343,7 @@ export default function InsightsPage() {
         <div className="mt-24">
           <EmptyState
             title="Insights not loaded"
-            description="Select event parameters and refresh to render trend and contribution analysis."
+            description="Select event parameters to render trend and contribution analysis."
           />
         </div>
       )}

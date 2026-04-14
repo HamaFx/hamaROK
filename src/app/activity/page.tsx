@@ -7,7 +7,6 @@ import {
   ArrowRight,
   CircleAlert,
   CheckCircle2,
-  RefreshCw,
   Shield,
   TrendingUp,
   XCircle,
@@ -136,7 +135,6 @@ export default function ActivityPage() {
     ready: workspaceReady,
     loading: sessionLoading,
     error: sessionError,
-    refreshSession,
   } = useWorkspaceSession();
 
   const [weeks, setWeeks] = useState<WeekOption[]>([]);
@@ -397,17 +395,7 @@ export default function ActivityPage() {
     <div className="page-container">
       <PageHero
         title="Weekly Activity"
-        subtitle="Player compliance tracking across all activity metrics — contribution, fort destroying, power growth, and kill points."
-        actions={
-          <FilterBar>
-            <button className="btn btn-secondary" onClick={() => void loadActivity()} disabled={loading || !workspaceReady}>
-              <RefreshCw size={14} /> {loading ? 'Loading...' : 'Refresh'}
-            </button>
-            <button className="btn btn-secondary" onClick={() => void refreshSession()} disabled={sessionLoading}>
-              {sessionLoading ? 'Connecting...' : 'Reconnect'}
-            </button>
-          </FilterBar>
-        }
+        subtitle="Track weekly compliance for contribution, forts, power growth, and kill points."
       />
 
       {!workspaceReady ? (
@@ -610,7 +598,7 @@ export default function ActivityPage() {
       ) : !loading ? (
         <EmptyState
           title="Activity not loaded"
-          description="Select a week and refresh to view player compliance data."
+          description="Select a week to view player compliance data."
         />
       ) : null}
     </div>

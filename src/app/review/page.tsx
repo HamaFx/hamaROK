@@ -155,7 +155,6 @@ export default function ReviewQueuePage() {
     ready: workspaceReady,
     loading: sessionLoading,
     error: sessionError,
-    refreshSession,
   } = useWorkspaceSession();
 
   const [items, setItems] = useState<QueueItem[]>([]);
@@ -493,17 +492,7 @@ export default function ReviewQueuePage() {
     <div className="page-container">
       <PageHero
         title="OCR Review Queue"
-        subtitle="Review, correct, and approve profile extraction rows."
-        actions={
-          <FilterBar>
-            <button className="btn btn-secondary" onClick={loadQueue} disabled={loading || !workspaceReady}>
-              <RefreshCw size={14} /> Refresh
-            </button>
-            <button className="btn btn-secondary" onClick={() => void refreshSession()} disabled={sessionLoading}>
-              {sessionLoading ? 'Connecting...' : 'Reconnect'}
-            </button>
-          </FilterBar>
-        }
+        subtitle="Review and approve governor profile OCR rows."
       />
 
       {!workspaceReady ? (
@@ -571,7 +560,7 @@ export default function ReviewQueuePage() {
 
       <Panel
         title="Post-Upload Routing"
-        subtitle="Profile screenshots are reviewed here. Ranking screenshots route to Ranking Review."
+        subtitle="Profiles are reviewed here. Ranking screenshots go to Ranking Review."
         className="mb-24"
       >
         <div className="review-candidate-row">
@@ -601,7 +590,7 @@ export default function ReviewQueuePage() {
         {loading ? (
           <SkeletonSet rows={4} />
         ) : items.length === 0 ? (
-          <EmptyState title="No entries in queue" description="Try broadening filters or refreshing." />
+          <EmptyState title="No entries in queue" description="Try broadening filters." />
         ) : (
           <div className="ocr-review-stack">
             {items.map((item) => {

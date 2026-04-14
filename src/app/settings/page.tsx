@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { RefreshCw, Save, Settings2, Shield, Webhook } from 'lucide-react';
+import { Save, Settings2, Shield, Webhook } from 'lucide-react';
 import { useWorkspaceSession } from '@/lib/workspace-session';
 import { FilterBar, KpiCard, PageHero, Panel, StatusPill } from '@/components/ui/primitives';
 
@@ -81,7 +81,6 @@ export default function SettingsPage() {
     ready: workspaceReady,
     loading: sessionLoading,
     error: sessionError,
-    refreshSession,
   } = useWorkspaceSession();
 
   const [config, setConfig] = useState<SettingsConfig>(DEFAULTS);
@@ -330,16 +329,11 @@ export default function SettingsPage() {
     <div className="page-container">
       <PageHero
         title="Kingdom Settings"
-        subtitle="One place for combat formula, weekly activity standards, and Discord delivery settings."
+        subtitle="Configure combat scoring, weekly standards, and Discord delivery."
         actions={
-          <FilterBar>
-            <button className="btn btn-secondary" onClick={() => void refreshSession()} disabled={sessionLoading}>
-              <RefreshCw size={14} /> {sessionLoading ? 'Connecting...' : 'Reconnect'}
-            </button>
-            <button className="btn btn-primary" onClick={saveAll} disabled={saving || loading}>
-              <Save size={14} /> {saving ? 'Saving...' : 'Save All'}
-            </button>
-          </FilterBar>
+          <button className="btn btn-primary" onClick={saveAll} disabled={saving || loading}>
+            <Save size={14} /> {saving ? 'Saving...' : 'Save All'}
+          </button>
         }
       />
 

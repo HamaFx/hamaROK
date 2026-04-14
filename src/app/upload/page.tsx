@@ -8,7 +8,6 @@ import {
   Clock3,
   ImageUp,
   Play,
-  RefreshCw,
   ShieldCheck,
   Square,
   Trash2,
@@ -634,14 +633,7 @@ export default function UploadPage() {
     <div className="page-container">
       <PageHero
         title="Upload Queue"
-        subtitle="Register members once, then upload weekly screenshots. OCR runs in background and keeps weekly tracking clean."
-        actions={
-          <FilterBar>
-            <button className="btn btn-secondary btn-sm" onClick={() => void refreshSession()} disabled={sessionLoading}>
-              <RefreshCw size={14} /> {sessionLoading ? 'Connecting...' : 'Reconnect'}
-            </button>
-          </FilterBar>
-        }
+        subtitle="Upload weekly screenshots. OCR runs in the background and fills the review queues."
       />
 
       <FilterBar className="mb-24">
@@ -686,7 +678,7 @@ export default function UploadPage() {
               <strong>AWS OCR Worker</strong>
               <StatusPill label={workerLabel} tone={workerTone} />
             </div>
-            <div className="text-sm text-muted">Auto-start is queue-driven. Use force-start when you want worker warm before upload.</div>
+            <div className="text-sm text-muted">Queue-driven auto-start. Use Start Worker to warm up before uploads.</div>
             <FilterBar className="mt-12" style={{ gap: 8 }}>
               <button
                 className="btn btn-primary btn-sm"
@@ -753,8 +745,8 @@ export default function UploadPage() {
           title="Processing Finished"
           subtitle={
             scanJobState.status === 'REVIEW'
-              ? 'OCR processing is complete. Continue to review queues.'
-              : 'Some rows failed. Review completed rows and retry failed screenshots if needed.'
+              ? 'OCR processing is complete. Continue in the review queues.'
+              : 'Some rows failed. Review completed rows and retry failed screenshots.'
           }
           className="mb-24"
           actions={
@@ -781,12 +773,6 @@ export default function UploadPage() {
           title={`Upload Queue Rows (${entries.length})`}
           actions={
             <FilterBar>
-              <button className="btn btn-secondary btn-sm" onClick={() => {
-                void loadAwsOcrControl();
-                void loadWeeklyEvent();
-              }}>
-                <RefreshCw size={14} /> Refresh
-              </button>
               <button className="btn btn-danger btn-sm" onClick={clearRows}>
                 <Trash2 size={14} /> Clear List
               </button>

@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { RefreshCw, Search, TrendingUp } from 'lucide-react';
+import { Search, TrendingUp } from 'lucide-react';
 import { useWorkspaceSession } from '@/lib/workspace-session';
 import { abbreviateNumber } from '@/lib/utils';
 import { GrowthLineChart, WeeklyActivityLineChart } from '@/components/Charts';
@@ -66,7 +66,6 @@ export default function GovernorsPage() {
     ready: workspaceReady,
     loading: sessionLoading,
     error: sessionError,
-    refreshSession,
   } = useWorkspaceSession();
 
   const [governors, setGovernors] = useState<GovernorItem[]>([]);
@@ -217,17 +216,7 @@ export default function GovernorsPage() {
     <div className="page-container">
       <PageHero
         title="Governor Registry"
-        subtitle="Identity-level roster with timeline drill-down."
-        actions={
-          <FilterBar>
-            <button className="btn btn-secondary" onClick={() => void fetchGovernors(search)} disabled={loading || !workspaceReady}>
-              <RefreshCw size={14} /> Refresh
-            </button>
-            <button className="btn btn-secondary" onClick={() => void refreshSession()} disabled={sessionLoading}>
-              {sessionLoading ? 'Connecting...' : 'Reconnect'}
-            </button>
-          </FilterBar>
-        }
+        subtitle="Roster and timeline drill-down for each governor."
       />
 
       {!workspaceReady ? (

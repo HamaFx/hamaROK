@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { Download, RefreshCw, Search, Upload } from 'lucide-react';
+import { Download, Search, Upload } from 'lucide-react';
 import { useWorkspaceSession } from '@/lib/workspace-session';
 import { formatDate, abbreviateNumber, EVENT_TYPE_LABELS } from '@/lib/utils';
 import {
@@ -43,7 +43,6 @@ export default function EventDetailPage() {
     ready: workspaceReady,
     loading: sessionLoading,
     error: sessionError,
-    refreshSession,
   } = useWorkspaceSession();
   const [event, setEvent] = useState<EventDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -170,13 +169,10 @@ export default function EventDetailPage() {
     <div className="page-container">
       <PageHero
         title={event.name}
-        subtitle="Event-level snapshot table with stable sorting and export-ready fields."
+        subtitle="Snapshot table with sortable, export-ready fields."
         badges={[EVENT_TYPE_LABELS[event.eventType] || event.eventType, `Created ${formatDate(event.createdAt)}`]}
         actions={
           <>
-            <button className="btn btn-secondary" onClick={() => void refreshSession()} disabled={sessionLoading}>
-              <RefreshCw size={14} /> {sessionLoading ? 'Connecting...' : 'Reconnect'}
-            </button>
             <button className="btn btn-secondary" onClick={exportCSV}>
               <Download size={14} /> Export CSV
             </button>
