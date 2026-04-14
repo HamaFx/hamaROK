@@ -65,6 +65,9 @@ export default function RankingsPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [summary, setSummary] = useState<SummaryPayload | null>(null);
+  const [sortHint, setSortHint] = useState(
+    'metricValue DESC, sourceRank ASC NULLS LAST, normalizedName ASC, rowId ASC'
+  );
 
   useEffect(() => {
     setWorkspaceId(localStorage.getItem('workspaceId') || '');
@@ -267,6 +270,8 @@ export default function RankingsPage() {
           ))}
         </FilterBar>
       </section>
+
+      <div className="text-sm text-muted mb-16">Deterministic sort: {sortHint}</div>
 
       {summary ? (
         <div className="grid-4 mb-24">

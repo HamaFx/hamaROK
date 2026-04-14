@@ -146,6 +146,11 @@ export default function ReviewQueuePage() {
   const [profiles, setProfiles] = useState<OcrRuntimeProfile[]>([]);
   const [rerunProfileByItem, setRerunProfileByItem] = useState<Record<string, string>>({});
   const [rerunPayloadByItem, setRerunPayloadByItem] = useState<Record<string, unknown>>({});
+  const [metricsSummary, setMetricsSummary] = useState<{
+    lowConfidenceRate: number;
+    reviewerEditRate: number;
+    reviewPassRate: number;
+  } | null>(null);
 
   useEffect(() => {
     const url = new URL(window.location.href);
@@ -495,6 +500,29 @@ export default function ReviewQueuePage() {
         <KpiCard label="Medium Severity" value={summary.medium} hint="Validate before approve" tone="warn" />
         <KpiCard label="Low Severity" value={summary.low} hint="Usually ready" tone="good" />
       </div>
+
+      {metricsSummary ? (
+        <div className="grid-3 mb-24">
+          <KpiCard
+            label="Low-Confidence Rate"
+            value={`${Math.round(metricsSummary.lowConfidenceRate * 100)}%`}
+            hint="Last 30 days"
+            tone="warn"
+          />
+          <KpiCard
+            label="Reviewer Edit Rate"
+            value={`${Math.round(metricsSummary.reviewerEditRate * 100)}%`}
+            hint="Field corrections"
+            tone="info"
+          />
+          <KpiCard
+            label="Review Pass Rate"
+            value={`${Math.round(metricsSummary.reviewPassRate * 100)}%`}
+            hint="Approved without reject"
+            tone="good"
+          />
+        </div>
+      ) : null}
 
       <Panel title="Review Board">
         {loading ? (

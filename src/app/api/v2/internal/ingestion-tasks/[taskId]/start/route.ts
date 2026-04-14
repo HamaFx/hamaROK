@@ -1,0 +1,94 @@
+import { NextRequest } from 'next/server';
+import { IngestionTaskStatus } from '@prisma/client';
+import { z } from 'zod';
+import { fail, handleApiError, ok } from '@/lib/api-response';
+import { getTaskWithRelations, syncScanJobProgress, toIngestionTaskResponse } from '@/lib/ingestion-service';
+import { assertValidServiceRequest } from '@/lib/service-auth';
+import { prisma } from '@/lib/prisma';
+
+const startSchema = z.object({
+  attempt: z.number().int().min(1).max(20).optional(),
+  workerId: z.string().max(120).optional(),
+  queueMessageId: z.string().max(200).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ taskId: string }> }
+) {
+  try {
+    const { taskId } = await params;
+    const rawBody = await request.text();
+    assertValidServiceRequest(request, rawBody);
+    const body = startSchema.parse(rawBody ? JSON.parse(rawBody) : {});
+
+    const task = await getTaskWithRelations(taskId);
+    if (!task) {
+      return fail('NOT_FOUND', 'Ingestion task not found.', 404);
+    }
+
+    if (task.status === IngestionTaskStatus.COMPLETED) {
+      return ok({
+        task: toIngestionTaskResponse(task),
+        idempotentReplay: true,
+      });
+    }
+
+    const attemptCount = Math.max(task.attemptCount, body.attempt || 0);
+
+    const updatedTask = await prisma.$transaction(async (tx) => {
+      const updated = await tx.ingestionTask.update({
+        where: { id: taskId },
+        data: {
+          status: IngestionTaskStatus.PROCESSING,
+          attemptCount,
+          startedAt: task.startedAt || new Date(),
+          lastError: null,
+          metadata:
+            body.workerId || body.queueMessageId || body.metadata
+              ? {
+                  ...(task.metadata && typeof task.metadata === 'object' && !Array.isArray(task.metadata)
+                    ? task.metadata
+                    : {}),
+                  ...(body.metadata || {}),
+                  workerId: body.workerId || undefined,
+                  queueMessageId: body.queueMessageId || undefined,
+                }
+              : task.metadata || undefined,
+        },
+        include: {
+          artifact: {
+            select: {
+              id: true,
+              type: true,
+              url: true,
+              metadata: true,
+            },
+          },
+        },
+      });
+
+      const scanJob = await syncScanJobProgress(tx, task.scanJobId);
+
+      return {
+        task: updated,
+        scanJob,
+      };
+    });
+
+    return ok({
+      task: toIngestionTaskResponse(updatedTask.task),
+      scanJob: {
+        id: updatedTask.scanJob.id,
+        status: updatedTask.scanJob.status,
+        processedFiles: updatedTask.scanJob.processedFiles,
+        totalFiles: updatedTask.scanJob.totalFiles,
+        lowConfidenceFiles: updatedTask.scanJob.lowConfidenceFiles,
+        summary: updatedTask.scanJob.summary,
+      },
+    });
+  } catch (error) {
+    return handleApiError(error);
+  }
+}

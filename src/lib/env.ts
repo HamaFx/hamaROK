@@ -37,6 +37,18 @@ const envSchema = z
     AWS_OCR_QUEUE_URL: z.string().url().optional(),
     AWS_OCR_START_LAMBDA: z.string().optional(),
     AWS_OCR_STOP_LAMBDA: z.string().optional(),
+    AWS_OCR_INSTANCE_ID: z
+      .preprocess(
+        (value) => (typeof value === 'string' ? value.trim() : value),
+        z.string()
+      )
+      .optional(),
+    UPLOAD_MODE: z
+      .preprocess(
+        (value) => (typeof value === 'string' ? value.trim() : value),
+        z.enum(['queue_first', 'client_legacy'])
+      )
+      .optional(),
     OCR_FALLBACK_ENABLED: booleanString,
     OCR_FALLBACK_DAILY_LIMIT: intString,
     FEATURE_ADB_CAPTURE_RND: booleanString,
@@ -149,4 +161,8 @@ export function isMetricsLoggingEnabled(): boolean {
 
 export function isAwsOcrControlEnabled(): boolean {
   return getEnv().AWS_OCR_CONTROL_ENABLED ?? false;
+}
+
+export function getUploadMode(): 'queue_first' | 'client_legacy' {
+  return getEnv().UPLOAD_MODE ?? 'queue_first';
 }

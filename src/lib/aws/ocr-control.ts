@@ -1,3 +1,4 @@
+import { DescribeInstancesCommand, EC2Client } from '@aws-sdk/client-ec2';
 import { InvokeCommand, LambdaClient } from '@aws-sdk/client-lambda';
 import { GetQueueAttributesCommand, SQSClient } from '@aws-sdk/client-sqs';
 import { getEnv, isAwsOcrControlEnabled } from '@/lib/env';
@@ -9,6 +10,8 @@ export interface AwsOcrControlStatus {
   queueConfigured: boolean;
   startLambdaConfigured: boolean;
   stopLambdaConfigured: boolean;
+  instanceId: string | null;
+  instanceState: string | null;
   queueStats: {
     pending: number;
     inFlight: number;
@@ -16,8 +19,23 @@ export interface AwsOcrControlStatus {
   } | null;
 }
 
+export function buildAwsOcrControlPayload(args: {
+  action: AwsOcrControlAction;
+  source?: string;
+  force?: boolean;
+}) {
+  return {
+    trigger: 'manual',
+    source: args.source || 'ui',
+    action: args.action,
+    force: Boolean(args.force),
+    requestedAt: new Date().toISOString(),
+  };
+}
+
 let sqsClient: SQSClient | null = null;
 let lambdaClient: LambdaClient | null = null;
+let ec2Client: EC2Client | null = null;
 
 function getAwsRegion() {
   const env = getEnv();
@@ -34,6 +52,12 @@ function getLambdaClient() {
   if (lambdaClient) return lambdaClient;
   lambdaClient = new LambdaClient({ region: getAwsRegion() });
   return lambdaClient;
+}
+
+function getEc2Client() {
+  if (ec2Client) return ec2Client;
+  ec2Client = new EC2Client({ region: getAwsRegion() });
+  return ec2Client;
 }
 
 function decodePayload(payload?: Uint8Array): unknown {
@@ -56,6 +80,8 @@ export async function getAwsOcrControlStatus(): Promise<AwsOcrControlStatus> {
     queueConfigured: Boolean(queueUrl),
     startLambdaConfigured: Boolean(env.AWS_OCR_START_LAMBDA),
     stopLambdaConfigured: Boolean(env.AWS_OCR_STOP_LAMBDA),
+    instanceId: env.AWS_OCR_INSTANCE_ID || null,
+    instanceState: null,
     queueStats: null,
   };
 
@@ -85,10 +111,28 @@ export async function getAwsOcrControlStatus(): Promise<AwsOcrControlStatus> {
     status.queueStats = null;
   }
 
+  if (env.AWS_OCR_INSTANCE_ID) {
+    try {
+      const response = await getEc2Client().send(
+        new DescribeInstancesCommand({
+          InstanceIds: [env.AWS_OCR_INSTANCE_ID],
+        })
+      );
+      const instanceState =
+        response.Reservations?.[0]?.Instances?.[0]?.State?.Name || null;
+      status.instanceState = instanceState;
+    } catch {
+      status.instanceState = null;
+    }
+  }
+
   return status;
 }
 
-export async function invokeAwsOcrControlAction(action: AwsOcrControlAction) {
+export async function invokeAwsOcrControlAction(
+  action: AwsOcrControlAction,
+  options?: { force?: boolean; source?: 'manual' | 'auto' }
+) {
   const env = getEnv();
 
   if (!isAwsOcrControlEnabled()) {
@@ -109,12 +153,13 @@ export async function invokeAwsOcrControlAction(action: AwsOcrControlAction) {
       FunctionName: functionName,
       InvocationType: 'RequestResponse',
       Payload: new TextEncoder().encode(
-        JSON.stringify({
-          trigger: 'manual',
-          source: 'ui',
-          action,
-          requestedAt: new Date().toISOString(),
-        })
+        JSON.stringify(
+          buildAwsOcrControlPayload({
+            action,
+            source: options?.source || 'ui',
+            force: options?.force,
+          })
+        )
       ),
     })
   );

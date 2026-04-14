@@ -5,13 +5,15 @@ import { getEnv, isAwsOcrControlEnabled } from '@/lib/env';
 type OcrDispatchType =
   | 'scan_job_created'
   | 'ocr_extraction_created'
-  | 'ranking_run_created';
+  | 'ranking_run_created'
+  | 'ingestion_task';
 
 export interface OcrDispatchMessage {
   type: OcrDispatchType;
   workspaceId: string;
   eventId?: string | null;
   scanJobId?: string;
+  taskId?: string;
   extractionId?: string;
   rankingRunId?: string;
   source?: string;
@@ -84,7 +86,16 @@ export async function dispatchOcrWork(message: OcrDispatchMessage): Promise<void
       new InvokeCommand({
         FunctionName: startLambda,
         InvocationType: 'Event',
-        Payload: new TextEncoder().encode('{}'),
+        Payload: new TextEncoder().encode(
+          JSON.stringify({
+            trigger: 'dispatch',
+            source: 'queue_dispatch',
+            action: 'START',
+            force: false,
+            type: message.type,
+            requestedAt: new Date().toISOString(),
+          })
+        ),
       })
     );
   } catch (error) {

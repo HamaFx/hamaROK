@@ -7,10 +7,12 @@ import {
   getAwsOcrControlStatus,
   invokeAwsOcrControlAction,
 } from '@/lib/aws/ocr-control';
+import { getUploadMode } from '@/lib/env';
 
 const controlSchema = z.object({
   workspaceId: z.string().min(1),
   action: z.enum(['START', 'STOP']),
+  force: z.boolean().optional(),
 });
 
 export async function GET(request: NextRequest) {
@@ -27,7 +29,10 @@ export async function GET(request: NextRequest) {
     }
 
     const status = await getAwsOcrControlStatus();
-    return ok(status);
+    return ok({
+      ...status,
+      uploadMode: getUploadMode(),
+    });
   } catch (error) {
     return handleApiError(error);
   }
@@ -43,12 +48,19 @@ export async function POST(request: NextRequest) {
     }
 
     try {
-      const result = await invokeAwsOcrControlAction(body.action);
+      const result = await invokeAwsOcrControlAction(body.action, {
+        force: body.force,
+        source: 'manual',
+      });
       const status = await getAwsOcrControlStatus();
       return ok({
         action: body.action,
+        force: Boolean(body.force),
         result,
-        status,
+        status: {
+          ...status,
+          uploadMode: getUploadMode(),
+        },
       });
     } catch (error) {
       return fail(

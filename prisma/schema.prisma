@@ -46,6 +46,7 @@ model Event {
   workspace   Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
   scanJobs    ScanJob[]
   rankingRuns RankingRun[]
+  ingestionTasks IngestionTask[]
   rankingSnapshots RankingSnapshot[]
   reportSnapshotsAsA ReportSnapshot[] @relation("ReportEventA")
   reportSnapshotsAsB ReportSnapshot[] @relation("ReportEventB")
@@ -125,6 +126,7 @@ model Workspace {
   rankingSnapshots  RankingSnapshot[]
   rankingRevisions  RankingRevision[]
   governorAliases   GovernorAlias[]
+  ingestionTasks    IngestionTask[]
 
   @@index([createdAt])
 }
@@ -210,6 +212,7 @@ model ScanJob {
   event             Event?        @relation(fields: [eventId], references: [id], onDelete: SetNull)
   ocrExtractions    OcrExtraction[]
   artifacts         Artifact[]
+  ingestionTasks    IngestionTask[]
 
   @@unique([workspaceId, idempotencyKey])
   @@index([workspaceId, status])
@@ -242,6 +245,7 @@ model Artifact {
   exportJobs   ExportJob[]
   goldenFixtures OcrGoldenFixture[]
   rankingRuns  RankingRun[]
+  ingestionTasks IngestionTask[]
 
   @@index([workspaceId, type])
   @@index([scanJobId])
@@ -292,6 +296,41 @@ enum RankingRowReviewAction {
   CORRECT_ROW
   REJECT_ROW
   SYSTEM_MERGE
+}
+
+enum IngestionTaskStatus {
+  QUEUED
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+model IngestionTask {
+  id             String              @id @default(cuid())
+  workspaceId    String
+  scanJobId      String
+  artifactId     String
+  eventId        String?
+  status         IngestionTaskStatus @default(QUEUED)
+  archetypeHint  String?
+  attemptCount   Int                 @default(0)
+  lastError      String?
+  startedAt      DateTime?
+  completedAt    DateTime?
+  idempotencyKey String?
+  metadata       Json?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  workspace      Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  scanJob        ScanJob             @relation(fields: [scanJobId], references: [id], onDelete: Cascade)
+  artifact       Artifact            @relation(fields: [artifactId], references: [id], onDelete: Cascade)
+  event          Event?              @relation(fields: [eventId], references: [id], onDelete: SetNull)
+
+  @@unique([workspaceId, idempotencyKey])
+  @@unique([scanJobId, artifactId])
+  @@index([workspaceId, status, createdAt])
+  @@index([scanJobId, createdAt])
+  @@index([artifactId])
 }
 
 model OcrExtraction {
