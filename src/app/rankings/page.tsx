@@ -319,32 +319,38 @@ export default function RankingsPage() {
         </div>
       ) : null}
 
-      <FilterBar className="mb-24">
-        <div className="search-bar" style={{ minWidth: 260, flex: 1 }}>
-          <Search size={16} className="search-icon" style={{ marginLeft: '4px' }} />
-          <input placeholder="Search player name or governor ID..." value={search} onChange={(e) => setSearch(e.target.value)} />
-        </div>
-        <button className="btn btn-secondary" onClick={refresh} disabled={loading || !workspaceReady} style={{ padding: '0 16px' }}>
-          <Filter size={14} /> Search
-        </button>
-        {ALL_STATUSES.map((status) => (
-          <button
-            key={status}
-            className={`btn btn-sm ${statuses.includes(status) ? 'btn-primary' : 'btn-secondary'}`}
-            onClick={() => toggleStatus(status)}
-            type="button"
-          >
-            {status}
+      <section className="ranking-controls-card mb-16">
+        <FilterBar className="ranking-controls-top">
+          <div className="search-bar" style={{ minWidth: 240, flex: 1 }}>
+            <Search size={16} className="search-icon" style={{ marginLeft: '4px' }} />
+            <input placeholder="Search player name or governor ID..." value={search} onChange={(e) => setSearch(e.target.value)} />
+          </div>
+          <button className="btn btn-secondary" onClick={refresh} disabled={loading || !workspaceReady} style={{ padding: '0 16px' }}>
+            <Filter size={14} /> Search
           </button>
-        ))}
-      </FilterBar>
+        </FilterBar>
 
-      <FilterBar className="mb-16">
-        <StatusPill label={`Rows ${rows.length}`} tone="info" />
-        <StatusPill label={`Active ${activeCount}`} tone="good" />
-        <StatusPill label={`Unresolved ${unresolvedCount}`} tone={unresolvedCount > 0 ? 'warn' : 'good'} />
-        {rejectedCount > 0 ? <StatusPill label={`Rejected ${rejectedCount}`} tone="bad" /> : null}
-      </FilterBar>
+        <FilterBar className="ranking-controls-bottom">
+          <div className="ranking-status-group">
+            {ALL_STATUSES.map((status) => (
+              <button
+                key={status}
+                className={`btn btn-sm ${statuses.includes(status) ? 'btn-primary' : 'btn-secondary'}`}
+                onClick={() => toggleStatus(status)}
+                type="button"
+              >
+                {status}
+              </button>
+            ))}
+          </div>
+          <div className="ranking-count-group">
+            <StatusPill label={`Rows ${rows.length}`} tone="info" />
+            <StatusPill label={`Active ${activeCount}`} tone="good" />
+            <StatusPill label={`Unresolved ${unresolvedCount}`} tone={unresolvedCount > 0 ? 'warn' : 'good'} />
+            {rejectedCount > 0 ? <StatusPill label={`Rejected ${rejectedCount}`} tone="bad" /> : null}
+          </div>
+        </FilterBar>
+      </section>
 
       {spotlightRows.length > 0 ? (
         <section className="ranking-spotlight-grid mb-16">
@@ -379,7 +385,7 @@ export default function RankingsPage() {
 
       <Panel
         title="Ranking Rows"
-        subtitle={`Stable order: ${sortHint}`}
+        subtitle={`Sort: ${sortHint}`}
         actions={
           <ActionToolbar>
             <button className="btn btn-secondary btn-sm" onClick={() => setDenseRows((prev) => !prev)} type="button">
@@ -428,6 +434,10 @@ export default function RankingsPage() {
                 <article key={row.id} className={`ranking-mobile-card ${row.stableRank <= 3 ? 'is-top' : ''}`}>
                   <header className="ranking-mobile-head">
                     <span className={`ranking-rank-chip ${row.stableRank <= 3 ? 'top' : ''}`}>#{row.stableRank}</span>
+                    <div className="ranking-mobile-metric-main">
+                      <span>{row.metricLabel}</span>
+                      <strong>{formatMetric(row.metricValue)}</strong>
+                    </div>
                     <StatusPill label={row.status} tone={statusTone(row.status)} />
                   </header>
 
@@ -450,23 +460,10 @@ export default function RankingsPage() {
                     </div>
                   </div>
 
-                  <div className="ranking-mobile-kpis">
-                    <div className="ranking-mobile-kpi">
-                      <span>Metric</span>
-                      <strong>{formatMetric(row.metricValue)}</strong>
-                    </div>
-                    <div className="ranking-mobile-kpi">
-                      <span>Source Rank</span>
-                      <strong>{row.sourceRank ? `#${row.sourceRank}` : '—'}</strong>
-                    </div>
-                    <div className="ranking-mobile-kpi">
-                      <span>Board</span>
-                      <strong>{row.metricLabel}</strong>
-                    </div>
-                    <div className="ranking-mobile-kpi">
-                      <span>Updated</span>
-                      <strong>{new Date(row.updatedAt).toLocaleDateString()}</strong>
-                    </div>
+                  <div className="ranking-mobile-meta-line">
+                    <span>Source {row.sourceRank ? `#${row.sourceRank}` : '—'}</span>
+                    <span>{formatTokenLabel(row.rankingType)}</span>
+                    <span>{new Date(row.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
                   </div>
 
                   {row.conflictFlags?.tie ? <div className="ranking-mobile-foot">Tie Group {row.tieGroup} • Shared score</div> : null}
