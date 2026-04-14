@@ -75,6 +75,14 @@ interface ScanJobResponse {
   processedFiles: number;
 }
 
+interface BootstrapWorkspaceResponse {
+  workspaceId: string;
+  workspaceSlug: string;
+  workspaceName: string;
+  accessToken: string;
+  createdWorkspace: boolean;
+}
+
 function mapTaskStatus(status: TaskRow['status']): QueueRowStatus {
   if (status === 'PROCESSING') return 'processing';
   if (status === 'COMPLETED') return 'completed';
@@ -104,7 +112,10 @@ export default function UploadPage() {
   const [newEventType, setNewEventType] = useState('CUSTOM');
 
   const [workspaceId, setWorkspaceId] = useState('');
+  const [workspaceName, setWorkspaceName] = useState('');
   const [accessToken, setAccessToken] = useState('');
+  const [bootstrapBusy, setBootstrapBusy] = useState(false);
+  const [bootstrapError, setBootstrapError] = useState<string | null>(null);
 
   const [entries, setEntries] = useState<UploadQueueEntry[]>([]);
   const [scanJobId, setScanJobId] = useState<string | null>(null);
@@ -121,18 +132,54 @@ export default function UploadPage() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    fetch('/api/events')
-      .then((r) => r.json())
-      .then((d) => setEvents(d.events || []))
-      .catch(() => setEvents([]));
+  const bootstrapWorkspaceAccess = useCallback(async () => {
+    setBootstrapBusy(true);
+    setBootstrapError(null);
+
+    try {
+      const res = await fetch('/api/v2/workspaces/bootstrap', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const payload = await res.json();
+      if (!res.ok || !payload?.data?.workspaceId || !payload?.data?.accessToken) {
+        throw new Error(payload?.error?.message || 'Failed to bootstrap workspace access.');
+      }
+
+      const data = payload.data as BootstrapWorkspaceResponse;
+      setWorkspaceId(data.workspaceId);
+      setWorkspaceName(data.workspaceName || '');
+      setAccessToken(data.accessToken);
+
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('workspaceId', data.workspaceId);
+        localStorage.setItem('workspaceName', data.workspaceName || '');
+        localStorage.setItem('workspaceToken', data.accessToken);
+      }
+    } catch (error) {
+      setBootstrapError(
+        error instanceof Error ? error.message : 'Failed to prepare upload access.'
+      );
+    } finally {
+      setBootstrapBusy(false);
+    }
   }, []);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    setWorkspaceId(localStorage.getItem('workspaceId') || '');
-    setAccessToken(localStorage.getItem('workspaceToken') || '');
-  }, []);
+    const storedWorkspaceId = localStorage.getItem('workspaceId') || '';
+    const storedWorkspaceName = localStorage.getItem('workspaceName') || '';
+    const storedToken = localStorage.getItem('workspaceToken') || '';
+
+    if (storedWorkspaceId && storedToken) {
+      setWorkspaceId(storedWorkspaceId);
+      setWorkspaceName(storedWorkspaceName);
+      setAccessToken(storedToken);
+      return;
+    }
+
+    void bootstrapWorkspaceAccess();
+  }, [bootstrapWorkspaceAccess]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -141,8 +188,50 @@ export default function UploadPage() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    if (workspaceName) localStorage.setItem('workspaceName', workspaceName);
+  }, [workspaceName]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
     if (accessToken) localStorage.setItem('workspaceToken', accessToken);
   }, [accessToken]);
+
+  const loadEvents = useCallback(async () => {
+    if (!workspaceId || !accessToken) {
+      setEvents([]);
+      return;
+    }
+
+    try {
+      const params = new URLSearchParams({ workspaceId, limit: '200' });
+      const res = await fetch(`/api/v2/events?${params.toString()}`, {
+        headers: { 'x-access-token': accessToken },
+      });
+      const payload = await res.json();
+      if (!res.ok) {
+        setEvents([]);
+        return;
+      }
+
+      const rows = Array.isArray(payload?.data) ? payload.data : [];
+      const mapped = rows.map((row: { id: string; name: string; eventType: string }) => ({
+        id: row.id,
+        name: row.name,
+        eventType: row.eventType,
+      }));
+      setEvents(mapped);
+
+      if (!selectedEventId && mapped[0]?.id) {
+        setSelectedEventId(mapped[0].id);
+      }
+    } catch {
+      setEvents([]);
+    }
+  }, [workspaceId, accessToken, selectedEventId]);
+
+  useEffect(() => {
+    void loadEvents();
+  }, [loadEvents]);
 
   const loadAwsOcrControl = useCallback(async () => {
     if (!workspaceId || !accessToken) {
@@ -348,7 +437,10 @@ export default function UploadPage() {
     if (imageFiles.length === 0) return;
 
     if (!workspaceId || !accessToken) {
-      setSubmitMessage({ type: 'error', text: 'Workspace ID and access token are required.' });
+      if (!bootstrapBusy) {
+        void bootstrapWorkspaceAccess();
+      }
+      setSubmitMessage({ type: 'error', text: 'Preparing workspace access. Please try again in a moment.' });
       return;
     }
 
@@ -436,6 +528,8 @@ export default function UploadPage() {
   }, [
     workspaceId,
     accessToken,
+    bootstrapBusy,
+    bootstrapWorkspaceAccess,
     selectedEventId,
     createScanJob,
     uploadScreenshotArtifact,
@@ -461,13 +555,29 @@ export default function UploadPage() {
 
   const createEvent = async () => {
     if (!newEventName.trim()) return;
+    if (!workspaceId || !accessToken) {
+      setSubmitMessage({ type: 'error', text: 'Workspace access is not ready yet.' });
+      return;
+    }
+
     try {
-      const res = await fetch('/api/events', {
+      const res = await fetch('/api/v2/events', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newEventName.trim(), eventType: newEventType }),
+        headers: {
+          'Content-Type': 'application/json',
+          'x-access-token': accessToken,
+        },
+        body: JSON.stringify({
+          workspaceId,
+          name: newEventName.trim(),
+          eventType: newEventType,
+        }),
       });
-      const event = await res.json();
+      const payload = await res.json();
+      if (!res.ok || !payload?.data?.id) {
+        throw new Error(payload?.error?.message || 'Failed to create event.');
+      }
+      const event = payload.data as EventOption;
       setEvents((prev) => [event, ...prev]);
       setSelectedEventId(event.id);
       setNewEventName('');
@@ -512,26 +622,23 @@ export default function UploadPage() {
         <KpiCard label="Failed" value={failedCount} hint="Needs retry" tone={failedCount > 0 ? 'bad' : 'neutral'} />
       </div>
 
-      <Panel title="Workspace Access" className="mb-24">
-        <div className="grid-2" style={{ gap: 12 }}>
-          <div className="form-group" style={{ marginBottom: 0 }}>
-            <label className="form-label">Workspace ID</label>
-            <input
-              className="form-input"
-              value={workspaceId}
-              onChange={(e) => setWorkspaceId(e.target.value)}
-              placeholder="workspace_..."
-            />
+      <Panel title="Workspace" className="mb-24">
+        <div className="flex items-center justify-between gap-12">
+          <div className="text-sm text-muted">
+            {bootstrapBusy
+              ? 'Preparing single-kingdom workspace access...'
+              : workspaceId
+                ? `Connected to ${workspaceName || 'your kingdom workspace'}.`
+                : 'Workspace access not ready yet.'}
+            {bootstrapError ? ` ${bootstrapError}` : ''}
           </div>
-          <div className="form-group" style={{ marginBottom: 0 }}>
-            <label className="form-label">Access Token</label>
-            <input
-              className="form-input"
-              value={accessToken}
-              onChange={(e) => setAccessToken(e.target.value)}
-              placeholder="paste workspace link token"
-            />
-          </div>
+          <button
+            className="btn btn-secondary btn-sm"
+            onClick={() => void bootstrapWorkspaceAccess()}
+            disabled={bootstrapBusy}
+          >
+            <RefreshCw size={14} /> {bootstrapBusy ? 'Connecting...' : 'Reconnect'}
+          </button>
         </div>
       </Panel>
 
