@@ -8,7 +8,6 @@ import {
   DataTableLite,
   EmptyState,
   FilterBar,
-  KpiCard,
   PageHero,
   Panel,
   StatusPill,
@@ -37,17 +36,6 @@ interface CanonicalRow {
   updatedAt: string;
 }
 
-interface SummaryPayload {
-  total: number;
-  statusCounts: Record<string, number>;
-  rankingTypes: Array<{ rankingType: string; metricKey: string; total: number }>;
-  topBuckets?: {
-    top100: { count: number; totalMetric: string; averageMetric: string };
-    top200: { count: number; totalMetric: string; averageMetric: string };
-    top400: { count: number; totalMetric: string; averageMetric: string };
-  };
-}
-
 function formatMetric(value: string) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed.toLocaleString() : value;
@@ -72,7 +60,6 @@ export default function RankingsPage() {
   const [cursorStack, setCursorStack] = useState<Array<string | null>>([null]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [summary, setSummary] = useState<SummaryPayload | null>(null);
   const [sortHint, setSortHint] = useState(
     'metricValue DESC, sourceRank ASC NULLS LAST, normalizedName ASC, rowId ASC'
   );
@@ -95,23 +82,10 @@ export default function RankingsPage() {
         if (search.trim()) params.set('q', search.trim());
         if (cursor) params.set('cursor', cursor);
 
-        const [rowsRes, summaryRes] = await Promise.all([
-          fetch(`/api/v2/rankings?${params.toString()}`, {
-            headers: { 'x-access-token': accessToken },
-          }),
-          fetch(
-            `/api/v2/rankings/summary?${new URLSearchParams({
-              workspaceId,
-              topN: '15',
-            }).toString()}`,
-            {
-              headers: { 'x-access-token': accessToken },
-            }
-          ),
-        ]);
-
+        const rowsRes = await fetch(`/api/v2/rankings?${params.toString()}`, {
+          headers: { 'x-access-token': accessToken },
+        });
         const rowsPayload = await rowsRes.json();
-        const summaryPayload = await summaryRes.json();
 
         if (!rowsRes.ok) {
           throw new Error(rowsPayload?.error?.message || 'Failed to load canonical rankings.');
@@ -121,12 +95,6 @@ export default function RankingsPage() {
         setNextCursor(rowsPayload?.meta?.nextCursor || null);
         if (Array.isArray(rowsPayload?.meta?.sort) && rowsPayload.meta.sort.length > 0) {
           setSortHint(rowsPayload.meta.sort.join(', '));
-        }
-
-        if (summaryRes.ok && summaryPayload?.data) {
-          setSummary(summaryPayload.data as SummaryPayload);
-        } else {
-          setSummary(null);
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load rankings.');
@@ -227,7 +195,9 @@ export default function RankingsPage() {
     return base;
   }, []);
 
-  const unresolved = summary?.statusCounts.UNRESOLVED || 0;
+  const activeCount = rows.filter((row) => row.status === 'ACTIVE').length;
+  const unresolvedCount = rows.filter((row) => row.status === 'UNRESOLVED').length;
+  const rejectedCount = rows.filter((row) => row.status === 'REJECTED').length;
 
   return (
     <div className="page-container">
@@ -272,31 +242,16 @@ export default function RankingsPage() {
         ))}
       </FilterBar>
 
-      <div className="text-sm text-muted mb-16">Deterministic sort: {sortHint}</div>
-
-      {summary ? (
-        <div className="grid-4 mb-24">
-          <KpiCard label="Canonical Rows" value={summary.total} hint="Current merged snapshot rows" tone="info" />
-          <KpiCard label="Active" value={summary.statusCounts.ACTIVE || 0} hint="In ranking output" tone="good" />
-          <KpiCard
-            label="Unresolved"
-            value={summary.statusCounts.UNRESOLVED || 0}
-            hint="Needs identity review"
-            tone={unresolved > 0 ? 'warn' : 'good'}
-          />
-          <KpiCard
-            label="Rejected"
-            value={summary.statusCounts.REJECTED || 0}
-            hint="Excluded rows"
-            tone="bad"
-          />
-        </div>
-      ) : null}
-
-
+      <FilterBar className="mb-16">
+        <StatusPill label={`Rows ${rows.length}`} tone="info" />
+        <StatusPill label={`Active ${activeCount}`} tone="good" />
+        <StatusPill label={`Unresolved ${unresolvedCount}`} tone={unresolvedCount > 0 ? 'warn' : 'good'} />
+        {rejectedCount > 0 ? <StatusPill label={`Rejected ${rejectedCount}`} tone="bad" /> : null}
+      </FilterBar>
 
       <Panel
-        title="Canonical Ranking Rows"
+        title="Ranking Rows"
+        subtitle={`Stable order: ${sortHint}`}
         actions={
           <ActionToolbar>
             <button className="btn btn-secondary btn-sm" onClick={goBack} disabled={loading || cursorStack.length <= 1}>

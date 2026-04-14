@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { useWorkspaceSession } from '@/lib/workspace-session';
 import { EVENT_TYPE_LABELS } from '@/lib/utils';
-import { FilterBar, KpiCard, PageHero, Panel, StatusPill } from '@/components/ui/primitives';
+import { FilterBar, PageHero, Panel, StatusPill } from '@/components/ui/primitives';
 
 interface EventOption {
   id: string;
@@ -658,12 +658,12 @@ export default function UploadPage() {
         }
       />
 
-      <div className="grid-4 mb-24">
-        <KpiCard label="Queued" value={queuedCount} hint="Waiting in queue" tone="warn" />
-        <KpiCard label="Processing" value={processingCount} hint="Upload + OCR worker" tone="info" />
-        <KpiCard label="Completed" value={completedCount} hint="Ready for review queue" tone="good" />
-        <KpiCard label="Failed" value={failedCount} hint="Needs retry" tone={failedCount > 0 ? 'bad' : 'neutral'} />
-      </div>
+      <FilterBar className="mb-24">
+        <StatusPill label={`Queued ${queuedCount}`} tone="warn" />
+        <StatusPill label={`Processing ${processingCount}`} tone="info" />
+        <StatusPill label={`Completed ${completedCount}`} tone="good" />
+        {failedCount > 0 ? <StatusPill label={`Failed ${failedCount}`} tone="bad" /> : null}
+      </FilterBar>
 
       <Panel title="Event + Worker" className="mb-24">
         <div className="text-sm text-muted mb-12">
@@ -755,19 +755,13 @@ export default function UploadPage() {
             <Clock3 size={14} /> Uploading and queueing screenshots...
           </div>
         ) : null}
-      </Panel>
-
-      {scanJobId ? (
-        <Panel
-          title="Current Scan Job"
-          subtitle={`Job ${scanJobId} • ${scanJobState?.processedFiles || 0}/${scanJobState?.totalFiles || entries.length} processed`}
-          className="mb-24"
-        >
-          <div className="text-sm text-muted">
-            Status: <strong>{scanJobState?.status || 'PROCESSING'}</strong>
+        {scanJobId ? (
+          <div className="mt-12 text-sm text-muted">
+            Current job: {scanJobState?.processedFiles || 0}/{scanJobState?.totalFiles || entries.length} processed •{' '}
+            <strong>{scanJobState?.status || 'PROCESSING'}</strong>
           </div>
-        </Panel>
-      ) : null}
+        ) : null}
+      </Panel>
 
       {scanJobState && (scanJobState.status === 'REVIEW' || scanJobState.status === 'FAILED') ? (
         <Panel
