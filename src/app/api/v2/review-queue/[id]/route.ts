@@ -3,6 +3,8 @@ import {
   AnomalySeverity,
   OcrExtractionStatus,
   Prisma,
+  RankingRowReviewAction,
+  RankingSnapshotStatus,
   ScanJobStatus,
   WorkspaceRole,
 } from '@prisma/client';
@@ -24,6 +26,15 @@ import {
   parseValidation,
   toApprovedSnapshotPayload,
 } from '@/lib/review-queue';
+import {
+  computeCanonicalIdentityKey,
+  normalizeGovernorAlias,
+  normalizeMetricKey,
+  normalizeRankingType,
+} from '@/lib/rankings/normalize';
+
+const PROFILE_POWER_RANKING_TYPE = normalizeRankingType('governor_profile_power');
+const PROFILE_POWER_METRIC_KEY = normalizeMetricKey('power');
 
 const correctedSchema = z
   .object({
@@ -480,6 +491,119 @@ export async function PATCH(
             })),
           });
         }
+
+        // Keep ranking board in sync with approved profile reviews so players
+        // appear in canonical rankings immediately after approval.
+        const governorNameNormalized = normalizeGovernorAlias(approvedPayload.governorName);
+        const identityKey = computeCanonicalIdentityKey({
+          governorId: governor.id,
+          governorNameNormalized,
+        });
+
+        const previousRankingSnapshot = await tx.rankingSnapshot.findUnique({
+          where: {
+            workspaceId_eventId_rankingType_identityKey: {
+              workspaceId: extraction.scanJob.workspaceId,
+              eventId: extraction.scanJob.eventId,
+              rankingType: PROFILE_POWER_RANKING_TYPE,
+              identityKey,
+            },
+          },
+          select: {
+            id: true,
+            rankingType: true,
+            metricKey: true,
+            identityKey: true,
+            governorId: true,
+            governorNameRaw: true,
+            governorNameNormalized: true,
+            sourceRank: true,
+            metricValue: true,
+            status: true,
+            lastRunId: true,
+            lastRowId: true,
+          },
+        });
+
+        const nextRankingData = {
+          rankingType: PROFILE_POWER_RANKING_TYPE,
+          metricKey: PROFILE_POWER_METRIC_KEY,
+          identityKey,
+          governorId: governor.id,
+          governorNameRaw: approvedPayload.governorName,
+          governorNameNormalized,
+          sourceRank: null,
+          metricValue: approvedPayload.power.toString(),
+          status: RankingSnapshotStatus.ACTIVE,
+          lastRunId: null,
+          lastRowId: null,
+        };
+
+        const rankingSnapshot = await tx.rankingSnapshot.upsert({
+          where: {
+            workspaceId_eventId_rankingType_identityKey: {
+              workspaceId: extraction.scanJob.workspaceId,
+              eventId: extraction.scanJob.eventId,
+              rankingType: PROFILE_POWER_RANKING_TYPE,
+              identityKey,
+            },
+          },
+          create: {
+            workspaceId: extraction.scanJob.workspaceId,
+            eventId: extraction.scanJob.eventId,
+            rankingType: PROFILE_POWER_RANKING_TYPE,
+            metricKey: PROFILE_POWER_METRIC_KEY,
+            identityKey,
+            governorId: governor.id,
+            governorNameRaw: approvedPayload.governorName,
+            governorNameNormalized,
+            sourceRank: null,
+            metricValue: approvedPayload.power,
+            status: RankingSnapshotStatus.ACTIVE,
+            lastRunId: null,
+            lastRowId: null,
+          },
+          update: {
+            metricKey: PROFILE_POWER_METRIC_KEY,
+            governorId: governor.id,
+            governorNameRaw: approvedPayload.governorName,
+            governorNameNormalized,
+            sourceRank: null,
+            metricValue: approvedPayload.power,
+            status: RankingSnapshotStatus.ACTIVE,
+            lastRunId: null,
+            lastRowId: null,
+          },
+          select: {
+            id: true,
+          },
+        });
+
+        await tx.rankingRevision.create({
+          data: {
+            workspaceId: extraction.scanJob.workspaceId,
+            snapshotId: rankingSnapshot.id,
+            changedByLinkId: auth.link.id,
+            action: RankingRowReviewAction.SYSTEM_MERGE,
+            reason: body.reason || 'Profile review approval sync',
+            previousData: previousRankingSnapshot
+              ? {
+                  rankingType: previousRankingSnapshot.rankingType,
+                  metricKey: previousRankingSnapshot.metricKey,
+                  identityKey: previousRankingSnapshot.identityKey,
+                  governorId: previousRankingSnapshot.governorId,
+                  governorNameRaw: previousRankingSnapshot.governorNameRaw,
+                  governorNameNormalized: previousRankingSnapshot.governorNameNormalized,
+                  sourceRank: previousRankingSnapshot.sourceRank,
+                  metricValue: previousRankingSnapshot.metricValue.toString(),
+                  status: previousRankingSnapshot.status,
+                  lastRunId: previousRankingSnapshot.lastRunId,
+                  lastRowId: previousRankingSnapshot.lastRowId,
+                }
+              : undefined,
+            nextData: nextRankingData,
+          },
+        });
       }
 
       const pendingCount = await tx.ocrExtraction.count({
