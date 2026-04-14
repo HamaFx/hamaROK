@@ -4,17 +4,24 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
   Activity,
+  Castle,
   CalendarClock,
+  Crown,
   Database,
   FileBox,
-  Library,
+  Flame,
+  Gauge,
+  Medal,
   ShieldAlert,
   ShieldCheck,
   Sparkles,
+  Star,
+  Swords,
   TrendingDown,
   TrendingUp,
   Trophy,
   Users,
+  Rocket,
 } from 'lucide-react';
 import { formatDate, EVENT_TYPE_LABELS } from '@/lib/utils';
 import { EmptyState, SkeletonSet, StatusPill } from '@/components/ui/primitives';
@@ -490,129 +497,141 @@ export default function Dashboard() {
         </div>
       </section>
 
-      <section className="dashboard-stats-grid">
-        <article className="dashboard-stat-card tone-neutral">
-          <div className="dashboard-stat-head">
+      <section className="dashboard-mosaic-grid">
+        <article className="dashboard-mosaic-card square tone-cobalt">
+          <div className="dashboard-mosaic-head">
+            <span className="dashboard-mosaic-logo logo-cobalt">
+              <Users size={15} />
+            </span>
             <span>Total Governors</span>
-            <Users size={16} />
           </div>
-          <p className="dashboard-stat-value">{loading ? '—' : governorCount.toLocaleString()}</p>
-          <p className="dashboard-stat-note">Roster members linked in the kingdom database.</p>
+          <p className="dashboard-mosaic-value">{loading ? '—' : governorCount.toLocaleString()}</p>
+          <p className="dashboard-mosaic-note">Roster members linked in kingdom tracking.</p>
         </article>
 
-        <article className="dashboard-stat-card tone-info">
-          <div className="dashboard-stat-head">
+        <article className="dashboard-mosaic-card square tone-emerald">
+          <div className="dashboard-mosaic-head">
+            <span className="dashboard-mosaic-logo logo-emerald">
+              <ShieldCheck size={15} />
+            </span>
             <span>Players This Week</span>
-            <ShieldCheck size={16} />
           </div>
-          <p className="dashboard-stat-value">{loading ? '—' : (weeklyActivity?.summary.membersTracked ?? 0).toLocaleString()}</p>
-          <p className="dashboard-stat-note">Players included in current weekly scoring.</p>
+          <p className="dashboard-mosaic-value">
+            {loading ? '—' : (weeklyActivity?.summary.membersTracked ?? 0).toLocaleString()}
+          </p>
+          <p className="dashboard-mosaic-note">Scored players in the active weekly cycle.</p>
         </article>
 
-        <article className="dashboard-stat-card tone-good">
-          <div className="dashboard-stat-head">
+        <article className="dashboard-mosaic-card square tone-gold">
+          <div className="dashboard-mosaic-head">
+            <span className="dashboard-mosaic-logo logo-gold">
+              <Gauge size={15} />
+            </span>
             <span>Alliance Pass Rate</span>
-            <TrendingUp size={16} />
           </div>
-          <p className="dashboard-stat-value">
-            {loading ? '—' : `${weeklyInsights?.overallPassRate ?? 0}%`}
-          </p>
-          <p className="dashboard-stat-note">
+          <p className="dashboard-mosaic-value">{loading ? '—' : `${weeklyInsights?.overallPassRate ?? 0}%`}</p>
+          <p className="dashboard-mosaic-note">
             {loading
-              ? 'Calculating weekly rate…'
+              ? 'Calculating weekly scoring...'
               : `${weeklyInsights?.totalPass ?? 0} pass / ${weeklyInsights?.totalMembers ?? 0} tracked`}
           </p>
         </article>
 
-        <article className="dashboard-stat-card tone-warn">
-          <div className="dashboard-stat-head">
+        <article className="dashboard-mosaic-card square tone-violet">
+          <div className="dashboard-mosaic-head">
+            <span className="dashboard-mosaic-logo logo-violet">
+              <FileBox size={15} />
+            </span>
             <span>Total Snapshots</span>
-            <FileBox size={16} />
           </div>
-          <p className="dashboard-stat-value">{loading ? '—' : totalSnapshots.toLocaleString()}</p>
-          <p className="dashboard-stat-note">All ingested profile snapshots across events.</p>
+          <p className="dashboard-mosaic-value">{loading ? '—' : totalSnapshots.toLocaleString()}</p>
+          <p className="dashboard-mosaic-note">Profile uploads stored across all event checkpoints.</p>
         </article>
-      </section>
 
-      <section className="dashboard-highlights-grid">
-        <article className="dashboard-highlight-card">
-          <div className="dashboard-highlight-head">
-            <ShieldCheck size={14} />
+        <article className="dashboard-mosaic-card wide tone-royal">
+          <div className="dashboard-mosaic-head">
+            <span className="dashboard-mosaic-logo logo-royal">
+              <Crown size={15} />
+            </span>
             <span>Top Alliance</span>
           </div>
-          <p className="dashboard-highlight-value">
+          <p className="dashboard-mosaic-value">
             {weeklyInsights?.topAlliance ? weeklyInsights.topAlliance.allianceLabel : '—'}
           </p>
-          <p className="dashboard-highlight-note">
+          <p className="dashboard-mosaic-note">
             {weeklyInsights?.topAlliance
-              ? `${weeklyInsights.topAlliance.passRate}% pass • ${weeklyInsights.topAlliance.passCount}/${weeklyInsights.topAlliance.members}`
-              : 'Waiting for weekly activity data.'}
+              ? `${weeklyInsights.topAlliance.passRate}% pass • ${weeklyInsights.topAlliance.passCount}/${weeklyInsights.topAlliance.members} members`
+              : 'Waiting for scored alliance activity.'}
           </p>
+          <div className="dashboard-mosaic-mini">
+            <span>Alliances tracked: {alliancePulse.length}</span>
+          </div>
         </article>
 
-        <article className="dashboard-highlight-card">
-          <div className="dashboard-highlight-head">
-            <Trophy size={14} />
+        <article className="dashboard-mosaic-card wide tone-platinum">
+          <div className="dashboard-mosaic-head">
+            <span className="dashboard-mosaic-logo logo-platinum">
+              <Medal size={15} />
+            </span>
             <span>Top Contributor</span>
           </div>
-          <p className="dashboard-highlight-value">
+          <p className="dashboard-mosaic-value">
             {weeklyInsights?.topContributor ? weeklyInsights.topContributor.governorName : '—'}
           </p>
-          <p className="dashboard-highlight-note">
+          <p className="dashboard-mosaic-note">
             {weeklyInsights?.topContributor
-              ? `${Number(weeklyInsights.topContributor.contributionPoints).toLocaleString()} contribution points`
-              : 'No contribution rows yet.'}
+              ? `${formatBigInt(toSafeBigInt(weeklyInsights.topContributor.contributionPoints))} contribution points`
+              : 'No contribution rows available yet.'}
           </p>
+          <div className="dashboard-mosaic-mini">
+            <span>
+              Alliance: {weeklyInsights?.topContributor ? weeklyInsights.topContributor.allianceLabel : '—'}
+            </span>
+          </div>
         </article>
 
-        <article className="dashboard-highlight-card">
-          <div className="dashboard-highlight-head">
-            <TrendingUp size={14} />
+        <article className="dashboard-mosaic-card wide tone-flame">
+          <div className="dashboard-mosaic-head">
+            <span className="dashboard-mosaic-logo logo-flame">
+              <Flame size={15} />
+            </span>
             <span>Top Power Growth</span>
           </div>
-          <p className="dashboard-highlight-value">
+          <p className="dashboard-mosaic-value">
             {weeklyInsights?.topPowerGrowth ? weeklyInsights.topPowerGrowth.governorName : '—'}
           </p>
-          <p className="dashboard-highlight-note">
+          <p className="dashboard-mosaic-note">
             {weeklyInsights?.topPowerGrowth?.powerGrowth
-              ? `${Number(weeklyInsights.topPowerGrowth.powerGrowth).toLocaleString()} power`
-              : 'Baseline data is still building.'}
+              ? `${formatBigInt(toSafeBigInt(weeklyInsights.topPowerGrowth.powerGrowth))} weekly power gained`
+              : 'Baseline data is still building for this week.'}
           </p>
+          <div className="dashboard-mosaic-mini">
+            <span>
+              Alliance: {weeklyInsights?.topPowerGrowth ? weeklyInsights.topPowerGrowth.allianceLabel : '—'}
+            </span>
+          </div>
         </article>
 
-        <article className="dashboard-highlight-card">
-          <div className="dashboard-highlight-head">
-            <Library size={14} />
-            <span>Tracked Events</span>
+        <article className="dashboard-mosaic-card wide tone-data">
+          <div className="dashboard-mosaic-head">
+            <span className="dashboard-mosaic-logo logo-data">
+              <Database size={15} />
+            </span>
+            <span>Data Readiness</span>
           </div>
-          <p className="dashboard-highlight-value">{events.length.toLocaleString()}</p>
-          <p className="dashboard-highlight-note">Recent event checkpoints available for comparison.</p>
-        </article>
-
-        <article className="dashboard-highlight-card">
-          <div className="dashboard-highlight-head">
-            <Database size={14} />
-            <span>Weekly Contribution</span>
-          </div>
-          <p className="dashboard-highlight-value">
-            {weeklyInsights ? formatBigInt(weeklyInsights.totalContribution) : '—'}
-          </p>
-          <p className="dashboard-highlight-note">Combined contribution points from tracked players.</p>
-        </article>
-
-        <article className="dashboard-highlight-card">
-          <div className="dashboard-highlight-head">
-            <ShieldAlert size={14} />
-            <span>Power Baseline Coverage</span>
-          </div>
-          <p className="dashboard-highlight-value">
+          <p className="dashboard-mosaic-value">
             {weeklyInsights ? `${weeklyInsights.baselineCoverage}%` : '—'}
           </p>
-          <p className="dashboard-highlight-note">
-            {weeklyInsights
-              ? `${weeklyInsights.powerBaselineReadyCount}/${weeklyActivity?.rows.length || 0} players baseline-ready`
-              : 'Waiting for weekly activity data.'}
+          <p className="dashboard-mosaic-note">
+            {weeklyInsights ? 'Power baseline coverage for progressive weekly scoring.' : 'Waiting for weekly activity data.'}
           </p>
+          <div className="dashboard-mosaic-mini">
+            <span>
+              Baseline-ready: {weeklyInsights?.powerBaselineReadyCount ?? 0}/{weeklyActivity?.rows.length ?? 0}
+            </span>
+            <span>Unlinked: {weeklyActivity?.summary.unresolvedIdentityCount ?? 0}</span>
+            <span>Tracked events: {events.length}</span>
+          </div>
         </article>
       </section>
 
@@ -620,7 +639,9 @@ export default function Dashboard() {
         <article className="dashboard-card dashboard-momentum-card">
           <header className="dashboard-card-head">
             <div>
-              <h2>Alliance Momentum</h2>
+              <h2 className="dashboard-heading-icon">
+                <Castle size={15} /> Alliance Momentum
+              </h2>
               <p>Pass-rate trend for the last {Math.max(recentWeeklyReports.length, 1)} tracked weeks.</p>
             </div>
             <StatusPill label="Last 4 Weeks" tone="info" />
@@ -671,7 +692,9 @@ export default function Dashboard() {
         <article className="dashboard-card dashboard-movers-card">
           <header className="dashboard-card-head">
             <div>
-              <h2>Top Risers and Fallers</h2>
+              <h2 className="dashboard-heading-icon">
+                <Rocket size={15} /> Top Risers and Fallers
+              </h2>
               <p>
                 {weekMovement
                   ? `${formatWeekShort(weekMovement.previousWeekKey)} -> ${formatWeekShort(weekMovement.currentWeekKey)}`
@@ -731,7 +754,9 @@ export default function Dashboard() {
         <article className="dashboard-card dashboard-mvp-card">
           <header className="dashboard-card-head">
             <div>
-              <h2>Weekly MVP</h2>
+              <h2 className="dashboard-heading-icon">
+                <Star size={15} /> Weekly MVP
+              </h2>
               <p>Weighted score: contribution 45%, power growth 30%, fort 15%, kill points growth 10%.</p>
             </div>
             <StatusPill label="Performance Blend" tone="good" />
@@ -783,7 +808,9 @@ export default function Dashboard() {
       <section className="dashboard-card dashboard-weekly-card">
         <header className="dashboard-card-head">
           <div>
-            <h2>Alliance and Player Breakdown</h2>
+            <h2 className="dashboard-heading-icon">
+              <Swords size={15} /> Alliance and Player Breakdown
+            </h2>
             <p>
               {weeklyActivity
                 ? `${weeklyActivity.summary.membersTracked} members • ${weeklyActivity.event.name}`
@@ -888,7 +915,9 @@ export default function Dashboard() {
       <section className="dashboard-card dashboard-events-card">
         <header className="dashboard-card-head">
           <div>
-            <h2>Recent Events</h2>
+            <h2 className="dashboard-heading-icon">
+              <CalendarClock size={15} /> Recent Events
+            </h2>
             <p>Latest checkpoints ready for compare and insights.</p>
           </div>
           <Link href="/events" className="btn btn-secondary btn-sm">
