@@ -34,6 +34,7 @@ import {
 } from '@/lib/rankings/normalize';
 import { invalidateServerCacheTags } from '@/lib/server-cache';
 import { scanJobCacheTag, workspaceCacheTags } from '@/lib/cache-scopes';
+import { splitGovernorNameAndAlliance } from '@/lib/alliances';
 
 const PROFILE_POWER_RANKING_TYPE = normalizeRankingType('governor_profile_power');
 const PROFILE_POWER_METRIC_KEY = normalizeMetricKey('power');
@@ -175,6 +176,39 @@ function applyRerunNormalized(
       value: rerun.normalized.deads ?? base.deads.value,
     },
   };
+}
+
+function extractAllianceFromExtraction(extraction: {
+  normalized: Prisma.JsonValue | null;
+  fields: Prisma.JsonValue;
+  governorNameRaw: string | null;
+}) {
+  const normalizedObject =
+    extraction.normalized && typeof extraction.normalized === 'object'
+      ? (extraction.normalized as Record<string, unknown>)
+      : {};
+
+  const fieldsObject =
+    extraction.fields && typeof extraction.fields === 'object'
+      ? (extraction.fields as Record<string, unknown>)
+      : {};
+
+  const normalizedAlliance =
+    typeof normalizedObject.alliance === 'string' ? normalizedObject.alliance : null;
+
+  const fieldAlliance =
+    fieldsObject.alliance &&
+    typeof fieldsObject.alliance === 'object' &&
+    typeof (fieldsObject.alliance as Record<string, unknown>).value === 'string'
+      ? ((fieldsObject.alliance as Record<string, unknown>).value as string)
+      : null;
+
+  const split = splitGovernorNameAndAlliance({
+    governorNameRaw: extraction.governorNameRaw || '',
+    allianceRaw: normalizedAlliance || fieldAlliance,
+  });
+
+  return split.allianceRaw;
 }
 
 export async function PATCH(
@@ -366,16 +400,29 @@ export async function PATCH(
       let snapshotId: string | null = null;
 
       if (body.status === OcrExtractionStatus.APPROVED && extraction.scanJob.eventId) {
+        const allianceDetection = splitGovernorNameAndAlliance({
+          governorNameRaw: approvedPayload.governorName,
+          allianceRaw: extractAllianceFromExtraction(extraction),
+        });
+        const approvedGovernorName =
+          allianceDetection.governorNameRaw || approvedPayload.governorName;
+
         const governor = await tx.governor.upsert({
           where: { governorId: approvedPayload.governorId },
           update: {
-            name: approvedPayload.governorName,
+            name: approvedGovernorName,
             workspaceId: extraction.scanJob.workspaceId,
+            ...(allianceDetection.allianceRaw
+              ? {
+                  alliance: allianceDetection.allianceRaw,
+                }
+              : {}),
           },
           create: {
             governorId: approvedPayload.governorId,
-            name: approvedPayload.governorName,
+            name: approvedGovernorName,
             workspaceId: extraction.scanJob.workspaceId,
+            alliance: allianceDetection.allianceRaw || '',
           },
         });
 
@@ -496,7 +543,7 @@ export async function PATCH(
 
         // Keep ranking board in sync with approved profile reviews so players
         // appear in canonical rankings immediately after approval.
-        const governorNameNormalized = normalizeGovernorAlias(approvedPayload.governorName);
+        const governorNameNormalized = normalizeGovernorAlias(approvedGovernorName);
         const identityKey = computeCanonicalIdentityKey({
           governorId: governor.id,
           governorNameNormalized,
@@ -532,7 +579,7 @@ export async function PATCH(
           metricKey: PROFILE_POWER_METRIC_KEY,
           identityKey,
           governorId: governor.id,
-          governorNameRaw: approvedPayload.governorName,
+          governorNameRaw: approvedGovernorName,
           governorNameNormalized,
           sourceRank: null,
           metricValue: approvedPayload.power.toString(),
@@ -557,7 +604,7 @@ export async function PATCH(
             metricKey: PROFILE_POWER_METRIC_KEY,
             identityKey,
             governorId: governor.id,
-            governorNameRaw: approvedPayload.governorName,
+            governorNameRaw: approvedGovernorName,
             governorNameNormalized,
             sourceRank: null,
             metricValue: approvedPayload.power,
@@ -568,7 +615,7 @@ export async function PATCH(
           update: {
             metricKey: PROFILE_POWER_METRIC_KEY,
             governorId: governor.id,
-            governorNameRaw: approvedPayload.governorName,
+            governorNameRaw: approvedGovernorName,
             governorNameNormalized,
             sourceRank: null,
             metricValue: approvedPayload.power,

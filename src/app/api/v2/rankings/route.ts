@@ -46,6 +46,8 @@ export async function GET(request: NextRequest) {
     const eventId = url.searchParams.get('eventId')?.trim() || null;
     const rankingType = url.searchParams.get('rankingType')?.trim() || null;
     const metricKey = url.searchParams.get('metricKey')?.trim() || null;
+    const alliances = [...new Set(parseCommaValues(url.searchParams.get('alliance')))];
+    const sortedAlliances = [...alliances].sort();
     const q = url.searchParams.get('q')?.trim() || null;
     const sort = url.searchParams.get('sort')?.trim() || null;
     const cursor = url.searchParams.get('cursor')?.trim() || null;
@@ -64,6 +66,7 @@ export async function GET(request: NextRequest) {
         eventId,
         rankingType,
         metricKey,
+        alliances: sortedAlliances,
         q,
         sort,
         status: [...status].sort(),
@@ -80,6 +83,7 @@ export async function GET(request: NextRequest) {
           eventId,
           rankingType,
           metricKey,
+          alliances,
           q,
           sort,
           status,
@@ -93,6 +97,7 @@ export async function GET(request: NextRequest) {
             total: result.total,
             limit,
             nextCursor: result.nextCursor,
+            alliancesApplied: sortedAlliances,
             sortRequested: sort || null,
             sortApplied:
               'metricValue DESC, sourceRank ASC NULLS LAST, governorNameNormalized ASC, rowId ASC',
@@ -111,6 +116,7 @@ export async function GET(request: NextRequest) {
       total: cached.meta.total,
       limit: cached.meta.limit,
       nextCursor: cached.meta.nextCursor,
+      alliancesApplied: cached.meta.alliancesApplied,
       sortRequested: cached.meta.sortRequested,
       sortApplied: cached.meta.sortApplied,
       sort: cached.meta.sort,

@@ -6,6 +6,7 @@ import { ok, fail, handleApiError, readJson } from '@/lib/api-response';
 import { parsePagination } from '@/lib/v2';
 import { createOpaqueToken, hashAccessToken } from '@/lib/security';
 import { getDefaultFallbackOcrModel } from '@/lib/ocr/fallback-config';
+import { PRIMARY_KINGDOM_NUMBER } from '@/lib/alliances';
 
 const createWorkspaceSchema = z.object({
   name: z.string().min(2).max(80),
@@ -95,7 +96,7 @@ export async function POST(request: NextRequest) {
         data: {
           slug,
           name: body.name.trim(),
-          kingdomTag: body.kingdomTag?.trim() || null,
+          kingdomTag: body.kingdomTag?.trim() || PRIMARY_KINGDOM_NUMBER,
           description: body.description?.trim() || null,
         },
       });

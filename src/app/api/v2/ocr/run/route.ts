@@ -7,6 +7,7 @@ import { listWorkspaceRuntimeProfiles } from '@/lib/ocr/profile-store';
 import { normalizeFieldValue } from '@/lib/ocr/field-config';
 import { selectBestRuntimeProfile } from '@/lib/ocr/profiles';
 import { authorizeWorkspaceAccess } from '@/lib/workspace-auth';
+import { splitGovernorNameAndAlliance } from '@/lib/alliances';
 
 const fieldSchema = z.object({
   value: z.string().default(''),
@@ -112,7 +113,12 @@ export async function POST(request: NextRequest) {
     ) {
       const rows = body.extraction.rows || [];
       const normalizedRows = rows.map((row) => {
-        const governorNameRaw = String(row.governorNameRaw || '')
+        const split = splitGovernorNameAndAlliance({
+          governorNameRaw: row.governorNameRaw || '',
+          allianceRaw: row.allianceRaw || null,
+          subtitleRaw: row.titleRaw || null,
+        });
+        const governorNameRaw = String(split.governorNameRaw || row.governorNameRaw || '')
           .replace(/[^\x20-\x7E]/g, ' ')
           .replace(/\s+/g, ' ')
           .trim();
@@ -134,7 +140,7 @@ export async function POST(request: NextRequest) {
           governorNameNormalized:
             row.governorNameNormalized ||
             governorNameRaw.toLowerCase().replace(/[^a-z0-9]/g, ''),
-          allianceRaw: row.allianceRaw ? String(row.allianceRaw).trim() : null,
+          allianceRaw: split.allianceRaw ? String(split.allianceRaw).trim() : null,
           titleRaw: row.titleRaw ? String(row.titleRaw).trim() : null,
           metricRaw: String(row.metricRaw || metricValue),
           metricValue,
@@ -142,7 +148,15 @@ export async function POST(request: NextRequest) {
           identityStatus: row.identityStatus || 'UNRESOLVED',
           candidates: row.candidates || {},
           failureReasons: [...new Set(failureReasons)],
-          ocrTrace: row.ocrTrace || {},
+          ocrTrace: {
+            ...(row.ocrTrace || {}),
+            allianceDetection: {
+              tag: split.allianceTag,
+              trackedAlliance: split.trackedAlliance,
+              detectionSource: split.detectionSource,
+              confidence: split.confidence,
+            },
+          },
         };
       });
 
@@ -212,6 +226,21 @@ export async function POST(request: NextRequest) {
       t5Kills: normalizeFieldValue('t5Kills', body.extraction.t5Kills.value),
       deads: normalizeFieldValue('deads', body.extraction.deads.value),
     };
+    const allianceSplit = splitGovernorNameAndAlliance({
+      governorNameRaw: normalized.governorName,
+      allianceRaw:
+        body.extraction &&
+        body.extraction.candidates &&
+        typeof body.extraction.candidates.alliance === 'string'
+          ? body.extraction.candidates.alliance
+          : null,
+    });
+    const normalizedWithAlliance = {
+      ...normalized,
+      governorName: allianceSplit.governorNameRaw || normalized.governorName,
+      alliance: allianceSplit.allianceRaw,
+      kingdomNumber: '4057',
+    };
 
     const confidences = {
       governorId: body.extraction.governorId.confidence,
@@ -225,7 +254,7 @@ export async function POST(request: NextRequest) {
 
     const validation = validateGovernorData({
       governorId: normalized.governorId,
-      name: normalized.governorName,
+      name: normalizedWithAlliance.governorName,
       power: normalized.power,
       killPoints: normalized.killPoints,
       t4Kills: normalized.t4Kills,
@@ -255,7 +284,7 @@ export async function POST(request: NextRequest) {
         null,
       screenArchetype: body.extraction.screenArchetype || 'governor-profile',
       profileSelection,
-      normalized,
+      normalized: normalizedWithAlliance,
       validation,
       lowConfidence,
       lowConfidenceFields,

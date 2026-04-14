@@ -20,6 +20,8 @@ describe('ranking normalize helpers', () => {
 
   it('parses numeric metrics as bigint', () => {
     expect(parseRankingMetric('54,268,607')).toBe(BigInt('54268607'));
+    expect(parseRankingMetric('2O,1I8,S34')).toBe(BigInt('20118534'));
+    expect(parseRankingMetric('B6,9Z0')).toBe(BigInt('86920'));
     expect(parseRankingMetric('')).toBe(BigInt(0));
   });
 

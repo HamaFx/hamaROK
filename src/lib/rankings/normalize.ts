@@ -1,4 +1,8 @@
 import { hashRequestPayload } from '@/lib/security';
+import {
+  sanitizeGovernorNameForAlliance,
+  splitGovernorNameAndAlliance,
+} from '@/lib/alliances';
 
 export function normalizeRankingType(value: string): string {
   return (
@@ -33,11 +37,25 @@ export function normalizeGovernorAlias(value: string): string {
 }
 
 export function normalizeGovernorDisplayName(value: string): string {
-  return String(value || '')
-    .replace(/[^\x20-\x7E]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 64);
+  const parsed = splitGovernorNameAndAlliance({ governorNameRaw: value });
+  return sanitizeGovernorNameForAlliance(parsed.governorNameRaw || value);
+}
+
+export function normalizeOcrNumericDigits(value: string | number | bigint | null | undefined): string {
+  const raw = String(value ?? '').trim();
+  if (!raw) return '';
+
+  const mapped = raw
+    .toUpperCase()
+    // Common OCR confusions for numeric score fields.
+    .replace(/[OQD]/g, '0')
+    .replace(/[I|L]/g, '1')
+    .replace(/S/g, '5')
+    .replace(/B/g, '8')
+    .replace(/G/g, '6')
+    .replace(/Z/g, '2');
+
+  return mapped.replace(/[^0-9]/g, '');
 }
 
 export function parseRankingMetric(value: string | number | bigint | null | undefined): bigint {
@@ -45,7 +63,7 @@ export function parseRankingMetric(value: string | number | bigint | null | unde
   if (typeof value === 'number' && Number.isFinite(value)) {
     return BigInt(Math.max(0, Math.floor(value)));
   }
-  const digits = String(value ?? '').replace(/[^0-9]/g, '');
+  const digits = normalizeOcrNumericDigits(value);
   if (!digits) return BigInt(0);
   return BigInt(digits);
 }

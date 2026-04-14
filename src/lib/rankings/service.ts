@@ -11,6 +11,12 @@ import { ApiHttpError } from '@/lib/api-response';
 import { withIdempotency } from '@/lib/idempotency';
 import { prisma } from '@/lib/prisma';
 import { hashRequestPayload } from '@/lib/security';
+import {
+  formatAllianceLabel,
+  PRIMARY_KINGDOM_NUMBER,
+  resolveAllianceQueryFilters,
+  splitGovernorNameAndAlliance,
+} from '@/lib/alliances';
 import { resolveRankingIdentity } from './identity';
 import {
   computeCanonicalIdentityKey,
@@ -77,6 +83,7 @@ export interface ListCanonicalRankingsInput {
   eventId?: string | null;
   rankingType?: string | null;
   metricKey?: string | null;
+  alliances?: string[] | null;
   q?: string | null;
   sort?: string | null;
   status?: RankingSnapshotStatus[];
@@ -131,18 +138,23 @@ function prepareRows(input: {
   return input.rows
     .map((row) => {
       const governorNameRaw = normalizeGovernorDisplayName(row.governorNameRaw);
-      const governorNameNormalized = normalizeGovernorAlias(governorNameRaw);
+      const allianceSplit = splitGovernorNameAndAlliance({
+        governorNameRaw,
+        allianceRaw: row.allianceRaw,
+        subtitleRaw: row.titleRaw,
+      });
+      const normalizedNameRaw = normalizeGovernorDisplayName(allianceSplit.governorNameRaw);
       const metricRaw = String(row.metricRaw || '').trim();
       const metricValue = parseRankingMetric(row.metricValue ?? row.metricRaw);
       const sourceRank = normalizeRank(row.sourceRank);
 
-      if (!governorNameRaw && metricValue === BigInt(0)) {
+      if (!normalizedNameRaw && metricValue === BigInt(0)) {
         return null;
       }
 
       const rowHash = computeRankingRowHash({
         sourceRank,
-        governorNameRaw,
+        governorNameRaw: normalizedNameRaw,
         metricRaw,
         rankingType,
         metricKey,
@@ -150,9 +162,11 @@ function prepareRows(input: {
 
       return {
         sourceRank,
-        governorNameRaw,
-        governorNameNormalized,
-        allianceRaw: row.allianceRaw ? String(row.allianceRaw).trim().slice(0, 80) : null,
+        governorNameRaw: normalizedNameRaw,
+        governorNameNormalized: normalizeGovernorAlias(normalizedNameRaw),
+        allianceRaw: allianceSplit.allianceRaw
+          ? String(allianceSplit.allianceRaw).trim().slice(0, 80)
+          : null,
         titleRaw: row.titleRaw ? String(row.titleRaw).trim().slice(0, 80) : null,
         metricRaw,
         metricValue,
@@ -1319,11 +1333,27 @@ export async function listCanonicalRankings(args: ListCanonicalRankingsInput) {
   const searchNormalized = searchRaw ? normalizeGovernorAlias(searchRaw) : null;
   const searchDigits = searchRaw ? searchRaw.replace(/[^0-9]/g, '') : '';
 
+  const allianceFilters = resolveAllianceQueryFilters(args.alliances || []);
+
   const where: Prisma.RankingSnapshotWhereInput = {
     workspaceId: args.workspaceId,
     ...(args.eventId ? { eventId: args.eventId } : {}),
     ...(args.rankingType ? { rankingType: normalizeRankingType(args.rankingType) } : {}),
     ...(args.metricKey ? { metricKey: normalizeMetricKey(args.metricKey) } : {}),
+    ...(allianceFilters.length > 0
+      ? {
+          lastRow: {
+            is: {
+              OR: allianceFilters.map((entry) => ({
+                allianceRaw: {
+                  contains: entry,
+                  mode: Prisma.QueryMode.insensitive,
+                },
+              })),
+            },
+          },
+        }
+      : {}),
     ...(args.status && args.status.length > 0 ? { status: { in: args.status } } : {}),
     ...(searchRaw
       ? {
@@ -1380,6 +1410,12 @@ export async function listCanonicalRankings(args: ListCanonicalRankingsInput) {
         createdAt: true,
         lastRunId: true,
         lastRowId: true,
+        lastRow: {
+          select: {
+            allianceRaw: true,
+            titleRaw: true,
+          },
+        },
       },
       take: 5000,
     }),
@@ -1467,6 +1503,8 @@ export async function listCanonicalRankings(args: ListCanonicalRankingsInput) {
       metricValue: entry.item.row.metricValue.toString(),
       sourceRank: entry.item.row.sourceRank,
       status: entry.item.row.status,
+      allianceRaw: entry.item.row.lastRow?.allianceRaw || null,
+      titleRaw: entry.item.row.lastRow?.titleRaw || null,
       stableIndex: entry.stableIndex,
       stableRank: entry.displayRank,
       tieGroup: entry.tieGroup,
@@ -1488,13 +1526,29 @@ export async function getRankingSummary(args: {
   eventId?: string | null;
   rankingType?: string | null;
   metricKey?: string | null;
+  alliances?: string[] | null;
   topN: number;
 }) {
+  const allianceFilters = resolveAllianceQueryFilters(args.alliances || []);
   const where: Prisma.RankingSnapshotWhereInput = {
     workspaceId: args.workspaceId,
     ...(args.eventId ? { eventId: args.eventId } : {}),
     ...(args.rankingType ? { rankingType: normalizeRankingType(args.rankingType) } : {}),
     ...(args.metricKey ? { metricKey: normalizeMetricKey(args.metricKey) } : {}),
+    ...(allianceFilters.length > 0
+      ? {
+          lastRow: {
+            is: {
+              OR: allianceFilters.map((entry) => ({
+                allianceRaw: {
+                  contains: entry,
+                  mode: Prisma.QueryMode.insensitive,
+                },
+              })),
+            },
+          },
+        }
+      : {}),
   };
 
   const [statusCounts, typeCounts, topRows] = await Promise.all([
@@ -1534,6 +1588,12 @@ export async function getRankingSummary(args: {
         status: true,
         updatedAt: true,
         governorNameNormalized: true,
+        lastRow: {
+          select: {
+            allianceRaw: true,
+            titleRaw: true,
+          },
+        },
       },
       take: 3000,
     }),
@@ -1621,6 +1681,39 @@ export async function getRankingSummary(args: {
     : [];
   const governorById = new Map(governors.map((governor) => [governor.id, governor]));
 
+  const trackedAllianceSummary = await Promise.all(
+    [
+      formatAllianceLabel({ tag: 'GODt', name: 'GOD of Thunder' }),
+      formatAllianceLabel({ tag: 'V57', name: 'Legacy of Velmora' }),
+      formatAllianceLabel({ tag: 'P57R', name: 'PHOENIX RISING 4057' }),
+    ].map(async (allianceLabel) => {
+      const rows = await prisma.rankingSnapshot.findMany({
+        where: {
+          ...where,
+          lastRow: {
+            is: {
+              allianceRaw: {
+                contains: allianceLabel,
+                mode: Prisma.QueryMode.insensitive,
+              },
+            },
+          },
+        },
+        select: {
+          metricValue: true,
+        },
+        take: 8000,
+      });
+
+      const totalMetric = rows.reduce((sum, row) => sum + row.metricValue, BigInt(0));
+      return {
+        alliance: allianceLabel,
+        count: rows.length,
+        totalMetric: totalMetric.toString(),
+      };
+    })
+  );
+
   return {
     total: topRows.length,
     statusCounts: statusCounts.reduce<Record<string, number>>((acc, item) => {
@@ -1640,6 +1733,8 @@ export async function getRankingSummary(args: {
       governorId: row.governorId,
       governor: row.governorId ? governorById.get(row.governorId) || null : null,
       governorNameRaw: row.governorNameRaw,
+      allianceRaw: row.lastRow?.allianceRaw || null,
+      titleRaw: row.lastRow?.titleRaw || null,
       metricValue: row.metricValue.toString(),
       sourceRank: row.sourceRank,
       status: row.status,
@@ -1660,6 +1755,11 @@ export async function getRankingSummary(args: {
         average: (entry.total / BigInt(Math.max(1, entry.count))).toString(),
       }))
       .sort((a, b) => b.count - a.count),
+    trackedAlliances: {
+      kingdomNumber: PRIMARY_KINGDOM_NUMBER,
+      filtersApplied: allianceFilters,
+      summary: trackedAllianceSummary,
+    },
   };
 }
 

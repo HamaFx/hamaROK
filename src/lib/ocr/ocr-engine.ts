@@ -24,6 +24,7 @@ import {
   getTemplateRuntimeProfiles,
   selectBestRuntimeProfile,
 } from './profiles';
+import { splitGovernorNameAndAlliance } from '@/lib/alliances';
 
 const ENGINE_VERSION = 'ocr-v3.0.0';
 export type ScreenArchetype = 'governor-profile' | 'rankboard';
@@ -424,11 +425,27 @@ function normalizeRankingName(value: string): string {
 }
 
 function normalizeRankDigits(value: string): string {
-  return String(value || '').replace(/[^0-9]/g, '').slice(0, 4);
+  return String(value || '')
+    .toUpperCase()
+    .replace(/[OQD]/g, '0')
+    .replace(/[I|L]/g, '1')
+    .replace(/S/g, '5')
+    .replace(/B/g, '8')
+    .replace(/[^0-9]/g, '')
+    .slice(0, 4);
 }
 
 function normalizeMetricDigits(value: string): string {
-  return String(value || '').replace(/[^0-9]/g, '').slice(0, 14);
+  return String(value || '')
+    .toUpperCase()
+    .replace(/[OQD]/g, '0')
+    .replace(/[I|L]/g, '1')
+    .replace(/S/g, '5')
+    .replace(/B/g, '8')
+    .replace(/G/g, '6')
+    .replace(/Z/g, '2')
+    .replace(/[^0-9]/g, '')
+    .slice(0, 14);
 }
 
 async function recognizeGenericWithPass(
@@ -1319,12 +1336,20 @@ export async function processRankingScreenshot(
         sourceRank = previous && previous > 0 ? previous + 1 : rowIndex + 1;
       }
 
-      const governorNameRaw = normalizeRankingName(nameMainField.selectedValue);
+      const governorNameSource = normalizeRankingName(nameMainField.selectedValue);
+      const subtitleRaw = sanitizeSubtitleValue(nameSubField.selectedValue);
+      const subtitleParts = classifySubtitle(subtitleRaw);
+      const allianceSplit = splitGovernorNameAndAlliance({
+        governorNameRaw: governorNameSource,
+        allianceRaw: subtitleParts.allianceRaw,
+        subtitleRaw,
+      });
+      const governorNameRaw = normalizeRankingName(
+        allianceSplit.governorNameRaw || governorNameSource
+      );
       const governorNameNormalized = governorNameRaw
         .toLowerCase()
         .replace(/[^a-z0-9]/g, '');
-      const subtitleRaw = sanitizeSubtitleValue(nameSubField.selectedValue);
-      const subtitleParts = classifySubtitle(subtitleRaw);
       const metricRaw = metricField.selectedValue;
       const metricValue = normalizeMetricDigits(metricRaw);
 
@@ -1356,7 +1381,7 @@ export async function processRankingScreenshot(
         sourceRank,
         governorNameRaw,
         governorNameNormalized,
-        allianceRaw: subtitleParts.allianceRaw,
+        allianceRaw: allianceSplit.allianceRaw || subtitleParts.allianceRaw,
         titleRaw: subtitleParts.titleRaw,
         metricRaw: metricValue || metricRaw,
         metricValue,
@@ -1373,6 +1398,12 @@ export async function processRankingScreenshot(
           governorName: nameMainField.traces,
           subtitle: nameSubField.traces,
           metricValue: metricField.traces,
+          allianceDetection: {
+            tag: allianceSplit.allianceTag,
+            trackedAlliance: allianceSplit.trackedAlliance,
+            source: allianceSplit.detectionSource,
+            confidence: allianceSplit.confidence,
+          },
         },
       };
 

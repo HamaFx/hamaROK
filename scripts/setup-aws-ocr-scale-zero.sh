@@ -309,6 +309,94 @@ sqs = boto3.client('sqs', region_name=REGION)
 http = requests.Session()
 pytesseract.pytesseract.tesseract_cmd = TESSERACT_CMD
 
+PRIMARY_KINGDOM_NUMBER = '4057'
+TRACKED_ALLIANCES = [
+    {
+        'tag': 'GODt',
+        'name': 'GOD of Thunder',
+        'aliases': ['GODT', 'GOD OF THUNDER', 'GODTHUNDER', '[GODT]'],
+    },
+    {
+        'tag': 'V57',
+        'name': 'Legacy of Velmora',
+        'aliases': ['V57', '[V57]', 'LEGACY OF VELMORA', 'VELMORA'],
+    },
+    {
+        'tag': 'P57R',
+        'name': 'PHOENIX RISING 4057',
+        'aliases': ['P57R', '[P57R]', 'PHOENIX RISING', 'PHOENIX RISING 4057', 'PHOENIXRISING4057'],
+    },
+]
+TRACKED_TAG_MAP = {
+    re.sub(r'[^A-Z0-9]', '', item['tag'].upper()): item
+    for item in TRACKED_ALLIANCES
+}
+TRACKED_ALIAS_MAP = {}
+for alliance in TRACKED_ALLIANCES:
+    for alias in alliance['aliases']:
+        TRACKED_ALIAS_MAP[re.sub(r'[^A-Z0-9]', '', alias.upper())] = alliance
+
+def _normalize_alliance_token(value: str) -> str:
+    return re.sub(r'[^A-Z0-9]', '', str(value or '').upper())
+
+def _format_alliance_label(alliance: Dict[str, Any]) -> str:
+    return f'[{alliance["tag"]}] {alliance["name"]}'
+
+def _detect_tracked_alliance(text: str) -> Optional[Dict[str, Any]]:
+    raw = str(text or '').strip()
+    if not raw:
+        return None
+
+    match = re.search(r'\[([A-Za-z0-9]{2,6})\]', raw)
+    if match:
+        bracket = _normalize_alliance_token(match.group(1))
+        if bracket in TRACKED_TAG_MAP:
+            return TRACKED_TAG_MAP[bracket]
+
+    normalized = _normalize_alliance_token(raw)
+    if not normalized:
+        return None
+    if normalized in TRACKED_ALIAS_MAP:
+        return TRACKED_ALIAS_MAP[normalized]
+
+    for alias, alliance in TRACKED_ALIAS_MAP.items():
+        if not alias or len(alias) < 3:
+            continue
+        if alias in normalized or normalized in alias:
+            return alliance
+
+    return None
+
+def _sanitize_printable(value: str, max_len: int = 80) -> str:
+    cleaned = re.sub(r'[^\x20-\x7E]', ' ', str(value or ''))
+    cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+    return cleaned[:max_len]
+
+def _split_name_and_alliance(governor_name_raw: str, alliance_hint: str = '') -> Dict[str, Any]:
+    name = _sanitize_printable(governor_name_raw, 64)
+    hint = _sanitize_printable(alliance_hint, 80)
+
+    detected = _detect_tracked_alliance(name) or _detect_tracked_alliance(hint)
+    stripped = name
+    tag_match = re.match(r'^\[([A-Za-z0-9]{2,6})\]\s*(.+)$', name)
+    if tag_match and _normalize_alliance_token(tag_match.group(1)) in TRACKED_TAG_MAP:
+        stripped = _sanitize_printable(tag_match.group(2), 64)
+
+    if detected:
+        return {
+            'governorNameRaw': stripped or name,
+            'allianceRaw': _format_alliance_label(detected),
+            'allianceTag': detected['tag'],
+            'trackedAlliance': True,
+        }
+
+    return {
+        'governorNameRaw': stripped or name,
+        'allianceRaw': hint or None,
+        'allianceTag': None,
+        'trackedAlliance': False,
+    }
+
 def _sign_headers(payload: str) -> Dict[str, str]:
     timestamp = str(int(time.time() * 1000))
     digest = hmac.new(
@@ -578,7 +666,60 @@ def _detect_archetype(lines: List[Dict[str, Any]], hint) -> str:
     return 'governor_profile'
 
 def _clean_digits(value: str, max_len: int = 18) -> str:
-    return re.sub(r'[^0-9]', '', value)[:max_len]
+    normalized = str(value or '').upper()
+    normalized = (
+        normalized
+        .replace('O', '0')
+        .replace('Q', '0')
+        .replace('D', '0')
+        .replace('I', '1')
+        .replace('L', '1')
+        .replace('|', '1')
+        .replace('S', '5')
+        .replace('B', '8')
+        .replace('G', '6')
+        .replace('Z', '2')
+    )
+    return re.sub(r'[^0-9]', '', normalized)[:max_len]
+
+def _extract_profile_alliance(lines: List[Dict[str, Any]], width: int) -> Tuple[str, float]:
+    for line in lines:
+        text_upper = line['text'].upper()
+        if 'ALLIANCE' not in text_upper:
+            continue
+
+        inline = re.sub(r'ALLIANCE[: ]*', '', line['text'], flags=re.IGNORECASE).strip()
+        detected_inline = _detect_tracked_alliance(inline)
+        if detected_inline:
+            return _format_alliance_label(detected_inline), float(line['confidence'])
+
+        nearest = None
+        best_dx = None
+        for candidate in lines:
+            if candidate['cx'] <= line['cx']:
+                continue
+            if abs(candidate['cy'] - line['cy']) > max(22, line['h'] * 1.8):
+                continue
+            if candidate['cx'] < width * 0.45:
+                continue
+            if not re.search(r'[A-Za-z]', candidate['text']):
+                continue
+            dx = candidate['cx'] - line['cx']
+            if best_dx is None or dx < best_dx:
+                best_dx = dx
+                nearest = candidate
+
+        if nearest is not None:
+            detected = _detect_tracked_alliance(nearest['text'])
+            value = _format_alliance_label(detected) if detected else _sanitize_printable(nearest['text'], 80)
+            return value, float(nearest['confidence'])
+
+    for line in lines:
+        detected = _detect_tracked_alliance(line['text'])
+        if detected:
+            return _format_alliance_label(detected), float(line['confidence'])
+
+    return '', 0.0
 
 def _extract_label_value(lines: List[Dict[str, Any]], keyword: str, width: int) -> tuple[str, float]:
     keyword_upper = keyword.upper()
@@ -645,8 +786,12 @@ def _extract_profile(lines: List[Dict[str, Any]], width: int, height: int, trace
     t5, t5_conf = _extract_label_value(lines, 'T5', width)
     deads, deads_conf = _extract_label_value(lines, 'DEAD', width)
     governor_name, name_conf = _extract_governor_name(lines, width, height)
+    alliance_raw, alliance_conf = _extract_profile_alliance(lines, width)
+    split = _split_name_and_alliance(governor_name, alliance_raw)
+    governor_name = split['governorNameRaw']
+    alliance_raw = split['allianceRaw'] or alliance_raw
 
-    confidence_values = [governor_id_conf, name_conf, kp_conf, power_conf, t4_conf, t5_conf, deads_conf]
+    confidence_values = [governor_id_conf, name_conf, kp_conf, power_conf, t4_conf, t5_conf, deads_conf, alliance_conf]
     non_zero = [value for value in confidence_values if value > 0]
     overall = sum(non_zero) / len(non_zero) if non_zero else 0.0
 
@@ -657,6 +802,8 @@ def _extract_profile(lines: List[Dict[str, Any]], width: int, height: int, trace
         failure_reasons.append('missing-governor-name')
     if not power:
         failure_reasons.append('missing-power')
+    if not alliance_raw:
+        failure_reasons.append('missing-alliance')
     if overall < 0.72:
         failure_reasons.append('low-overall-confidence')
 
@@ -677,6 +824,7 @@ def _extract_profile(lines: List[Dict[str, Any]], width: int, height: int, trace
             't4Kills': {'value': t4, 'confidence': t4_conf * 100},
             't5Kills': {'value': t5, 'confidence': t5_conf * 100},
             'deads': {'value': deads, 'confidence': deads_conf * 100},
+            'alliance': {'value': alliance_raw, 'confidence': alliance_conf * 100},
         },
         'normalized': {
             'governorId': governor_id,
@@ -686,6 +834,8 @@ def _extract_profile(lines: List[Dict[str, Any]], width: int, height: int, trace
             't4Kills': t4,
             't5Kills': t5,
             'deads': deads,
+            'alliance': alliance_raw,
+            'kingdomNumber': PRIMARY_KINGDOM_NUMBER,
         },
         'validation': [],
         'preprocessingTrace': {
@@ -746,6 +896,14 @@ def _extract_ranking(lines: List[Dict[str, Any]], width: int, height: int) -> Di
             and line['cx'] < width * 0.68
             and re.search(r'[A-Za-z]', line['text'])
         ]
+        subtitle_candidates = [
+            line for line in lines
+            if abs(line['cy'] - y) < row_height * 1.35
+            and line['cy'] > y
+            and line['cx'] > width * 0.24
+            and line['cx'] < width * 0.68
+            and re.search(r'[A-Za-z]', line['text'])
+        ]
         rank_candidates = [
             line for line in lines
             if abs(line['cy'] - y) < row_height
@@ -766,14 +924,29 @@ def _extract_ranking(lines: List[Dict[str, Any]], width: int, height: int) -> Di
         if not metric_value:
             continue
 
+        subtitle_line = None
+        subtitle_raw = ''
+        title_raw = None
+        if subtitle_candidates:
+            subtitle_line = min(subtitle_candidates, key=lambda item: abs(item['cy'] - y))
+            subtitle_raw = _sanitize_printable(subtitle_line['text'], 80)
+            if subtitle_raw and not _detect_tracked_alliance(subtitle_raw):
+                lowered = subtitle_raw.lower()
+                if lowered in {'leader', 'warlord', 'envoy', 'officer', 'council', 'r4', 'r5', 'king', 'queen'}:
+                    title_raw = subtitle_raw
+
+        split = _split_name_and_alliance(name_line['text'], subtitle_raw)
+        governor_name_raw = _sanitize_printable(split['governorNameRaw'], 80)
+
         source_rank = None
+        rank_line = None
         if rank_candidates:
             rank_line = min(rank_candidates, key=lambda item: abs(item['cy'] - y))
             rank_raw = _clean_digits(rank_line['text'], 4)
             if rank_raw:
                 source_rank = int(rank_raw)
 
-        name_normalized = re.sub(r'[^A-Za-z0-9]+', '', name_line['text']).lower()
+        name_normalized = re.sub(r'[^A-Za-z0-9]+', '', governor_name_raw).lower()
         dedupe_key = f'{round(y / 6)}::{name_normalized}::{metric_value}'
         if dedupe_key in seen:
             continue
@@ -781,21 +954,26 @@ def _extract_ranking(lines: List[Dict[str, Any]], width: int, height: int) -> Di
 
         confidence = (
             float(name_line['confidence']) +
-            float(metric_line['confidence'])
-        ) / 2.0
+            float(metric_line['confidence']) +
+            (float(subtitle_line['confidence']) * 0.2 if subtitle_line else 0.0)
+        ) / (2.2 if subtitle_line else 2.0)
 
         rows.append({
             'sourceRank': source_rank,
-            'governorNameRaw': re.sub(r'[^A-Za-z0-9 _\-\[\]()#.:+]', '', name_line['text']).strip()[:80],
-            'allianceRaw': None,
-            'titleRaw': None,
+            'governorNameRaw': governor_name_raw,
+            'allianceRaw': split['allianceRaw'],
+            'titleRaw': title_raw,
             'metricRaw': metric_raw,
             'metricValue': metric_value,
             'confidence': max(0.0, min(100.0, confidence * 100)),
             'ocrTrace': {
                 'rankText': rank_line['text'] if rank_candidates else None,
                 'nameText': name_line['text'],
+                'subtitleText': subtitle_line['text'] if subtitle_line else None,
                 'metricText': metric_raw,
+                'allianceTag': split['allianceTag'],
+                'trackedAlliance': split['trackedAlliance'],
+                'kingdomNumber': PRIMARY_KINGDOM_NUMBER,
             },
             'candidates': None,
         })
@@ -819,6 +997,8 @@ def _extract_ranking(lines: List[Dict[str, Any]], width: int, height: int) -> Di
             'lineCount': len(lines),
             'detectedRows': len(rows),
             'averageConfidence': avg_conf,
+            'kingdomNumber': PRIMARY_KINGDOM_NUMBER,
+            'trackedAlliances': [item['tag'] for item in TRACKED_ALLIANCES],
         },
     }
 

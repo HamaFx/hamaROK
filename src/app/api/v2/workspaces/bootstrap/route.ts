@@ -4,6 +4,7 @@ import { fail, handleApiError, ok, readJson } from '@/lib/api-response';
 import { prisma } from '@/lib/prisma';
 import { createOpaqueToken, hashAccessToken } from '@/lib/security';
 import { getDefaultFallbackOcrModel } from '@/lib/ocr/fallback-config';
+import { PRIMARY_KINGDOM_NUMBER } from '@/lib/alliances';
 
 const bootstrapSchema = z.object({
   name: z.string().min(2).max(80).optional(),
@@ -36,6 +37,7 @@ export async function POST(request: Request) {
         id: true,
         slug: true,
         name: true,
+        kingdomTag: true,
       },
     });
 
@@ -51,11 +53,13 @@ export async function POST(request: Request) {
           data: {
             slug,
             name: defaultName,
+            kingdomTag: PRIMARY_KINGDOM_NUMBER,
           },
           select: {
             id: true,
             slug: true,
             name: true,
+            kingdomTag: true,
           },
         });
 
@@ -74,6 +78,17 @@ export async function POST(request: Request) {
 
       workspace = created;
       createdWorkspace = true;
+    } else if (!workspace.kingdomTag) {
+      workspace = await prisma.workspace.update({
+        where: { id: workspace.id },
+        data: { kingdomTag: PRIMARY_KINGDOM_NUMBER },
+        select: {
+          id: true,
+          slug: true,
+          name: true,
+          kingdomTag: true,
+        },
+      });
     }
 
     if (!workspace) {
@@ -96,6 +111,7 @@ export async function POST(request: Request) {
       workspaceId: workspace.id,
       workspaceSlug: workspace.slug,
       workspaceName: workspace.name,
+      kingdomTag: workspace.kingdomTag || PRIMARY_KINGDOM_NUMBER,
       accessToken,
       createdWorkspace,
     });

@@ -1,5 +1,6 @@
 import { Prisma, RankingIdentityStatus } from '@prisma/client';
 import { normalizeGovernorAlias, normalizeGovernorDisplayName } from './normalize';
+import { splitGovernorNameAndAlliance } from '@/lib/alliances';
 
 export interface IdentityResolutionResult {
   status: RankingIdentityStatus;
@@ -41,10 +42,16 @@ export async function resolveRankingIdentity(
     governorNameRaw: string;
   }
 ): Promise<IdentityResolutionResult> {
-  const normalizedName = normalizeGovernorAlias(args.governorNameRaw);
-  const displayName = normalizeGovernorDisplayName(args.governorNameRaw);
+  const split = splitGovernorNameAndAlliance({
+    governorNameRaw: args.governorNameRaw,
+  });
+  const canonicalName = split.governorNameRaw || args.governorNameRaw;
+  const normalizedName = normalizeGovernorAlias(canonicalName);
+  const normalizedNameRaw = normalizeGovernorAlias(args.governorNameRaw);
+  const candidateAliases = [...new Set([normalizedName, normalizedNameRaw].filter(Boolean))];
+  const displayName = normalizeGovernorDisplayName(canonicalName);
 
-  if (!normalizedName) {
+  if (candidateAliases.length === 0) {
     return {
       status: RankingIdentityStatus.UNRESOLVED,
       governorId: null,
@@ -58,7 +65,9 @@ export async function resolveRankingIdentity(
   const aliasMatches = await tx.governorAlias.findMany({
     where: {
       workspaceId: args.workspaceId,
-      aliasNormalized: normalizedName,
+      aliasNormalized: {
+        in: candidateAliases,
+      },
     },
     select: {
       governor: {
@@ -118,7 +127,7 @@ export async function resolveRankingIdentity(
   });
 
   const exactNormalized = nameMatches.filter(
-    (candidate) => normalizeGovernorAlias(candidate.name) === normalizedName
+    (candidate) => candidateAliases.includes(normalizeGovernorAlias(candidate.name))
   );
 
   if (exactNormalized.length === 1) {

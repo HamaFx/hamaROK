@@ -19,6 +19,7 @@ import { assertValidServiceRequest } from '@/lib/service-auth';
 import { prisma } from '@/lib/prisma';
 import { invalidateServerCacheTags } from '@/lib/server-cache';
 import { scanJobCacheTag, workspaceCacheTags } from '@/lib/cache-scopes';
+import { splitGovernorNameAndAlliance } from '@/lib/alliances';
 
 const rowSchema = z.object({
   sourceRank: z.number().int().min(1).max(5000).optional().nullable(),
@@ -67,6 +68,30 @@ const completeSchema = z.object({
   ranking: rankingPayloadSchema.optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
+
+function extractProfileAlliance(args: {
+  governorNameRaw?: string | null;
+  normalized?: Record<string, unknown>;
+  fields: Record<string, unknown>;
+}) {
+  const normalizedAlliance =
+    args.normalized && typeof args.normalized.alliance === 'string'
+      ? args.normalized.alliance
+      : null;
+  const fieldAllianceValue =
+    args.fields &&
+    typeof args.fields.alliance === 'object' &&
+    args.fields.alliance &&
+    typeof (args.fields.alliance as Record<string, unknown>).value === 'string'
+      ? ((args.fields.alliance as Record<string, unknown>).value as string)
+      : null;
+
+  const split = splitGovernorNameAndAlliance({
+    governorNameRaw: args.governorNameRaw || '',
+    allianceRaw: normalizedAlliance || fieldAllianceValue,
+  });
+  return split.allianceRaw;
+}
 
 function normalizeConfidence(value: number | undefined): number {
   if (!Number.isFinite(value ?? NaN)) return 0;
@@ -187,6 +212,30 @@ export async function POST(
             },
           }));
 
+        const profileAlliance = extractProfileAlliance({
+          governorNameRaw: profile.governorNameRaw || null,
+          normalized:
+            profile.normalized && typeof profile.normalized === 'object'
+              ? (profile.normalized as Record<string, unknown>)
+              : undefined,
+          fields:
+            profile.fields && typeof profile.fields === 'object'
+              ? (profile.fields as Record<string, unknown>)
+              : {},
+        });
+
+        if (profileAlliance) {
+          await tx.ocrExtraction.update({
+            where: { id: extraction.id },
+            data: {
+              normalized: {
+                ...(profile.normalized || {}),
+                alliance: profileAlliance,
+              } as Prisma.InputJsonValue,
+            },
+          });
+        }
+
         const updatedTask = await tx.ingestionTask.update({
           where: { id: taskId },
           data: {
@@ -253,6 +302,20 @@ export async function POST(
     }
 
     const ranking = body.ranking!;
+    const enrichedRankingRows = ranking.rows.map((row) => {
+      const split = splitGovernorNameAndAlliance({
+        governorNameRaw: row.governorNameRaw,
+        allianceRaw: row.allianceRaw || null,
+        subtitleRaw: row.titleRaw || null,
+      });
+
+      return {
+        ...row,
+        governorNameRaw: split.governorNameRaw || row.governorNameRaw,
+        allianceRaw: split.allianceRaw || row.allianceRaw || null,
+      };
+    });
+
     const rankingRun = await createRankingRunWithRows({
       workspaceId: task.workspaceId,
       eventId: task.eventId || task.scanJob.eventId || null,
@@ -267,10 +330,11 @@ export async function POST(
         ...(body.metadata || {}),
         taskId: task.id,
         screenArchetype: body.screenArchetype || 'ranking_board',
+        kingdomNumber: '4057',
       } as Prisma.InputJsonValue,
       notes: `Ingestion task completion ${task.id}`,
       idempotencyKey: `ingestion-task:${task.id}:ranking-run`,
-      rows: ranking.rows,
+      rows: enrichedRankingRows,
     });
 
     const result = await prisma.$transaction(async (tx) => {
