@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, ArrowRight, Filter, Layers, RefreshCw, Search, SlidersHorizontal, TableProperties } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Filter, RefreshCw, Search } from 'lucide-react';
 import {
   ActionToolbar,
   DataTableLite,
@@ -65,7 +65,6 @@ export default function RankingsPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [summary, setSummary] = useState<SummaryPayload | null>(null);
-  const [sortHint, setSortHint] = useState('metricValue DESC, sourceRank ASC, normalizedName ASC, rowId ASC');
 
   useEffect(() => {
     setWorkspaceId(localStorage.getItem('workspaceId') || '');

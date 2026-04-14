@@ -94,8 +94,7 @@ export default function SettingsPage() {
     <div className="page-container">
       <PageHero
         title="Kingdom Settings"
-        subtitle="Configure score formulas, expectation ratios, and integration output endpoints."
-        badges={['Formula tuning', 'Discord integration', 'Operational defaults']}
+        subtitle="Configure score formulas and integration endpoints."
         actions={
           <>
             <button className="btn btn-secondary" onClick={() => setConfig(DEFAULTS)}>
@@ -116,7 +115,7 @@ export default function SettingsPage() {
       </div>
 
       <div className="grid-2">
-        <Panel title="Combat Weighting" subtitle="Core score composition rules">
+        <Panel title="Combat Weighting">
           <div className="mb-16">
             <label className="form-label">
               <span>T4 Kill Weight</span>
@@ -174,7 +173,7 @@ export default function SettingsPage() {
           </FilterBar>
         </Panel>
 
-        <Panel title="Power Expectation Ratios" subtitle="Expected KP/deads per million power">
+        <Panel title="Power Expectation Ratios">
           <div className="mb-16">
             <label className="form-label">
               <span>Expected KP per 1M power</span>
@@ -222,7 +221,7 @@ export default function SettingsPage() {
         </Panel>
       </div>
 
-      <Panel title="Discord Integration" subtitle="Leaderboard publication endpoint" className="mt-24">
+      <Panel title="Discord Integration" className="mt-24">
         <div className="form-group" style={{ marginBottom: 0 }}>
           <label className="form-label">Webhook URL</label>
           <input

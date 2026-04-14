@@ -3,20 +3,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
-  Activity,
-  ArrowRight,
   CalendarClock,
   Database,
-  FlaskConical,
-  ShieldCheck,
   ShieldAlert,
-  Swords,
-  Trophy,
   Users,
   FileBox,
   Library,
   AlertTriangle,
-  Workflow,
 } from 'lucide-react';
 import { TierPieChart } from '@/components/Charts';
 import { formatDate, EVENT_TYPE_LABELS } from '@/lib/utils';

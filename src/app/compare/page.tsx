@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { ArrowDownUp, Download, Medal, Send, Swords, Users } from 'lucide-react';
+import { Download, Medal, Send, Swords, Users } from 'lucide-react';
 import { formatDelta } from '@/lib/utils';
 import { getTierConfig, WarriorTier } from '@/lib/warrior-score';
 import TierBadge from '@/components/TierBadge';
@@ -282,9 +282,6 @@ function CompareContent() {
                     onChange={(e) => setSearch(e.target.value)}
                   />
                 </div>
-                <button className="btn btn-ghost btn-sm" type="button">
-                  <ArrowDownUp size={14} /> Stable sort
-                </button>
               </FilterBar>
             }
           >

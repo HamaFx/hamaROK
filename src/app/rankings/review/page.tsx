@@ -232,8 +232,7 @@ export default function RankingReviewPage() {
     <div className="page-container">
       <PageHero
         title="Ranking Review Queue"
-        subtitle="Resolve identity ambiguity and row corrections before canonical ranking merge."
-        badges={['Identity-safe linking', 'Canonical merge guard', 'Manual resolution flow']}
+        subtitle="Resolve identity ambiguity and row corrections."
         actions={
           <button className="btn btn-secondary" onClick={loadRows} disabled={loading}>
             <RefreshCw size={14} /> Refresh
@@ -241,35 +240,22 @@ export default function RankingReviewPage() {
         }
       />
 
-      <Panel title="Queue Access" subtitle="Workspace-secured unresolved ranking rows" className="mb-24">
-        <div className="grid-2">
-          <div className="form-group" style={{ marginBottom: 0 }}>
-            <label className="form-label">Workspace ID</label>
-            <input className="form-input" value={workspaceId} onChange={(e) => setWorkspaceId(e.target.value)} />
-          </div>
-          <div className="form-group" style={{ marginBottom: 0 }}>
-            <label className="form-label">Access Token</label>
-            <input className="form-input" value={accessToken} onChange={(e) => setAccessToken(e.target.value)} />
-          </div>
+      <FilterBar className="mb-24">
+        <div className="form-group" style={{ marginBottom: 0, width: 260 }}>
+          <label className="form-label">Status Filter</label>
+          <select className="form-select" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+            <option value="UNRESOLVED">Unresolved</option>
+            <option value="AUTO_LINKED,MANUAL_LINKED">Linked (Auto + Manual)</option>
+            <option value="REJECTED">Rejected</option>
+            <option value={STATUS_OPTIONS.join(',')}>All</option>
+          </select>
         </div>
+        <button className="btn btn-primary" onClick={loadRows} disabled={loading}>
+          {loading ? 'Loading...' : 'Apply'}
+        </button>
+      </FilterBar>
 
-        <FilterBar className="mt-12">
-          <div className="form-group" style={{ marginBottom: 0, width: 260 }}>
-            <label className="form-label">Status Filter</label>
-            <select className="form-select" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-              <option value="UNRESOLVED">Unresolved</option>
-              <option value="AUTO_LINKED,MANUAL_LINKED">Linked (Auto + Manual)</option>
-              <option value="REJECTED">Rejected</option>
-              <option value={STATUS_OPTIONS.join(',')}>All</option>
-            </select>
-          </div>
-          <button className="btn btn-primary" onClick={loadRows} disabled={loading}>
-            {loading ? 'Loading...' : 'Apply'}
-          </button>
-        </FilterBar>
-
-        {error ? <div className="delta-negative mt-12">{error}</div> : null}
-      </Panel>
+      {error ? <div className="delta-negative mb-16">{error}</div> : null}
 
       <div className="grid-3 mb-24">
         <KpiCard label="Unresolved" value={summary.unresolved} hint="Needs manual identity action" tone="warn" />
@@ -277,7 +263,7 @@ export default function RankingReviewPage() {
         <KpiCard label="Rejected" value={summary.rejected} hint="Discarded ranking rows" tone="bad" />
       </div>
 
-      <Panel title="Triage Board" subtitle="Resolve rows with deterministic correction actions">
+      <Panel title="Triage Board">
         {loading ? (
           <SkeletonSet rows={4} />
         ) : rows.length === 0 ? (

@@ -10,12 +10,10 @@ import {
   ChevronRight,
   Cog,
   Crosshair,
-  FileBarChart2,
   FlaskConical,
   Home,
   ImageUp,
   Radar,
-  Search,
   ShieldCheck,
   Trophy,
   Users,
@@ -98,14 +96,11 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
   const [workspaceLabel, setWorkspaceLabel] = useState('No workspace');
-  const [accessLabel, setAccessLabel] = useState('No access token');
 
   useEffect(() => {
     const syncAccessContext = () => {
       const workspaceId = localStorage.getItem('workspaceId') || '';
-      const token = localStorage.getItem('workspaceToken') || '';
       setWorkspaceLabel(workspaceId ? `Workspace ${workspaceId.slice(0, 8)}...` : 'No workspace');
-      setAccessLabel(token ? 'Secure link active' : 'No access token');
     };
 
     syncAccessContext();

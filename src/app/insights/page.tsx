@@ -1,8 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { LineChart, Share2, Sparkles } from 'lucide-react';
-import { DataTableLite, EmptyState, FilterBar, KpiCard, PageHero, Panel, StatusPill } from '@/components/ui/primitives';
+import { Share2, Sparkles } from 'lucide-react';
+import { DataTableLite, EmptyState, FilterBar, KpiCard, PageHero, Panel } from '@/components/ui/primitives';
 
 interface EventOption {
   id: string;
@@ -140,6 +140,12 @@ export default function InsightsPage() {
     }
   }, [workspaceId, accessToken, topN, eventA, eventB, headers]);
 
+  useEffect(() => {
+    if (workspaceId && accessToken && events.length > 0) {
+      loadAnalytics();
+    }
+  }, [events, loadAnalytics, workspaceId, accessToken]);
+
   const createRankboard = async () => {
     if (!analytics?.selectedComparison || !workspaceId || !accessToken) return;
     setError('');
@@ -171,29 +177,13 @@ export default function InsightsPage() {
         title="Advanced Insights"
         subtitle="Top-N contribution analysis, trend continuity, and cross-kingdom slices."
         actions={
-          <>
-            <button className="btn btn-secondary" onClick={loadEvents}>
-              <LineChart size={14} /> Refresh Events
-            </button>
-            <button className="btn btn-primary" onClick={loadAnalytics} disabled={loading}>
-              <Sparkles size={14} /> {loading ? 'Loading...' : 'Load Insights'}
-            </button>
-          </>
+          <button className="btn btn-primary" onClick={loadAnalytics} disabled={loading}>
+            <Sparkles size={14} /> {loading ? 'Loading...' : 'Refresh'}
+          </button>
         }
       />
 
-      <Panel title="Analytics Context" subtitle="Workspace-linked v2 analytics endpoint">
-        <div className="grid-2">
-          <div className="form-group">
-            <label className="form-label">Workspace ID</label>
-            <input className="form-input" value={workspaceId} onChange={(e) => setWorkspaceId(e.target.value)} />
-          </div>
-          <div className="form-group">
-            <label className="form-label">Access Token</label>
-            <input className="form-input" value={accessToken} onChange={(e) => setAccessToken(e.target.value)} />
-          </div>
-        </div>
-
+      <Panel title="Analysis Parameters" className="mb-24">
         <FilterBar>
           <div className="form-group" style={{ minWidth: 220, marginBottom: 0 }}>
             <label className="form-label">Event A</label>
@@ -229,16 +219,6 @@ export default function InsightsPage() {
             />
           </div>
         </FilterBar>
-
-        {analytics?.seriesMeta && analytics.seriesMeta.length > 0 ? (
-          <div className="mt-12">
-            <FilterBar>
-              {analytics.seriesMeta.map((series) => (
-                <StatusPill key={series.metricKey} label={`${series.label} (${series.metricKey})`} tone="info" />
-              ))}
-            </FilterBar>
-          </div>
-        ) : null}
 
         {error ? <div className="mt-16 delta-negative">{error}</div> : null}
         {rankboardLink ? (

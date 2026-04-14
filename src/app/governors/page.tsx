@@ -99,8 +99,7 @@ export default function GovernorsPage() {
     <div className="page-container">
       <PageHero
         title="Governor Registry"
-        subtitle="Identity-level roster with timeline drill-down for growth and contribution trends."
-        badges={['Name + ID roster', 'Timeline drill-in', 'Search-first workflow']}
+        subtitle="Identity-level roster with timeline drill-down."
         actions={
           <button className="btn btn-secondary" onClick={() => fetchGovernors(search)} disabled={loading}>
             <RefreshCw size={14} /> Refresh

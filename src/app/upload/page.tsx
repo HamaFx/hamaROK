@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
   Camera,
@@ -8,11 +7,7 @@ import {
   CheckCircle2,
   CircleAlert,
   Clock3,
-  FileType2,
   ImageUp,
-  Play,
-  Power,
-  Square,
   ShieldCheck,
   Trash2,
   XCircle,
@@ -99,14 +94,11 @@ export default function UploadPage() {
   const [entries, setEntries] = useState<OcrEntry[]>([]);
   const [, setProcessing] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [saveResult, setSaveResult] = useState<{ saved: number; updated: number; errors: number } | null>(null);
+  const [submitMessage, setSubmitMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [workspaceId, setWorkspaceId] = useState('');
   const [accessToken, setAccessToken] = useState('');
   const [ocrProfiles, setOcrProfiles] = useState<OcrRuntimeProfile[]>([]);
-  const [preferredProfileId, setPreferredProfileId] = useState('');
   const [awsOcrControl, setAwsOcrControl] = useState<AwsOcrControlStatus | null>(null);
-  const [awsControlBusy, setAwsControlBusy] = useState<'START' | 'STOP' | null>(null);
-  const [awsControlMessage, setAwsControlMessage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
 
@@ -361,7 +353,6 @@ export default function UploadPage() {
 
         const result = await processScreenshot(imageFiles[i], {
           profiles: ocrProfiles.length > 0 ? ocrProfiles : undefined,
-          preferredProfileId: preferredProfileId || undefined,
           fallback:
             workspaceId && accessToken
               ? async ({ fieldKey, croppedImage, currentValue, currentConfidence }) => {
@@ -462,7 +453,7 @@ export default function UploadPage() {
     }
 
     setProcessing(false);
-  }, [accessToken, computeValidation, ocrProfiles, preferredProfileId, workspaceId]);
+  }, [accessToken, computeValidation, ocrProfiles, workspaceId]);
 
   // Drag and drop
   const onDragOver = (e: React.DragEvent) => { e.preventDefault(); setIsDragging(true); };
@@ -748,6 +739,7 @@ export default function UploadPage() {
     if (!selectedEventId || confirmed.length === 0) return;
 
     setSaving(true);
+    setSubmitMessage(null);
     try {
       const profileEntries = confirmed.filter((entry) => entry.ingestionDomain === 'profile_snapshot');
       const rankingEntries = confirmed.filter((entry) => entry.ingestionDomain === 'ranking_capture');
@@ -774,17 +766,15 @@ export default function UploadPage() {
       setEntries((prev) => prev.filter((e) => !e.confirmed));
       const parts: string[] = [];
       if (scanJobId) {
-        parts.push(`${profileEntries.length} profile entry(ies) in scan job ${scanJobId}`);
+        parts.push(`${profileEntries.length} profile(s)`);
       }
       if (rankingEntries.length > 0) {
-        parts.push(
-          `${rankingEntries.length} ranking capture(s) in ${rankingRunIds.length} run(s)`
-        );
+        parts.push(`${rankingEntries.length} ranking(s) in ${rankingRunIds.length} run(s)`);
       }
-      alert(`Queued ${confirmed.length} entry(ies): ${parts.join(' | ')}.`);
+      setSubmitMessage({ type: 'success', text: `Queued ${confirmed.length} entries: ${parts.join(', ')}.` });
     } catch (err) {
       console.error('Save error:', err);
-      alert(err instanceof Error ? err.message : 'Failed to queue entries for review.');
+      setSubmitMessage({ type: 'error', text: err instanceof Error ? err.message : 'Failed to queue entries.' });
     } finally {
       setSaving(false);
     }
@@ -795,9 +785,6 @@ export default function UploadPage() {
   const processingCount = entries.filter((e) => e.status === 'processing').length;
   const profileCount = entries.filter((e) => e.ingestionDomain === 'profile_snapshot').length;
   const rankingCount = entries.filter((e) => e.ingestionDomain === 'ranking_capture').length;
-  const awsQueuePending = awsOcrControl?.queueStats?.pending ?? 0;
-  const awsQueueInFlight = awsOcrControl?.queueStats?.inFlight ?? 0;
-  const awsQueueDelayed = awsOcrControl?.queueStats?.delayed ?? 0;
 
   const fields = [
     { key: 'governorId', label: 'Governor ID' },
@@ -1110,13 +1097,15 @@ export default function UploadPage() {
             </button>
           </div>
 
-          {saveResult ? (
-            <div className="card mt-16">
+          {submitMessage ? (
+            <div className={`card mt-16 ${submitMessage.type === 'error' ? 'delta-negative' : ''}`}>
               <div className="flex items-center gap-8">
-                <FileType2 size={15} color="#72f5c7" />
-                <span className="text-sm">
-                  Saved {saveResult.saved} new, updated {saveResult.updated}, errors {saveResult.errors}.
-                </span>
+                {submitMessage.type === 'success' ? (
+                  <CheckCircle2 size={15} color="#72f5c7" />
+                ) : (
+                  <CircleAlert size={15} color="#ff9cad" />
+                )}
+                <span className="text-sm">{submitMessage.text}</span>
               </div>
             </div>
           ) : null}

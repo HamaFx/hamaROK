@@ -146,11 +146,6 @@ export default function ReviewQueuePage() {
   const [profiles, setProfiles] = useState<OcrRuntimeProfile[]>([]);
   const [rerunProfileByItem, setRerunProfileByItem] = useState<Record<string, string>>({});
   const [rerunPayloadByItem, setRerunPayloadByItem] = useState<Record<string, unknown>>({});
-  const [metricsSummary, setMetricsSummary] = useState<{
-    lowConfidenceRate: number;
-    reviewerEditRate: number;
-    reviewPassRate: number;
-  } | null>(null);
 
   useEffect(() => {
     const url = new URL(window.location.href);
@@ -459,54 +454,40 @@ export default function ReviewQueuePage() {
     <div className="page-container">
       <PageHero
         title="OCR Review Queue"
-        subtitle="Review, correct, rerun, and approve profile extraction rows with full trace visibility."
+        subtitle="Review, correct, and approve profile extraction rows."
         actions={
           <button className="btn btn-secondary" onClick={loadQueue} disabled={loading}>
             <RefreshCw size={14} /> Refresh
           </button>
         }
-        badges={['Always-review policy', 'Field-level edits', 'Golden fixture labeling']}
       />
 
-      <Panel title="Queue Access" subtitle="Workspace link token controls queue visibility" className="mb-24">
-        <div className="grid-2">
-          <div className="form-group" style={{ marginBottom: 0 }}>
-            <label className="form-label">Workspace ID</label>
-            <input className="form-input" value={workspaceId} onChange={(e) => setWorkspaceId(e.target.value)} />
-          </div>
-          <div className="form-group" style={{ marginBottom: 0 }}>
-            <label className="form-label">Access Token</label>
-            <input className="form-input" value={accessToken} onChange={(e) => setAccessToken(e.target.value)} />
-          </div>
+      <FilterBar className="mb-24">
+        <div className="form-group" style={{ marginBottom: 0, minWidth: 160 }}>
+          <label className="form-label">Severity</label>
+          <select className="form-select" value={severity} onChange={(e) => setSeverity(e.target.value as '' | Severity)}>
+            <option value="">All</option>
+            <option value="HIGH">High</option>
+            <option value="MEDIUM">Medium</option>
+            <option value="LOW">Low</option>
+          </select>
         </div>
+        <div className="form-group" style={{ marginBottom: 0, minWidth: 180 }}>
+          <label className="form-label">Status</label>
+          <select className="form-select" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+            {STATUS_PRESETS.map((preset) => (
+              <option key={preset.value} value={preset.value}>
+                {preset.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <button className="btn btn-primary" onClick={loadQueue} disabled={loading}>
+          {loading ? 'Loading...' : 'Apply'}
+        </button>
+      </FilterBar>
 
-        <FilterBar className="mt-12">
-          <div className="form-group" style={{ marginBottom: 0, minWidth: 180 }}>
-            <label className="form-label">Severity</label>
-            <select className="form-select" value={severity} onChange={(e) => setSeverity(e.target.value as '' | Severity)}>
-              <option value="">All</option>
-              <option value="HIGH">High</option>
-              <option value="MEDIUM">Medium</option>
-              <option value="LOW">Low</option>
-            </select>
-          </div>
-          <div className="form-group" style={{ marginBottom: 0, minWidth: 210 }}>
-            <label className="form-label">Status</label>
-            <select className="form-select" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-              {STATUS_PRESETS.map((preset) => (
-                <option key={preset.value} value={preset.value}>
-                  {preset.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <button className="btn btn-primary" onClick={loadQueue} disabled={loading}>
-            {loading ? 'Loading...' : 'Apply Filters'}
-          </button>
-        </FilterBar>
-
-        {error ? <div className="delta-negative mt-12">{error}</div> : null}
-      </Panel>
+      {error ? <div className="delta-negative mb-16">{error}</div> : null}
 
       <div className="grid-4 mb-24">
         <KpiCard label="Queue Total" value={summary.total} hint="Rows in current queue filter" tone="info" />
@@ -515,17 +496,7 @@ export default function ReviewQueuePage() {
         <KpiCard label="Low Severity" value={summary.low} hint="Usually ready" tone="good" />
       </div>
 
-      {metricsSummary ? (
-        <Panel title="OCR Quality (30 days)" subtitle="Recent pass/edit/low-confidence rates" className="mb-24">
-          <FilterBar>
-            <StatusPill label={`Pass ${Math.round(metricsSummary.reviewPassRate * 100)}%`} tone="good" />
-            <StatusPill label={`Low-confidence ${Math.round(metricsSummary.lowConfidenceRate * 100)}%`} tone="warn" />
-            <StatusPill label={`Reviewer edits ${Math.round(metricsSummary.reviewerEditRate * 100)}%`} tone="info" />
-          </FilterBar>
-        </Panel>
-      ) : null}
-
-      <Panel title="Review Board" subtitle="Edit fields and approve only when extraction is trusted">
+      <Panel title="Review Board">
         {loading ? (
           <SkeletonSet rows={4} />
         ) : items.length === 0 ? (

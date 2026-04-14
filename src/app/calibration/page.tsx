@@ -2,8 +2,10 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
+import { Target, Upload, Play, Save } from 'lucide-react';
 import { OCR_TEMPLATES } from '@/lib/ocr/templates';
 import type { OcrRuntimeProfile } from '@/lib/ocr/profiles';
+import { PageHero, Panel } from '@/components/ui/primitives';
 
 type Region = { x: number; y: number; width: number; height: number };
 
@@ -232,32 +234,18 @@ export default function CalibrationPage() {
 
   return (
     <div className="page-container">
-      <div className="page-header">
-        <h1>🎯 OCR Calibration Wizard</h1>
-        <p>One-time guided setup: pick profile, calibrate overlays, live test OCR, then save versioned profile.</p>
-      </div>
+      <PageHero
+        title="OCR Calibration Wizard"
+        subtitle="One-time guided setup for profile offsets and overlays."
+        actions={
+          <button className="btn btn-primary" onClick={saveProfile} disabled={saving}>
+            <Save size={14} /> {saving ? 'Saving...' : 'Save Profile'}
+          </button>
+        }
+      />
 
-      <div className="card card-no-hover mb-24">
-        <h3 className="mb-16">Step 1: Workspace + Profile</h3>
+      <Panel title="Profile Selection" className="mb-24">
         <div className="grid-2">
-          <div className="form-group">
-            <label className="form-label">Workspace ID</label>
-            <input
-              className="form-input"
-              value={workspaceId}
-              onChange={(e) => setWorkspaceId(e.target.value)}
-              placeholder="workspace_cuid"
-            />
-          </div>
-          <div className="form-group">
-            <label className="form-label">Access Token</label>
-            <input
-              className="form-input"
-              value={accessToken}
-              onChange={(e) => setAccessToken(e.target.value)}
-              placeholder="editor token"
-            />
-          </div>
           <div className="form-group">
             <label className="form-label">Existing Profile (Optional)</label>
             <select
@@ -328,12 +316,11 @@ export default function CalibrationPage() {
             Set as default profile
           </label>
         </div>
-      </div>
+      </Panel>
 
-      <div className="card card-no-hover mb-24">
-        <h3 className="mb-16">Step 2: Calibrate Overlay</h3>
+      <Panel title="Calibrate Overlay" className="mb-24">
         <div className="form-group">
-          <label className="form-label">Screenshot</label>
+          <label className="form-label">Reference Screenshot</label>
           <input
             className="form-input"
             type="file"
@@ -374,11 +361,10 @@ export default function CalibrationPage() {
             <input type="range" min={0.8} max={1.2} step={0.01} value={yScale} onChange={(e) => setYScale(Number(e.target.value))} />
           </div>
         </div>
-      </div>
+      </Panel>
 
       <div className="grid-2">
-        <div className="card card-no-hover">
-          <h3 className="mb-16">Overlay Preview</h3>
+        <Panel title="Overlay Preview">
           {imageUrl ? (
             <div style={{ position: 'relative', width: '100%', overflow: 'hidden', borderRadius: 12 }}>
               <Image
@@ -413,18 +399,18 @@ export default function CalibrationPage() {
             </div>
           ) : (
             <div className="empty-state" style={{ padding: 24 }}>
-              <div className="empty-icon">📷</div>
+              <div className="empty-icon"><Upload size={48} /></div>
               <h3>Upload a screenshot</h3>
               <p>Field overlays will appear here for calibration.</p>
             </div>
           )}
-        </div>
+        </Panel>
 
-        <div className="card card-no-hover">
-          <h3 className="mb-16">Step 3: Live OCR Test</h3>
-          <button className="btn btn-secondary btn-sm mb-16" onClick={runLiveTest} disabled={liveRunning || !imageFile}>
-            {liveRunning ? 'Running OCR...' : 'Run Live OCR with Current Calibration'}
+        <Panel title="Live OCR Test" actions={
+          <button className="btn btn-secondary btn-sm" onClick={runLiveTest} disabled={liveRunning || !imageFile}>
+            <Play size={14} /> {liveRunning ? 'Running OCR...' : 'Run Test'}
           </button>
+        }>
           {liveResult ? (
             <div>
               <div className="text-sm mb-12">
@@ -445,24 +431,20 @@ export default function CalibrationPage() {
               )}
             </div>
           ) : (
-            <p className="text-muted">Run the test to verify your profile before saving.</p>
+            <div className="empty-state" style={{ padding: 24 }}>
+              <div className="empty-icon"><Target size={48} /></div>
+              <h3>No results</h3>
+              <p>Run the test to verify your profile before saving.</p>
+            </div>
           )}
-        </div>
+        </Panel>
       </div>
 
-      <div className="card card-no-hover mt-24">
-        <h3 className="mb-16">Step 4: Save Profile</h3>
-        <div className="flex gap-12 items-center" style={{ flexWrap: 'wrap' }}>
-          <button className="btn btn-primary" onClick={saveProfile} disabled={saving}>
-            {saving
-              ? 'Saving...'
-              : updateExisting
-                ? 'Update Existing Profile'
-                : 'Save as New Profile Version'}
-          </button>
-          {message ? <span className="text-sm text-muted">{message}</span> : null}
+      {message ? (
+        <div className={`card mt-24 ${message.toLowerCase().includes('failed') || message.toLowerCase().includes('required') ? 'delta-negative' : ''}`}>
+          <div className="text-sm">{message}</div>
         </div>
-      </div>
+      ) : null}
     </div>
   );
 }
