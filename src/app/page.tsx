@@ -568,7 +568,7 @@ export default function Dashboard() {
           <p className="dashboard-mosaic-note">Profile uploads stored across all event checkpoints.</p>
         </article>
 
-        <article className="dashboard-mosaic-card compact tone-royal">
+        <article className="dashboard-mosaic-card square tone-royal">
           <div className="dashboard-mosaic-head">
             <span className="dashboard-mosaic-logo logo-royal">
               <Crown size={15} />
@@ -583,12 +583,9 @@ export default function Dashboard() {
               ? `${weeklyInsights.topAlliance.passRate}% pass • ${weeklyInsights.topAlliance.passCount}/${weeklyInsights.topAlliance.members} members`
               : 'Waiting for scored alliance activity.'}
           </p>
-          <div className="dashboard-mosaic-mini">
-            <span>Alliances tracked: {alliancePulse.length}</span>
-          </div>
         </article>
 
-        <article className="dashboard-mosaic-card compact tone-platinum">
+        <article className="dashboard-mosaic-card square tone-platinum">
           <div className="dashboard-mosaic-head">
             <span className="dashboard-mosaic-logo logo-platinum">
               <Medal size={15} />
@@ -600,17 +597,12 @@ export default function Dashboard() {
           </p>
           <p className="dashboard-mosaic-note">
             {weeklyInsights?.topContributor
-              ? `${formatBigInt(toSafeBigInt(weeklyInsights.topContributor.contributionPoints))} contribution points`
+              ? `${formatBigInt(toSafeBigInt(weeklyInsights.topContributor.contributionPoints))} contribution points • ${weeklyInsights.topContributor.allianceLabel}`
               : 'No contribution rows available yet.'}
           </p>
-          <div className="dashboard-mosaic-mini">
-            <span>
-              Alliance: {weeklyInsights?.topContributor ? weeklyInsights.topContributor.allianceLabel : '—'}
-            </span>
-          </div>
         </article>
 
-        <article className="dashboard-mosaic-card compact tone-flame">
+        <article className="dashboard-mosaic-card square tone-flame">
           <div className="dashboard-mosaic-head">
             <span className="dashboard-mosaic-logo logo-flame">
               <Flame size={15} />
@@ -622,17 +614,12 @@ export default function Dashboard() {
           </p>
           <p className="dashboard-mosaic-note">
             {weeklyInsights?.topPowerGrowth?.powerGrowth
-              ? `${formatBigInt(toSafeBigInt(weeklyInsights.topPowerGrowth.powerGrowth))} weekly power gained`
+              ? `${formatBigInt(toSafeBigInt(weeklyInsights.topPowerGrowth.powerGrowth))} weekly power gained • ${weeklyInsights.topPowerGrowth.allianceLabel}`
               : 'Baseline data is still building for this week.'}
           </p>
-          <div className="dashboard-mosaic-mini">
-            <span>
-              Alliance: {weeklyInsights?.topPowerGrowth ? weeklyInsights.topPowerGrowth.allianceLabel : '—'}
-            </span>
-          </div>
         </article>
 
-        <article className="dashboard-mosaic-card compact tone-data">
+        <article className="dashboard-mosaic-card square tone-data">
           <div className="dashboard-mosaic-head">
             <span className="dashboard-mosaic-logo logo-data">
               <Database size={15} />
@@ -643,15 +630,10 @@ export default function Dashboard() {
             {weeklyInsights ? `${weeklyInsights.baselineCoverage}%` : '—'}
           </p>
           <p className="dashboard-mosaic-note">
-            {weeklyInsights ? 'Power baseline coverage for progressive weekly scoring.' : 'Waiting for weekly activity data.'}
+            {weeklyInsights
+              ? `Baseline-ready ${weeklyInsights.powerBaselineReadyCount}/${weeklyActivity?.rows.length ?? 0} • Unlinked ${weeklyActivity?.summary.unresolvedIdentityCount ?? 0}`
+              : 'Waiting for weekly activity data.'}
           </p>
-          <div className="dashboard-mosaic-mini">
-            <span>
-              Baseline-ready: {weeklyInsights?.powerBaselineReadyCount ?? 0}/{weeklyActivity?.rows.length ?? 0}
-            </span>
-            <span>Unlinked: {weeklyActivity?.summary.unresolvedIdentityCount ?? 0}</span>
-            <span>Tracked events: {events.length}</span>
-          </div>
         </article>
       </section>
 

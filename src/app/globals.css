@@ -1071,6 +1071,7 @@ h6 {
 
 .dashboard-mosaic-card.square {
   aspect-ratio: 1 / 1;
+  min-height: 0;
 }
 
 .dashboard-mosaic-card.compact {
@@ -1185,12 +1186,20 @@ h6 {
   line-height: 1.18;
   color: #eef7ff;
   word-break: break-word;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .dashboard-mosaic-note {
   color: var(--text-2);
   font-size: 0.76rem;
   line-height: 1.42;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .dashboard-mosaic-mini {
@@ -3380,11 +3389,13 @@ h6 {
 
   .dashboard-mosaic-value {
     font-size: clamp(0.96rem, 4.5vw, 1.12rem);
+    -webkit-line-clamp: 2;
   }
 
   .dashboard-mosaic-note {
     font-size: 0.68rem;
     line-height: 1.32;
+    -webkit-line-clamp: 2;
   }
 
   .dashboard-mosaic-mini span {
