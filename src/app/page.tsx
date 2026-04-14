@@ -12,19 +12,16 @@ import {
   Flame,
   Gauge,
   Medal,
-  ShieldAlert,
   ShieldCheck,
   Sparkles,
   Star,
-  Swords,
   TrendingDown,
   TrendingUp,
   Trophy,
   Users,
   Rocket,
 } from 'lucide-react';
-import { formatDate, EVENT_TYPE_LABELS } from '@/lib/utils';
-import { EmptyState, SkeletonSet, StatusPill } from '@/components/ui/primitives';
+import { StatusPill } from '@/components/ui/primitives';
 import { useWorkspaceSession } from '@/lib/workspace-session';
 
 interface EventSummary {
@@ -470,11 +467,16 @@ export default function Dashboard() {
     <div className="page-container dashboard-shell">
       <section className="dashboard-hero-card animate-fade-in-up">
         <div className="dashboard-hero-main">
-          <p className="dashboard-eyebrow">Kingdom Performance</p>
-          <h1>Alliance and Player Overview</h1>
-          <p>
-            A weekly snapshot of alliance results, player momentum, and data quality in one place.
-          </p>
+          <div className="dashboard-hero-title-row">
+            <span className="dashboard-hero-logo">
+              <Crown size={16} />
+            </span>
+            <div>
+              <p className="dashboard-eyebrow">Kingdom Performance</p>
+              <h1>Alliance and Player Overview</h1>
+            </div>
+          </div>
+          <p className="dashboard-hero-subtitle">Fast weekly visibility for alliance health, player momentum, and data readiness.</p>
           <div className="dashboard-chip-row">
             <span className="dashboard-chip">
               <CalendarClock size={13} /> Week {weeklyEvent?.weekKey || '—'}
@@ -486,6 +488,24 @@ export default function Dashboard() {
               <Users size={13} /> {weeklyActivity?.summary.membersTracked ?? 0} players tracked
             </span>
           </div>
+        </div>
+        <div className="dashboard-hero-kpi-grid">
+          <article className="dashboard-hero-kpi">
+            <span>Pass Rate</span>
+            <strong>{loading ? '—' : `${weeklyInsights?.overallPassRate ?? 0}%`}</strong>
+          </article>
+          <article className="dashboard-hero-kpi">
+            <span>Contribution</span>
+            <strong>{weeklyInsights ? formatBigInt(weeklyInsights.totalContribution) : '—'}</strong>
+          </article>
+          <article className="dashboard-hero-kpi">
+            <span>Weekly MVP</span>
+            <strong>{weeklyMvp?.row.governorName || '—'}</strong>
+          </article>
+          <article className="dashboard-hero-kpi">
+            <span>Coverage</span>
+            <strong>{weeklyInsights ? `${weeklyInsights.baselineCoverage}%` : '—'}</strong>
+          </article>
         </div>
         <div className="dashboard-hero-cta">
           <Link href="/activity" className="btn btn-primary btn-sm">
@@ -548,7 +568,7 @@ export default function Dashboard() {
           <p className="dashboard-mosaic-note">Profile uploads stored across all event checkpoints.</p>
         </article>
 
-        <article className="dashboard-mosaic-card wide tone-royal">
+        <article className="dashboard-mosaic-card compact tone-royal">
           <div className="dashboard-mosaic-head">
             <span className="dashboard-mosaic-logo logo-royal">
               <Crown size={15} />
@@ -568,7 +588,7 @@ export default function Dashboard() {
           </div>
         </article>
 
-        <article className="dashboard-mosaic-card wide tone-platinum">
+        <article className="dashboard-mosaic-card compact tone-platinum">
           <div className="dashboard-mosaic-head">
             <span className="dashboard-mosaic-logo logo-platinum">
               <Medal size={15} />
@@ -590,7 +610,7 @@ export default function Dashboard() {
           </div>
         </article>
 
-        <article className="dashboard-mosaic-card wide tone-flame">
+        <article className="dashboard-mosaic-card compact tone-flame">
           <div className="dashboard-mosaic-head">
             <span className="dashboard-mosaic-logo logo-flame">
               <Flame size={15} />
@@ -612,7 +632,7 @@ export default function Dashboard() {
           </div>
         </article>
 
-        <article className="dashboard-mosaic-card wide tone-data">
+        <article className="dashboard-mosaic-card compact tone-data">
           <div className="dashboard-mosaic-head">
             <span className="dashboard-mosaic-logo logo-data">
               <Database size={15} />
@@ -803,165 +823,6 @@ export default function Dashboard() {
             </div>
           )}
         </article>
-      </section>
-
-      <section className="dashboard-card dashboard-weekly-card">
-        <header className="dashboard-card-head">
-          <div>
-            <h2 className="dashboard-heading-icon">
-              <Swords size={15} /> Alliance and Player Breakdown
-            </h2>
-            <p>
-              {weeklyActivity
-                ? `${weeklyActivity.summary.membersTracked} members • ${weeklyActivity.event.name}`
-                : 'Waiting for weekly activity data.'}
-            </p>
-          </div>
-          <Link href="/activity" className="btn btn-secondary btn-sm">
-            <Activity size={14} /> Open Activity
-          </Link>
-        </header>
-
-        {!weeklyActivity ? (
-          loading ? (
-            <SkeletonSet rows={3} />
-          ) : (
-            <EmptyState
-              title="No weekly activity yet"
-              description="Upload profile and ranking screenshots to start tracking this week."
-              action={
-                <Link href="/upload" className="btn btn-primary btn-sm">
-                  <Database size={14} /> Start Ingestion
-                </Link>
-              }
-            />
-          )
-        ) : (
-          <>
-            <div className="dashboard-alliance-grid">
-              {alliancePulse.map((alliance, index) => (
-                <article key={alliance.allianceTag} className="dashboard-alliance-card">
-                  <div className="dashboard-alliance-head">
-                    <div className="dashboard-alliance-title">
-                      <span className="dashboard-alliance-rank">#{index + 1}</span>
-                      <strong>{alliance.allianceLabel}</strong>
-                    </div>
-                    <StatusPill
-                      label={`${alliance.passCount}/${alliance.members} pass`}
-                      tone={alliance.passRate >= 70 ? 'good' : alliance.passRate >= 45 ? 'warn' : 'bad'}
-                    />
-                  </div>
-                  <div className="dashboard-meter" aria-hidden="true">
-                    <span style={{ width: `${Math.max(8, alliance.passRate)}%` }} />
-                  </div>
-                  <div className="dashboard-alliance-meta">
-                    <span>{alliance.passCount} pass • {alliance.failCount} fail</span>
-                    <strong>{alliance.passRate}%</strong>
-                  </div>
-                </article>
-              ))}
-            </div>
-
-            <div className="dashboard-leaders-grid">
-              <article className="dashboard-leader-card">
-                <h3>Top Contribution Players</h3>
-                {topContributionRows.length === 0 ? (
-                  <p className="dashboard-muted">No contribution rows yet.</p>
-                ) : (
-                  <ul>
-                    {topContributionRows.map((row, index) => (
-                      <li key={`c-${row.governorDbId}`}>
-                        <div className="dashboard-player-meta">
-                          <span className="dashboard-player-rank">#{index + 1}</span>
-                          <span className="dashboard-player-name">{row.governorName}</span>
-                        </div>
-                        <strong>{Number(row.contributionPoints).toLocaleString()}</strong>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </article>
-
-              <article className="dashboard-leader-card">
-                <h3>Top Power Growth Players</h3>
-                {topPowerGrowthRows.length === 0 ? (
-                  <p className="dashboard-muted">Baseline data is still building.</p>
-                ) : (
-                  <ul>
-                    {topPowerGrowthRows.map((row, index) => (
-                      <li key={`p-${row.governorDbId}`}>
-                        <div className="dashboard-player-meta">
-                          <span className="dashboard-player-rank">#{index + 1}</span>
-                          <span className="dashboard-player-name">{row.governorName}</span>
-                        </div>
-                        <strong>{row.powerGrowth != null ? Number(row.powerGrowth).toLocaleString() : 'N/A'}</strong>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </article>
-            </div>
-
-            <div className="dashboard-issue-strip">
-              <span>Unlinked: {weeklyActivity.summary.unresolvedIdentityCount}</span>
-              <span>No Power Baseline: {weeklyActivity.summary.noPowerBaselineCount}</span>
-              <span>No KP Baseline: {weeklyActivity.summary.noKillPointsBaselineCount}</span>
-              <span>Fails: {weeklyInsights?.totalFail ?? 0}</span>
-            </div>
-          </>
-        )}
-      </section>
-
-      <section className="dashboard-card dashboard-events-card">
-        <header className="dashboard-card-head">
-          <div>
-            <h2 className="dashboard-heading-icon">
-              <CalendarClock size={15} /> Recent Events
-            </h2>
-            <p>Latest checkpoints ready for compare and insights.</p>
-          </div>
-          <Link href="/events" className="btn btn-secondary btn-sm">
-            <CalendarClock size={14} /> Manage
-          </Link>
-        </header>
-
-        {loading ? (
-          <SkeletonSet rows={4} />
-        ) : events.length === 0 ? (
-          <EmptyState
-            title="No events yet"
-            description="Create an event and upload screenshots to start analytics."
-            action={
-              <Link href="/upload" className="btn btn-primary btn-sm">
-                <Database size={14} /> Start Ingestion
-              </Link>
-            }
-          />
-        ) : (
-          <div className="dashboard-events-list">
-            {events.slice(0, 8).map((event) => (
-              <article key={event.id} className="dashboard-event-row">
-                <div className="dashboard-event-main">
-                  <strong>{event.name}</strong>
-                  <div className="dashboard-event-meta">
-                    <StatusPill label={EVENT_TYPE_LABELS[event.eventType] || event.eventType} tone="info" />
-                    <span>{event.snapshotCount} governors</span>
-                    <span>{formatDate(event.createdAt)}</span>
-                    {event.snapshotCount < 20 ? <ShieldAlert size={14} color="#f5b54a" /> : null}
-                  </div>
-                </div>
-                <div className="dashboard-event-actions">
-                  <Link href={`/events/${event.id}`} className="btn btn-secondary btn-sm">
-                    View
-                  </Link>
-                  <Link href={`/compare?eventA=${event.id}`} className="btn btn-secondary btn-sm">
-                    Compare
-                  </Link>
-                </div>
-              </article>
-            ))}
-          </div>
-        )}
       </section>
     </div>
   );
