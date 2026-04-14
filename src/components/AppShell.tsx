@@ -31,7 +31,7 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { href: '/', label: 'Dashboard', hint: 'Command center and recent activity', icon: Home, group: 'core' },
+  { href: '/', label: 'Dashboard', hint: 'Alliance and player weekly overview', icon: Home, group: 'core' },
   { href: '/upload', label: 'Upload', hint: 'Queue screenshots for OCR processing', icon: ImageUp, group: 'core' },
   { href: '/activity', label: 'Activity', hint: 'Weekly compliance and player tracking', icon: Activity, group: 'core' },
   { href: '/events', label: 'Events', hint: 'Manage scan windows and timelines', icon: CalendarDays, group: 'core' },

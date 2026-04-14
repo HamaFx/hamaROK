@@ -461,8 +461,8 @@ export default function Dashboard() {
 
   return (
     <div className="page-container dashboard-shell">
-      <section className="dashboard-command-card animate-fade-in-up">
-        <div className="dashboard-command-main">
+      <section className="dashboard-hero-card animate-fade-in-up">
+        <div className="dashboard-hero-main">
           <p className="dashboard-eyebrow">Kingdom Performance</p>
           <h1>Alliance and Player Overview</h1>
           <p>
@@ -480,7 +480,7 @@ export default function Dashboard() {
             </span>
           </div>
         </div>
-        <div className="dashboard-command-cta">
+        <div className="dashboard-hero-cta">
           <Link href="/activity" className="btn btn-primary btn-sm">
             <Activity size={14} /> Open Weekly Activity
           </Link>
