@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Save, Settings2, Shield, SlidersHorizontal, Webhook } from 'lucide-react';
+import { RefreshCw, Save, Settings2, Shield, SlidersHorizontal, Webhook } from 'lucide-react';
+import { useWorkspaceSession } from '@/lib/workspace-session';
 import { FilterBar, KpiCard, PageHero, Panel, StatusPill } from '@/components/ui/primitives';
 
 interface SettingsConfig {
@@ -23,48 +24,90 @@ const DEFAULTS: SettingsConfig = {
 };
 
 export default function SettingsPage() {
+  const {
+    workspaceId,
+    accessToken,
+    ready: workspaceReady,
+    loading: sessionLoading,
+    error: sessionError,
+    refreshSession,
+  } = useWorkspaceSession();
   const [config, setConfig] = useState<SettingsConfig>(DEFAULTS);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   useEffect(() => {
-    fetch('/api/settings')
-      .then((res) => res.json())
-      .then((data) => {
-        if (!data.error) {
-          setConfig({
-            t4Weight: data.t4Weight ?? DEFAULTS.t4Weight,
-            t5Weight: data.t5Weight ?? DEFAULTS.t5Weight,
-            deadWeight: data.deadWeight ?? DEFAULTS.deadWeight,
-            kpPerPowerRatio: data.kpPerPowerRatio ?? DEFAULTS.kpPerPowerRatio,
-            deadPerPowerRatio: data.deadPerPowerRatio ?? DEFAULTS.deadPerPowerRatio,
-            discordWebhook: data.discordWebhook ?? DEFAULTS.discordWebhook,
-          });
+    if (!workspaceReady) {
+      setLoading(sessionLoading);
+      return;
+    }
+
+    const run = async () => {
+      try {
+        setLoading(true);
+        const res = await fetch(`/api/v2/workspaces/${workspaceId}/settings`, {
+          headers: {
+            'x-access-token': accessToken,
+          },
+        });
+        const payload = await res.json();
+        if (!res.ok || !payload?.data) {
+          throw new Error(payload?.error?.message || 'Failed to load settings from API.');
         }
-      })
-      .catch(() => {
-        setMessage({ type: 'error', text: 'Failed to load settings from API.' });
-      })
-      .finally(() => setLoading(false));
-  }, []);
+        const data = payload.data as Partial<SettingsConfig>;
+        setConfig({
+          t4Weight: data.t4Weight ?? DEFAULTS.t4Weight,
+          t5Weight: data.t5Weight ?? DEFAULTS.t5Weight,
+          deadWeight: data.deadWeight ?? DEFAULTS.deadWeight,
+          kpPerPowerRatio: data.kpPerPowerRatio ?? DEFAULTS.kpPerPowerRatio,
+          deadPerPowerRatio: data.deadPerPowerRatio ?? DEFAULTS.deadPerPowerRatio,
+          discordWebhook: data.discordWebhook ?? DEFAULTS.discordWebhook,
+        });
+      } catch (cause) {
+        setMessage({
+          type: 'error',
+          text: cause instanceof Error ? cause.message : 'Failed to load settings from API.',
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    void run();
+  }, [workspaceId, accessToken, workspaceReady, sessionLoading]);
 
   const handleSave = async () => {
+    if (!workspaceReady) {
+      setMessage({
+        type: 'error',
+        text: sessionLoading ? 'Connecting workspace session...' : sessionError || 'Workspace session is not ready.',
+      });
+      return;
+    }
+
     setSaving(true);
     setMessage(null);
 
     try {
-      const res = await fetch('/api/settings', {
+      const res = await fetch(`/api/v2/workspaces/${workspaceId}/settings`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-access-token': accessToken,
+        },
         body: JSON.stringify(config),
       });
 
-      if (res.ok) {
-        setMessage({ type: 'success', text: 'Settings saved.' });
-      } else {
-        setMessage({ type: 'error', text: 'Failed to save settings.' });
+      const payload = await res.json();
+      if (!res.ok) {
+        setMessage({
+          type: 'error',
+          text: payload?.error?.message || 'Failed to save settings.',
+        });
+        return;
       }
+      setMessage({ type: 'success', text: 'Settings saved.' });
     } catch {
       setMessage({ type: 'error', text: 'Network error.' });
     } finally {
@@ -97,6 +140,9 @@ export default function SettingsPage() {
         subtitle="Configure score formulas and integration endpoints."
         actions={
           <>
+            <button className="btn btn-secondary" onClick={() => void refreshSession()} disabled={sessionLoading}>
+              <RefreshCw size={14} /> {sessionLoading ? 'Connecting...' : 'Reconnect'}
+            </button>
             <button className="btn btn-secondary" onClick={() => setConfig(DEFAULTS)}>
               <SlidersHorizontal size={14} /> Reset Defaults
             </button>
@@ -106,6 +152,14 @@ export default function SettingsPage() {
           </>
         }
       />
+
+      {!workspaceReady ? (
+        <div className="card mb-24">
+          <div className="text-sm text-muted">
+            {sessionLoading ? 'Connecting workspace...' : sessionError || 'Workspace session is not ready yet.'}
+          </div>
+        </div>
+      ) : null}
 
       <div className="grid-4 mb-24">
         <KpiCard label="T4 Weight" value={config.t4Weight} hint="Kill score multiplier" tone="info" />

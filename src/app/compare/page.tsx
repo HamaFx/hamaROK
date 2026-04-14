@@ -1,8 +1,9 @@
 'use client';
 
-import { Suspense, useEffect, useMemo, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Download, Medal, Send, Swords, Users } from 'lucide-react';
+import { Download, Medal, RefreshCw, Send, Swords, Users } from 'lucide-react';
+import { useWorkspaceSession } from '@/lib/workspace-session';
 import { formatDelta } from '@/lib/utils';
 import { getTierConfig, WarriorTier } from '@/lib/warrior-score';
 import TierBadge from '@/components/TierBadge';
@@ -17,6 +18,7 @@ interface Comparison {
   warriorScore: {
     actualDkp: number;
     expectedKp: number;
+    expectedDkp?: number;
     kdRatio: number;
     totalScore: number;
     isDeadweight: boolean;
@@ -44,6 +46,15 @@ interface EventOption {
 
 function CompareContent() {
   const searchParams = useSearchParams();
+  const {
+    workspaceId,
+    accessToken,
+    ready: workspaceReady,
+    loading: sessionLoading,
+    error: sessionError,
+    refreshSession,
+  } = useWorkspaceSession();
+
   const [events, setEvents] = useState<EventOption[]>([]);
   const [eventAId, setEventAId] = useState(searchParams.get('eventA') || '');
   const [eventBId, setEventBId] = useState(searchParams.get('eventB') || '');
@@ -53,22 +64,75 @@ function CompareContent() {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [search, setSearch] = useState('');
   const [publishing, setPublishing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [publishMessage, setPublishMessage] = useState<string | null>(null);
+
+  const loadEvents = useCallback(async () => {
+    if (!workspaceReady) {
+      setEvents([]);
+      return;
+    }
+
+    try {
+      setError(null);
+      const params = new URLSearchParams({ workspaceId, limit: '200' });
+      const res = await fetch(`/api/v2/events?${params.toString()}`, {
+        headers: {
+          'x-access-token': accessToken,
+        },
+      });
+      const payload = await res.json();
+      if (!res.ok) {
+        throw new Error(payload?.error?.message || 'Failed to load events.');
+      }
+      const nextEvents = (Array.isArray(payload?.data) ? payload.data : []) as EventOption[];
+      setEvents(nextEvents);
+    } catch (cause) {
+      setEvents([]);
+      setError(cause instanceof Error ? cause.message : 'Failed to load events.');
+    }
+  }, [workspaceId, accessToken, workspaceReady]);
 
   useEffect(() => {
-    fetch('/api/events')
-      .then((r) => r.json())
-      .then((data) => setEvents(data.events || []));
-  }, []);
+    void loadEvents();
+  }, [loadEvents]);
+
+  const loadComparison = useCallback(async () => {
+    if (!workspaceReady || !eventAId || !eventBId) {
+      setResult(null);
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError(null);
+
+      const params = new URLSearchParams({
+        workspaceId,
+        eventA: eventAId,
+        eventB: eventBId,
+      });
+      const res = await fetch(`/api/v2/compare?${params.toString()}`, {
+        headers: {
+          'x-access-token': accessToken,
+        },
+      });
+      const payload = await res.json();
+      if (!res.ok) {
+        throw new Error(payload?.error?.message || 'Failed to compare events.');
+      }
+      setResult((payload?.data || null) as CompareResult | null);
+    } catch (cause) {
+      setResult(null);
+      setError(cause instanceof Error ? cause.message : 'Failed to compare events.');
+    } finally {
+      setLoading(false);
+    }
+  }, [workspaceId, accessToken, workspaceReady, eventAId, eventBId]);
 
   useEffect(() => {
-    if (!eventAId || !eventBId) return;
-    setLoading(true);
-    fetch(`/api/compare?eventA=${eventAId}&eventB=${eventBId}`)
-      .then((r) => r.json())
-      .then((data) => setResult(data))
-      .catch(console.error)
-      .finally(() => setLoading(false));
-  }, [eventAId, eventBId]);
+    void loadComparison();
+  }, [loadComparison]);
 
   const sortedComparisons = useMemo(() => {
     const rows = result?.comparisons || [];
@@ -115,29 +179,35 @@ function CompareContent() {
   };
 
   const publishToDiscord = async () => {
-    if (!result) return;
+    if (!workspaceReady || !result) return;
+
     setPublishing(true);
+    setPublishMessage(null);
+    setError(null);
 
     try {
-      const res = await fetch('/api/discord/publish-leaderboard', {
+      const res = await fetch('/api/v2/integrations/discord/publish', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-access-token': accessToken,
+        },
         body: JSON.stringify({
-          eventA: result.eventA,
-          eventB: result.eventB,
-          summary: result.summary,
-          leaderboard: sortedComparisons,
+          workspaceId,
+          eventA: eventAId,
+          eventB: eventBId,
+          topN: 10,
+          idempotencyKey: `compare-publish-${eventAId}-${eventBId}`,
         }),
       });
-
-      if (res.ok) {
-        alert('Leaderboard published to Discord.');
-      } else {
-        const payload = await res.json();
-        alert(payload?.error || 'Publish failed.');
+      const payload = await res.json();
+      if (!res.ok) {
+        throw new Error(payload?.error?.message || 'Failed to publish to Discord.');
       }
-    } catch {
-      alert('Network error while publishing.');
+      setPublishMessage('Leaderboard published to Discord.');
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Failed to publish to Discord.');
+      setPublishMessage(null);
     } finally {
       setPublishing(false);
     }
@@ -159,16 +229,29 @@ function CompareContent() {
         title="Compare Events"
         subtitle="Calculate deltas, rank warrior output, and publish combat leaderboards."
         actions={
-          <>
+          <FilterBar>
+            <button className="btn btn-secondary" onClick={() => void refreshSession()} disabled={sessionLoading}>
+              <RefreshCw size={14} /> {sessionLoading ? 'Connecting...' : 'Reconnect'}
+            </button>
             <button className="btn btn-secondary" onClick={exportCSV} disabled={!result}>
               <Download size={14} /> Export CSV
             </button>
-            <button className="btn btn-primary" onClick={publishToDiscord} disabled={!result || publishing}>
+            <button className="btn btn-primary" onClick={publishToDiscord} disabled={!result || publishing || !workspaceReady}>
               <Send size={14} /> {publishing ? 'Publishing...' : 'Publish to Discord'}
             </button>
-          </>
+          </FilterBar>
         }
       />
+
+      {!workspaceReady ? (
+        <div className="card mb-24">
+          <div className="text-sm text-muted">
+            {sessionLoading ? 'Connecting workspace...' : sessionError || 'Workspace session is not ready yet.'}
+          </div>
+        </div>
+      ) : null}
+      {error ? <div className="delta-negative mb-16">{error}</div> : null}
+      {publishMessage ? <div className="card mb-16 text-sm">{publishMessage}</div> : null}
 
       <Panel title="Comparison Setup" subtitle="Pick baseline and current event snapshots">
         <FilterBar>
@@ -195,6 +278,9 @@ function CompareContent() {
               ))}
             </select>
           </div>
+          <button className="btn btn-secondary" onClick={() => void loadComparison()} disabled={!workspaceReady || loading || !eventAId || !eventBId}>
+            <RefreshCw size={14} /> Compare
+          </button>
         </FilterBar>
       </Panel>
 

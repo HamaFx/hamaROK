@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, ArrowRight, Filter, RefreshCw, Search } from 'lucide-react';
+import { useWorkspaceSession } from '@/lib/workspace-session';
 import {
   ActionToolbar,
   DataTableLite,
@@ -55,8 +56,15 @@ function formatMetric(value: string) {
 const ALL_STATUSES: RankingStatus[] = ['ACTIVE', 'UNRESOLVED', 'REJECTED'];
 
 export default function RankingsPage() {
-  const [workspaceId, setWorkspaceId] = useState('');
-  const [accessToken, setAccessToken] = useState('');
+  const {
+    workspaceId,
+    accessToken,
+    ready: workspaceReady,
+    loading: sessionLoading,
+    error: sessionError,
+    refreshSession,
+  } = useWorkspaceSession();
+
   const [search, setSearch] = useState('');
   const [statuses, setStatuses] = useState<RankingStatus[]>(['ACTIVE', 'UNRESOLVED']);
   const [rows, setRows] = useState<CanonicalRow[]>([]);
@@ -69,24 +77,11 @@ export default function RankingsPage() {
     'metricValue DESC, sourceRank ASC NULLS LAST, normalizedName ASC, rowId ASC'
   );
 
-  useEffect(() => {
-    setWorkspaceId(localStorage.getItem('workspaceId') || '');
-    setAccessToken(localStorage.getItem('workspaceToken') || '');
-  }, []);
-
-  useEffect(() => {
-    if (workspaceId) localStorage.setItem('workspaceId', workspaceId);
-  }, [workspaceId]);
-
-  useEffect(() => {
-    if (accessToken) localStorage.setItem('workspaceToken', accessToken);
-  }, [accessToken]);
-
   const statusQuery = useMemo(() => statuses.join(','), [statuses]);
 
   const loadData = useCallback(
     async (cursor: string | null = null) => {
-      if (!workspaceId || !accessToken) return;
+      if (!workspaceReady) return;
       setLoading(true);
       setError(null);
 
@@ -139,7 +134,7 @@ export default function RankingsPage() {
         setLoading(false);
       }
     },
-    [workspaceId, accessToken, search, statusQuery]
+    [workspaceId, accessToken, search, statusQuery, workspaceReady]
   );
 
   const refresh = useCallback(() => {
@@ -149,8 +144,10 @@ export default function RankingsPage() {
   }, [loadData]);
 
   useEffect(() => {
-    if (workspaceId && accessToken) refresh();
-  }, [workspaceId, accessToken, refresh]);
+    if (workspaceReady) {
+      refresh();
+    }
+  }, [workspaceReady, refresh]);
 
   const goNext = () => {
     if (!nextCursor) return;
@@ -238,38 +235,42 @@ export default function RankingsPage() {
         title="Rankings Board"
         subtitle="Stable ordering, tie-aware display, and review-driven canonical ranking state."
         actions={
-          <>
-            <button className="btn btn-secondary" onClick={refresh} disabled={loading}>
+          <FilterBar>
+            <button className="btn btn-secondary" onClick={refresh} disabled={loading || !workspaceReady}>
               <RefreshCw size={14} /> {loading ? 'Loading...' : 'Refresh'}
             </button>
-          </>
+            <button className="btn btn-secondary" onClick={() => void refreshSession()} disabled={sessionLoading}>
+              {sessionLoading ? 'Connecting...' : 'Reconnect'}
+            </button>
+          </FilterBar>
         }
       />
 
-      <section className="rankings-filter-strip mb-24 flex items-center justify-between">
-        <FilterBar style={{ flex: 1, marginRight: '16px' }}>
-          <div className="search-bar" style={{ minWidth: 260, flex: 1 }}>
-            <Search size={16} className="search-icon" style={{ marginLeft: '4px' }} />
-            <input placeholder="Search governor name or ID..." value={search} onChange={(e) => setSearch(e.target.value)} />
-          </div>
-          <button className="btn btn-secondary" onClick={refresh} disabled={loading} style={{ padding: '0 16px' }}>
-            <Filter size={14} /> Search
-          </button>
-        </FilterBar>
+      {!workspaceReady ? (
+        <div className="card mb-24">
+          <div className="text-sm text-muted">{sessionLoading ? 'Connecting workspace...' : sessionError || 'Workspace session is not ready yet.'}</div>
+        </div>
+      ) : null}
 
-        <FilterBar>
-          {ALL_STATUSES.map((status) => (
-            <button
-              key={status}
-              className={`btn btn-sm ${statuses.includes(status) ? 'btn-primary' : 'btn-secondary'}`}
-              onClick={() => toggleStatus(status)}
-              type="button"
-            >
-              {status}
-            </button>
-          ))}
-        </FilterBar>
-      </section>
+      <FilterBar className="mb-24">
+        <div className="search-bar" style={{ minWidth: 260, flex: 1 }}>
+          <Search size={16} className="search-icon" style={{ marginLeft: '4px' }} />
+          <input placeholder="Search governor name or ID..." value={search} onChange={(e) => setSearch(e.target.value)} />
+        </div>
+        <button className="btn btn-secondary" onClick={refresh} disabled={loading || !workspaceReady} style={{ padding: '0 16px' }}>
+          <Filter size={14} /> Search
+        </button>
+        {ALL_STATUSES.map((status) => (
+          <button
+            key={status}
+            className={`btn btn-sm ${statuses.includes(status) ? 'btn-primary' : 'btn-secondary'}`}
+            onClick={() => toggleStatus(status)}
+            type="button"
+          >
+            {status}
+          </button>
+        ))}
+      </FilterBar>
 
       <div className="text-sm text-muted mb-16">Deterministic sort: {sortHint}</div>
 
@@ -320,7 +321,7 @@ export default function RankingsPage() {
         ) : (
           <EmptyState
             title="No canonical rows found"
-            description="Try broadening type/status filters or verify workspace link access."
+            description="Try broadening type/status filters and search filters."
           />
         )}
       </Panel>

@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { RefreshCw, Search, TrendingUp } from 'lucide-react';
+import { useWorkspaceSession } from '@/lib/workspace-session';
 import { abbreviateNumber } from '@/lib/utils';
 import { GrowthLineChart } from '@/components/Charts';
 import {
@@ -33,6 +34,15 @@ interface TimelineEntry {
 }
 
 export default function GovernorsPage() {
+  const {
+    workspaceId,
+    accessToken,
+    ready: workspaceReady,
+    loading: sessionLoading,
+    error: sessionError,
+    refreshSession,
+  } = useWorkspaceSession();
+
   const [governors, setGovernors] = useState<GovernorItem[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -40,31 +50,59 @@ export default function GovernorsPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [timeline, setTimeline] = useState<TimelineEntry[] | null>(null);
   const [timelineLoading, setTimelineLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const fetchGovernors = async (q = '') => {
+  const fetchGovernors = useCallback(async (q = '') => {
+    if (!workspaceReady) {
+      setGovernors([]);
+      setTotal(0);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     try {
-      const res = await fetch(`/api/governors?search=${encodeURIComponent(q)}&limit=200`);
-      const data = await res.json();
-      setGovernors(data.governors || []);
-      setTotal(data.total || 0);
-    } catch (err) {
-      console.error(err);
+      setError(null);
+      const params = new URLSearchParams({
+        workspaceId,
+        search: q,
+        limit: '200',
+      });
+      const res = await fetch(`/api/v2/governors?${params.toString()}`, {
+        headers: {
+          'x-access-token': accessToken,
+        },
+      });
+      const payload = await res.json();
+      if (!res.ok) {
+        throw new Error(payload?.error?.message || 'Failed to load governors.');
+      }
+      setGovernors(Array.isArray(payload?.data) ? payload.data : []);
+      setTotal(Number(payload?.meta?.total || 0));
+    } catch (cause) {
+      setGovernors([]);
+      setTotal(0);
+      setError(cause instanceof Error ? cause.message : 'Failed to load governors.');
     } finally {
       setLoading(false);
     }
-  };
+  }, [workspaceId, accessToken, workspaceReady]);
 
   useEffect(() => {
-    fetchGovernors();
-  }, []);
+    void fetchGovernors();
+  }, [fetchGovernors]);
 
   useEffect(() => {
-    const timeout = setTimeout(() => fetchGovernors(search), 250);
+    const timeout = setTimeout(() => void fetchGovernors(search), 250);
     return () => clearTimeout(timeout);
-  }, [search]);
+  }, [search, fetchGovernors]);
 
   const toggleExpand = async (id: string) => {
+    if (!workspaceReady) {
+      setError(sessionLoading ? 'Connecting workspace session...' : 'Workspace session is not ready.');
+      return;
+    }
+
     if (expandedId === id) {
       setExpandedId(null);
       setTimeline(null);
@@ -75,11 +113,21 @@ export default function GovernorsPage() {
     setTimelineLoading(true);
 
     try {
-      const res = await fetch(`/api/governors/${id}/timeline`);
-      const data = await res.json();
-      setTimeline(data.timeline || []);
-    } catch (err) {
-      console.error(err);
+      setError(null);
+      const params = new URLSearchParams({ workspaceId });
+      const res = await fetch(`/api/v2/governors/${id}/timeline?${params.toString()}`, {
+        headers: {
+          'x-access-token': accessToken,
+        },
+      });
+      const payload = await res.json();
+      if (!res.ok) {
+        throw new Error(payload?.error?.message || 'Failed to load timeline.');
+      }
+      setTimeline(payload?.data?.timeline || []);
+    } catch (cause) {
+      setTimeline([]);
+      setError(cause instanceof Error ? cause.message : 'Failed to load timeline.');
     } finally {
       setTimelineLoading(false);
     }
@@ -101,11 +149,25 @@ export default function GovernorsPage() {
         title="Governor Registry"
         subtitle="Identity-level roster with timeline drill-down."
         actions={
-          <button className="btn btn-secondary" onClick={() => fetchGovernors(search)} disabled={loading}>
-            <RefreshCw size={14} /> Refresh
-          </button>
+          <FilterBar>
+            <button className="btn btn-secondary" onClick={() => void fetchGovernors(search)} disabled={loading || !workspaceReady}>
+              <RefreshCw size={14} /> Refresh
+            </button>
+            <button className="btn btn-secondary" onClick={() => void refreshSession()} disabled={sessionLoading}>
+              {sessionLoading ? 'Connecting...' : 'Reconnect'}
+            </button>
+          </FilterBar>
         }
       />
+
+      {!workspaceReady ? (
+        <div className="card mb-24">
+          <div className="text-sm text-muted">
+            {sessionLoading ? 'Connecting workspace...' : sessionError || 'Workspace session is not ready yet.'}
+          </div>
+        </div>
+      ) : null}
+      {error ? <div className="delta-negative mb-16">{error}</div> : null}
 
       <div className="grid-4 mb-24">
         <KpiCard label="Tracked Governors" value={total} hint="Roster identities indexed" tone="info" />

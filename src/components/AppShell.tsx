@@ -20,6 +20,7 @@ import {
   Workflow,
   X,
 } from 'lucide-react';
+import { WORKSPACE_SESSION_EVENT } from '@/lib/workspace-session';
 
 interface NavItem {
   href: string;
@@ -95,17 +96,29 @@ function NavSection({
 export default function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
-  const [workspaceLabel, setWorkspaceLabel] = useState('No workspace');
+  const [workspaceLabel, setWorkspaceLabel] = useState('Connecting...');
 
   useEffect(() => {
     const syncAccessContext = () => {
       const workspaceId = localStorage.getItem('workspaceId') || '';
-      setWorkspaceLabel(workspaceId ? `Workspace ${workspaceId.slice(0, 8)}...` : 'No workspace');
+      const workspaceName = localStorage.getItem('workspaceName') || '';
+      const kingdomTag = localStorage.getItem('workspaceKingdomTag') || '';
+
+      if (workspaceName) {
+        setWorkspaceLabel(kingdomTag ? `K${kingdomTag} • ${workspaceName}` : workspaceName);
+        return;
+      }
+
+      setWorkspaceLabel(workspaceId ? 'Kingdom Workspace' : 'Not connected');
     };
 
     syncAccessContext();
     window.addEventListener('storage', syncAccessContext);
-    return () => window.removeEventListener('storage', syncAccessContext);
+    window.addEventListener(WORKSPACE_SESSION_EVENT, syncAccessContext);
+    return () => {
+      window.removeEventListener('storage', syncAccessContext);
+      window.removeEventListener(WORKSPACE_SESSION_EVENT, syncAccessContext);
+    };
   }, []);
 
   const grouped = useMemo(() => {
@@ -153,12 +166,12 @@ export default function AppShell({ children }: { children: ReactNode }) {
             </div>
           </div>
           <div className="app-topbar-context">
-            <Link href="/settings" className="app-context-chip workspace-chip" style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px', border: '1px solid rgba(96,165,250,0.3)', background: 'rgba(96,165,250,0.1)', padding: '6px 16px', borderRadius: '100px', textDecoration: 'none', transition: 'all 200ms ease' }}>
-              <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10b981', boxShadow: '0 0 10px #10b981' }} />
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                <span className="label" style={{ fontSize: '0.6rem', textTransform: 'uppercase', color: 'var(--teal-2)', fontWeight: '700', letterSpacing: '0.05em' }}>Workspace</span>
-                <span className="value" style={{ fontSize: '0.85rem', color: '#fff', fontWeight: '500' }}>{workspaceLabel}</span>
-              </div>
+            <Link href="/settings" className="app-context-chip workspace-chip">
+              <span className="workspace-dot" />
+              <span className="workspace-copy">
+                <span className="label">Workspace</span>
+                <span className="value">{workspaceLabel}</span>
+              </span>
             </Link>
           </div>
         </header>

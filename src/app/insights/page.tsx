@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Share2, Sparkles } from 'lucide-react';
+import { useWorkspaceSession } from '@/lib/workspace-session';
 import { DataTableLite, EmptyState, FilterBar, KpiCard, PageHero, Panel } from '@/components/ui/primitives';
 
 interface EventOption {
@@ -67,8 +68,14 @@ interface AnalyticsPayload {
 }
 
 export default function InsightsPage() {
-  const [workspaceId, setWorkspaceId] = useState('');
-  const [accessToken, setAccessToken] = useState('');
+  const {
+    workspaceId,
+    accessToken,
+    ready: workspaceReady,
+    loading: sessionLoading,
+    error: sessionError,
+    refreshSession,
+  } = useWorkspaceSession();
   const [events, setEvents] = useState<EventOption[]>([]);
   const [eventA, setEventA] = useState('');
   const [eventB, setEventB] = useState('');
@@ -77,11 +84,6 @@ export default function InsightsPage() {
   const [error, setError] = useState('');
   const [analytics, setAnalytics] = useState<AnalyticsPayload | null>(null);
   const [rankboardLink, setRankboardLink] = useState('');
-
-  useEffect(() => {
-    setWorkspaceId(localStorage.getItem('workspaceId') || '');
-    setAccessToken(localStorage.getItem('workspaceToken') || '');
-  }, []);
 
   const headers = useMemo(
     () => ({
@@ -92,7 +94,7 @@ export default function InsightsPage() {
   );
 
   const loadEvents = useCallback(async () => {
-    if (!workspaceId || !accessToken) return;
+    if (!workspaceReady) return;
     try {
       const res = await fetch(`/api/v2/events?workspaceId=${workspaceId}&limit=200`, { headers });
       const payload = await res.json();
@@ -104,15 +106,15 @@ export default function InsightsPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load events.');
     }
-  }, [workspaceId, accessToken, headers, eventA, eventB]);
+  }, [workspaceId, headers, eventA, eventB, workspaceReady]);
 
   useEffect(() => {
     loadEvents();
   }, [loadEvents]);
 
   const loadAnalytics = useCallback(async () => {
-    if (!workspaceId || !accessToken) {
-      setError('Workspace ID and access token are required.');
+    if (!workspaceReady) {
+      setError(sessionLoading ? 'Connecting workspace session...' : 'Workspace session is not ready.');
       return;
     }
 
@@ -121,9 +123,6 @@ export default function InsightsPage() {
     setRankboardLink('');
 
     try {
-      localStorage.setItem('workspaceId', workspaceId);
-      localStorage.setItem('workspaceToken', accessToken);
-
       const params = new URLSearchParams({ workspaceId, topN: String(topN) });
       if (eventA) params.set('eventA', eventA);
       if (eventB) params.set('eventB', eventB);
@@ -138,16 +137,16 @@ export default function InsightsPage() {
     } finally {
       setLoading(false);
     }
-  }, [workspaceId, accessToken, topN, eventA, eventB, headers]);
+  }, [workspaceId, topN, eventA, eventB, headers, workspaceReady, sessionLoading]);
 
   useEffect(() => {
-    if (workspaceId && accessToken && events.length > 0) {
-      loadAnalytics();
+    if (workspaceReady && events.length > 0) {
+      void loadAnalytics();
     }
-  }, [events, loadAnalytics, workspaceId, accessToken]);
+  }, [events, loadAnalytics, workspaceReady]);
 
   const createRankboard = async () => {
-    if (!analytics?.selectedComparison || !workspaceId || !accessToken) return;
+    if (!analytics?.selectedComparison || !workspaceReady) return;
     setError('');
     setRankboardLink('');
 
@@ -177,11 +176,22 @@ export default function InsightsPage() {
         title="Advanced Insights"
         subtitle="Top-N contribution analysis, trend continuity, and cross-kingdom slices."
         actions={
-          <button className="btn btn-primary" onClick={loadAnalytics} disabled={loading}>
-            <Sparkles size={14} /> {loading ? 'Loading...' : 'Refresh'}
-          </button>
+          <FilterBar>
+            <button className="btn btn-primary" onClick={loadAnalytics} disabled={loading || !workspaceReady}>
+              <Sparkles size={14} /> {loading ? 'Loading...' : 'Refresh'}
+            </button>
+            <button className="btn btn-secondary" onClick={() => void refreshSession()} disabled={sessionLoading}>
+              {sessionLoading ? 'Connecting...' : 'Reconnect'}
+            </button>
+          </FilterBar>
         }
       />
+
+      {!workspaceReady ? (
+        <div className="card mb-24">
+          <div className="text-sm text-muted">{sessionLoading ? 'Connecting workspace...' : sessionError || 'Workspace session is not ready yet.'}</div>
+        </div>
+      ) : null}
 
       <Panel title="Analysis Parameters" className="mb-24">
         <FilterBar>
@@ -348,7 +358,7 @@ export default function InsightsPage() {
         <div className="mt-24">
           <EmptyState
             title="Insights not loaded"
-            description="Provide workspace token and click Load Insights to render trend and contribution analysis."
+            description="Select event parameters and refresh to render trend and contribution analysis."
           />
         </div>
       )}

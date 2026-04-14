@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link2, PencilLine, RefreshCw, ShieldAlert, UserPlus, XCircle } from 'lucide-react';
+import { useWorkspaceSession } from '@/lib/workspace-session';
 import { EmptyState, FilterBar, KpiCard, PageHero, Panel, SkeletonSet, StatusPill } from '@/components/ui/primitives';
 
 type IdentityStatus = 'UNRESOLVED' | 'AUTO_LINKED' | 'MANUAL_LINKED' | 'REJECTED';
@@ -80,8 +81,14 @@ function parseCandidatePreview(candidates?: Record<string, unknown>) {
 }
 
 export default function RankingReviewPage() {
-  const [workspaceId, setWorkspaceId] = useState('');
-  const [accessToken, setAccessToken] = useState('');
+  const {
+    workspaceId,
+    accessToken,
+    ready: workspaceReady,
+    loading: sessionLoading,
+    error: sessionError,
+    refreshSession,
+  } = useWorkspaceSession();
   const [statusFilter, setStatusFilter] = useState('UNRESOLVED');
   const [rows, setRows] = useState<ReviewRow[]>([]);
   const [drafts, setDrafts] = useState<Record<string, DraftState>>({});
@@ -89,22 +96,9 @@ export default function RankingReviewPage() {
   const [busyRow, setBusyRow] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    setWorkspaceId(localStorage.getItem('workspaceId') || '');
-    setAccessToken(localStorage.getItem('workspaceToken') || '');
-  }, []);
-
-  useEffect(() => {
-    if (workspaceId) localStorage.setItem('workspaceId', workspaceId);
-  }, [workspaceId]);
-
-  useEffect(() => {
-    if (accessToken) localStorage.setItem('workspaceToken', accessToken);
-  }, [accessToken]);
-
   const loadRows = useCallback(async () => {
-    if (!workspaceId || !accessToken) {
-      setError('Workspace ID and access token are required.');
+    if (!workspaceReady) {
+      setError(sessionLoading ? 'Connecting workspace session...' : 'Workspace session is not ready.');
       return;
     }
 
@@ -145,11 +139,13 @@ export default function RankingReviewPage() {
     } finally {
       setLoading(false);
     }
-  }, [workspaceId, accessToken, statusFilter]);
+  }, [workspaceId, accessToken, statusFilter, workspaceReady, sessionLoading]);
 
   useEffect(() => {
-    if (workspaceId && accessToken) loadRows();
-  }, [workspaceId, accessToken, loadRows]);
+    if (workspaceReady) {
+      void loadRows();
+    }
+  }, [workspaceReady, loadRows]);
 
   const summary = useMemo(() => {
     const unresolved = rows.filter((row) => row.identityStatus === 'UNRESOLVED').length;
@@ -234,11 +230,22 @@ export default function RankingReviewPage() {
         title="Ranking Review Queue"
         subtitle="Resolve identity ambiguity and row corrections."
         actions={
-          <button className="btn btn-secondary" onClick={loadRows} disabled={loading}>
-            <RefreshCw size={14} /> Refresh
-          </button>
+          <FilterBar>
+            <button className="btn btn-secondary" onClick={loadRows} disabled={loading || !workspaceReady}>
+              <RefreshCw size={14} /> Refresh
+            </button>
+            <button className="btn btn-secondary" onClick={() => void refreshSession()} disabled={sessionLoading}>
+              {sessionLoading ? 'Connecting...' : 'Reconnect'}
+            </button>
+          </FilterBar>
         }
       />
+
+      {!workspaceReady ? (
+        <div className="card mb-24">
+          <div className="text-sm text-muted">{sessionLoading ? 'Connecting workspace...' : sessionError || 'Workspace session is not ready yet.'}</div>
+        </div>
+      ) : null}
 
       <FilterBar className="mb-24">
         <div className="form-group" style={{ marginBottom: 0, width: 260 }}>

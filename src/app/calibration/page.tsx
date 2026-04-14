@@ -5,7 +5,8 @@ import Image from 'next/image';
 import { Target, Upload, Play, Save } from 'lucide-react';
 import { OCR_TEMPLATES } from '@/lib/ocr/templates';
 import type { OcrRuntimeProfile } from '@/lib/ocr/profiles';
-import { PageHero, Panel } from '@/components/ui/primitives';
+import { useWorkspaceSession } from '@/lib/workspace-session';
+import { FilterBar, PageHero, Panel } from '@/components/ui/primitives';
 
 type Region = { x: number; y: number; width: number; height: number };
 
@@ -23,8 +24,14 @@ function clamp(value: number, min = 0, max = 1) {
 }
 
 export default function CalibrationPage() {
-  const [workspaceId, setWorkspaceId] = useState('');
-  const [accessToken, setAccessToken] = useState('');
+  const {
+    workspaceId,
+    accessToken,
+    ready: workspaceReady,
+    loading: sessionLoading,
+    error: sessionError,
+    refreshSession,
+  } = useWorkspaceSession();
   const [profiles, setProfiles] = useState<OcrRuntimeProfile[]>([]);
   const [selectedProfileId, setSelectedProfileId] = useState('');
 
@@ -48,21 +55,7 @@ export default function CalibrationPage() {
   const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    setWorkspaceId(localStorage.getItem('workspaceId') || '');
-    setAccessToken(localStorage.getItem('workspaceToken') || '');
-  }, []);
-
-  useEffect(() => {
-    if (workspaceId) localStorage.setItem('workspaceId', workspaceId);
-  }, [workspaceId]);
-
-  useEffect(() => {
-    if (accessToken) localStorage.setItem('workspaceToken', accessToken);
-  }, [accessToken]);
-
-  useEffect(() => {
-    if (!workspaceId || !accessToken) {
+    if (!workspaceReady) {
       setProfiles([]);
       return;
     }
@@ -84,7 +77,7 @@ export default function CalibrationPage() {
     return () => {
       canceled = true;
     };
-  }, [workspaceId, accessToken]);
+  }, [workspaceId, accessToken, workspaceReady]);
 
   const template = useMemo(
     () => OCR_TEMPLATES.find((item) => item.id === templateId) || OCR_TEMPLATES[0],
@@ -180,8 +173,8 @@ export default function CalibrationPage() {
   };
 
   const saveProfile = async () => {
-    if (!workspaceId || !accessToken) {
-      setMessage('Workspace ID and access token are required.');
+    if (!workspaceReady) {
+      setMessage(sessionLoading ? 'Connecting workspace session...' : 'Workspace session is not ready.');
       return;
     }
     setSaving(true);
@@ -238,11 +231,22 @@ export default function CalibrationPage() {
         title="OCR Calibration Wizard"
         subtitle="One-time guided setup for profile offsets and overlays."
         actions={
-          <button className="btn btn-primary" onClick={saveProfile} disabled={saving}>
-            <Save size={14} /> {saving ? 'Saving...' : 'Save Profile'}
-          </button>
+          <FilterBar>
+            <button className="btn btn-primary" onClick={saveProfile} disabled={saving || !workspaceReady}>
+              <Save size={14} /> {saving ? 'Saving...' : 'Save Profile'}
+            </button>
+            <button className="btn btn-secondary" onClick={() => void refreshSession()} disabled={sessionLoading}>
+              {sessionLoading ? 'Connecting...' : 'Reconnect'}
+            </button>
+          </FilterBar>
         }
       />
+
+      {!workspaceReady ? (
+        <div className="card mb-24">
+          <div className="text-sm text-muted">{sessionLoading ? 'Connecting workspace...' : sessionError || 'Workspace session is not ready yet.'}</div>
+        </div>
+      ) : null}
 
       <Panel title="Profile Selection" className="mb-24">
         <div className="grid-2">

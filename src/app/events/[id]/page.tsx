@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { Download, Search, Upload } from 'lucide-react';
+import { Download, RefreshCw, Search, Upload } from 'lucide-react';
+import { useWorkspaceSession } from '@/lib/workspace-session';
 import { formatDate, abbreviateNumber, EVENT_TYPE_LABELS } from '@/lib/utils';
 import {
   DataTableLite,
@@ -36,22 +37,54 @@ interface EventDetail {
 
 export default function EventDetailPage() {
   const params = useParams();
+  const {
+    workspaceId,
+    accessToken,
+    ready: workspaceReady,
+    loading: sessionLoading,
+    error: sessionError,
+    refreshSession,
+  } = useWorkspaceSession();
   const [event, setEvent] = useState<EventDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [sortField, setSortField] = useState('power');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [search, setSearch] = useState('');
+  const [error, setError] = useState<string | null>(null);
+
+  const loadEvent = useCallback(async () => {
+    const eventId = String(params.id || '');
+    if (!eventId || !workspaceReady) {
+      setEvent(null);
+      setLoading(false);
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError(null);
+      const query = new URLSearchParams({ workspaceId });
+      const res = await fetch(`/api/v2/events/${eventId}?${query.toString()}`, {
+        headers: {
+          'x-access-token': accessToken,
+        },
+      });
+      const payload = await res.json();
+      if (!res.ok) {
+        throw new Error(payload?.error?.message || 'Failed to load event.');
+      }
+      setEvent(payload?.data || null);
+    } catch (cause) {
+      setEvent(null);
+      setError(cause instanceof Error ? cause.message : 'Failed to load event.');
+    } finally {
+      setLoading(false);
+    }
+  }, [params.id, workspaceId, accessToken, workspaceReady]);
 
   useEffect(() => {
-    if (!params.id) return;
-    fetch(`/api/events/${params.id}`)
-      .then((response) => response.json())
-      .then((data) => {
-        setEvent(data);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
-  }, [params.id]);
+    void loadEvent();
+  }, [loadEvent]);
 
   const sortedSnapshots = useMemo(() => {
     const rows = event?.snapshots || [];
@@ -112,6 +145,14 @@ export default function EventDetailPage() {
   if (!event) {
     return (
       <div className="page-container">
+        {!workspaceReady ? (
+          <div className="card mb-24">
+            <div className="text-sm text-muted">
+              {sessionLoading ? 'Connecting workspace...' : sessionError || 'Workspace session is not ready yet.'}
+            </div>
+          </div>
+        ) : null}
+        {error ? <div className="delta-negative mb-16">{error}</div> : null}
         <EmptyState
           title="Event not found"
           description="The requested event could not be loaded."
@@ -133,6 +174,9 @@ export default function EventDetailPage() {
         badges={[EVENT_TYPE_LABELS[event.eventType] || event.eventType, `Created ${formatDate(event.createdAt)}`]}
         actions={
           <>
+            <button className="btn btn-secondary" onClick={() => void refreshSession()} disabled={sessionLoading}>
+              <RefreshCw size={14} /> {sessionLoading ? 'Connecting...' : 'Reconnect'}
+            </button>
             <button className="btn btn-secondary" onClick={exportCSV}>
               <Download size={14} /> Export CSV
             </button>
@@ -142,6 +186,15 @@ export default function EventDetailPage() {
           </>
         }
       />
+
+      {!workspaceReady ? (
+        <div className="card mb-24">
+          <div className="text-sm text-muted">
+            {sessionLoading ? 'Connecting workspace...' : sessionError || 'Workspace session is not ready yet.'}
+          </div>
+        </div>
+      ) : null}
+      {error ? <div className="delta-negative mb-16">{error}</div> : null}
 
       <div className="grid-3 mb-24">
         <KpiCard label="Snapshots" value={event.snapshots.length} hint="Governor rows in this event" tone="info" />

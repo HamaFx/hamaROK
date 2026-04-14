@@ -12,6 +12,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import type { OcrRuntimeProfile } from '@/lib/ocr/profiles';
+import { useWorkspaceSession } from '@/lib/workspace-session';
 import {
   EmptyState,
   FilterBar,
@@ -134,8 +135,15 @@ function formatFieldConfidence(value?: number) {
 }
 
 export default function ReviewQueuePage() {
-  const [workspaceId, setWorkspaceId] = useState('');
-  const [accessToken, setAccessToken] = useState('');
+  const {
+    workspaceId,
+    accessToken,
+    ready: workspaceReady,
+    loading: sessionLoading,
+    error: sessionError,
+    refreshSession,
+  } = useWorkspaceSession();
+
   const [items, setItems] = useState<QueueItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -152,29 +160,9 @@ export default function ReviewQueuePage() {
     reviewPassRate: number;
   } | null>(null);
 
-  useEffect(() => {
-    const url = new URL(window.location.href);
-    const fromQueryWorkspace = url.searchParams.get('workspaceId') || '';
-    const fromQueryToken = url.searchParams.get('accessToken') || url.searchParams.get('token') || '';
-
-    const savedWorkspace = localStorage.getItem('workspaceId') || '';
-    const savedToken = localStorage.getItem('workspaceToken') || '';
-
-    setWorkspaceId(fromQueryWorkspace || savedWorkspace);
-    setAccessToken(fromQueryToken || savedToken);
-  }, []);
-
-  useEffect(() => {
-    if (workspaceId) localStorage.setItem('workspaceId', workspaceId);
-  }, [workspaceId]);
-
-  useEffect(() => {
-    if (accessToken) localStorage.setItem('workspaceToken', accessToken);
-  }, [accessToken]);
-
   const loadQueue = useCallback(async () => {
-    if (!workspaceId || !accessToken) {
-      setError('Workspace ID and access token are required.');
+    if (!workspaceReady) {
+      setError(sessionLoading ? 'Connecting workspace session...' : 'Workspace session is not ready.');
       return;
     }
 
@@ -243,14 +231,16 @@ export default function ReviewQueuePage() {
     } finally {
       setLoading(false);
     }
-  }, [workspaceId, accessToken, severity, statusFilter]);
+  }, [workspaceId, accessToken, severity, statusFilter, workspaceReady, sessionLoading]);
 
   useEffect(() => {
-    if (workspaceId && accessToken) loadQueue();
-  }, [workspaceId, accessToken, loadQueue]);
+    if (workspaceReady) {
+      void loadQueue();
+    }
+  }, [workspaceReady, loadQueue]);
 
   useEffect(() => {
-    if (!workspaceId || !accessToken) {
+    if (!workspaceReady) {
       setProfiles([]);
       return;
     }
@@ -277,7 +267,7 @@ export default function ReviewQueuePage() {
     return () => {
       cancelled = true;
     };
-  }, [workspaceId, accessToken]);
+  }, [workspaceId, accessToken, workspaceReady]);
 
   const summary = useMemo(() => {
     const high = items.filter((item) => item.severity.level === 'HIGH').length;
@@ -461,11 +451,22 @@ export default function ReviewQueuePage() {
         title="OCR Review Queue"
         subtitle="Review, correct, and approve profile extraction rows."
         actions={
-          <button className="btn btn-secondary" onClick={loadQueue} disabled={loading}>
-            <RefreshCw size={14} /> Refresh
-          </button>
+          <FilterBar>
+            <button className="btn btn-secondary" onClick={loadQueue} disabled={loading || !workspaceReady}>
+              <RefreshCw size={14} /> Refresh
+            </button>
+            <button className="btn btn-secondary" onClick={() => void refreshSession()} disabled={sessionLoading}>
+              {sessionLoading ? 'Connecting...' : 'Reconnect'}
+            </button>
+          </FilterBar>
         }
       />
+
+      {!workspaceReady ? (
+        <div className="card mb-24">
+          <div className="text-sm text-muted">{sessionLoading ? 'Connecting workspace...' : sessionError || 'Workspace session is not ready yet.'}</div>
+        </div>
+      ) : null}
 
       <FilterBar className="mb-24">
         <div className="form-group" style={{ marginBottom: 0, minWidth: 160 }}>

@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { CalendarPlus, Search, Trash2, Upload } from 'lucide-react';
+import { CalendarPlus, RefreshCw, Search, Trash2, Upload } from 'lucide-react';
+import { useWorkspaceSession } from '@/lib/workspace-session';
 import { formatDate, EVENT_TYPE_LABELS } from '@/lib/utils';
 import {
   EmptyState,
@@ -24,6 +25,15 @@ interface EventItem {
 }
 
 export default function EventsPage() {
+  const {
+    workspaceId,
+    accessToken,
+    ready: workspaceReady,
+    loading: sessionLoading,
+    error: sessionError,
+    refreshSession,
+  } = useWorkspaceSession();
+
   const [events, setEvents] = useState<EventItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
@@ -32,46 +42,108 @@ export default function EventsPage() {
   const [newDesc, setNewDesc] = useState('');
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('ALL');
+  const [error, setError] = useState<string | null>(null);
 
-  const fetchEvents = async () => {
+  const fetchEvents = useCallback(async () => {
+    if (!workspaceReady) {
+      setEvents([]);
+      setLoading(false);
+      return;
+    }
+
     try {
-      const res = await fetch('/api/events');
-      const data = await res.json();
-      setEvents(data.events || []);
-    } catch (err) {
-      console.error(err);
+      setLoading(true);
+      setError(null);
+
+      const params = new URLSearchParams({
+        workspaceId,
+        limit: '200',
+      });
+      const res = await fetch(`/api/v2/events?${params.toString()}`, {
+        headers: {
+          'x-access-token': accessToken,
+        },
+      });
+      const payload = await res.json();
+      if (!res.ok) {
+        throw new Error(payload?.error?.message || 'Failed to load events.');
+      }
+
+      setEvents(Array.isArray(payload?.data) ? payload.data : []);
+    } catch (cause) {
+      setEvents([]);
+      setError(cause instanceof Error ? cause.message : 'Failed to load events.');
     } finally {
       setLoading(false);
     }
-  };
+  }, [workspaceId, accessToken, workspaceReady]);
 
   useEffect(() => {
-    fetchEvents();
-  }, []);
+    void fetchEvents();
+  }, [fetchEvents]);
 
   const createEvent = async () => {
     if (!newName.trim()) return;
+    if (!workspaceReady) {
+      setError(sessionLoading ? 'Connecting workspace session...' : 'Workspace session is not ready.');
+      return;
+    }
 
-    await fetch('/api/events', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: newName.trim(),
-        eventType: newType,
-        description: newDesc.trim() || null,
-      }),
-    });
+    try {
+      setError(null);
 
-    setNewName('');
-    setNewDesc('');
-    setShowCreate(false);
-    fetchEvents();
+      const res = await fetch('/api/v2/events', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-access-token': accessToken,
+        },
+        body: JSON.stringify({
+          workspaceId,
+          name: newName.trim(),
+          eventType: newType,
+          description: newDesc.trim() || null,
+        }),
+      });
+      const payload = await res.json();
+      if (!res.ok) {
+        throw new Error(payload?.error?.message || 'Failed to create event.');
+      }
+
+      setNewName('');
+      setNewDesc('');
+      setShowCreate(false);
+      await fetchEvents();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Failed to create event.');
+    }
   };
 
   const deleteEvent = async (id: string) => {
+    if (!workspaceReady) {
+      setError(sessionLoading ? 'Connecting workspace session...' : 'Workspace session is not ready.');
+      return;
+    }
     if (!confirm('Delete this event and all its snapshots?')) return;
-    await fetch(`/api/events/${id}`, { method: 'DELETE' });
-    fetchEvents();
+
+    try {
+      setError(null);
+      const params = new URLSearchParams({ workspaceId });
+      const res = await fetch(`/api/v2/events/${id}?${params.toString()}`, {
+        method: 'DELETE',
+        headers: {
+          'x-access-token': accessToken,
+        },
+      });
+      const payload = await res.json();
+      if (!res.ok) {
+        throw new Error(payload?.error?.message || 'Failed to delete event.');
+      }
+
+      await fetchEvents();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Failed to delete event.');
+    }
   };
 
   const kvkCount = events.filter((event) => event.eventType.includes('KVK')).length;
@@ -104,6 +176,9 @@ export default function EventsPage() {
         subtitle="Manage event checkpoints used by compare, insights, and ranking merge workflows."
         actions={
           <>
+            <button className="btn btn-secondary" onClick={() => void refreshSession()} disabled={sessionLoading}>
+              <RefreshCw size={14} /> {sessionLoading ? 'Connecting...' : 'Reconnect'}
+            </button>
             <Link href="/upload" className="btn btn-secondary">
               <Upload size={14} /> Upload
             </Link>
@@ -113,6 +188,16 @@ export default function EventsPage() {
           </>
         }
       />
+
+      {!workspaceReady ? (
+        <div className="card mb-24">
+          <div className="text-sm text-muted">
+            {sessionLoading ? 'Connecting workspace...' : sessionError || 'Workspace session is not ready yet.'}
+          </div>
+        </div>
+      ) : null}
+
+      {error ? <div className="delta-negative mb-16">{error}</div> : null}
 
       <div className="grid-3 mb-24">
         <KpiCard label="Total Events" value={events.length} hint="Tracked event checkpoints" tone="info" />

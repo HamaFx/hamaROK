@@ -14,6 +14,7 @@ import {
   Square,
   Trash2,
 } from 'lucide-react';
+import { useWorkspaceSession } from '@/lib/workspace-session';
 import { EVENT_TYPE_LABELS } from '@/lib/utils';
 import { FilterBar, KpiCard, PageHero, Panel, StatusPill } from '@/components/ui/primitives';
 
@@ -77,14 +78,6 @@ interface ScanJobResponse {
   processedFiles: number;
 }
 
-interface BootstrapWorkspaceResponse {
-  workspaceId: string;
-  workspaceSlug: string;
-  workspaceName: string;
-  accessToken: string;
-  createdWorkspace: boolean;
-}
-
 function mapTaskStatus(status: TaskRow['status']): QueueRowStatus {
   if (status === 'PROCESSING') return 'processing';
   if (status === 'COMPLETED') return 'completed';
@@ -108,17 +101,21 @@ function statusToneForRow(status: QueueRowStatus): 'good' | 'warn' | 'bad' | 'ne
 
 export default function UploadPage() {
   const router = useRouter();
+  const {
+    workspaceId,
+    workspaceName,
+    accessToken,
+    ready: workspaceReady,
+    loading: sessionLoading,
+    error: sessionError,
+    refreshSession,
+  } = useWorkspaceSession();
+
   const [events, setEvents] = useState<EventOption[]>([]);
   const [selectedEventId, setSelectedEventId] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newEventName, setNewEventName] = useState('');
   const [newEventType, setNewEventType] = useState('CUSTOM');
-
-  const [workspaceId, setWorkspaceId] = useState('');
-  const [workspaceName, setWorkspaceName] = useState('');
-  const [accessToken, setAccessToken] = useState('');
-  const [bootstrapBusy, setBootstrapBusy] = useState(false);
-  const [bootstrapError, setBootstrapError] = useState<string | null>(null);
 
   const [entries, setEntries] = useState<UploadQueueEntry[]>([]);
   const [scanJobId, setScanJobId] = useState<string | null>(null);
@@ -145,70 +142,6 @@ export default function UploadPage() {
     []
   );
 
-  const bootstrapWorkspaceAccess = useCallback(async () => {
-    setBootstrapBusy(true);
-    setBootstrapError(null);
-
-    try {
-      const res = await fetch('/api/v2/workspaces/bootstrap', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      });
-      const payload = await res.json();
-      if (!res.ok || !payload?.data?.workspaceId || !payload?.data?.accessToken) {
-        throw new Error(payload?.error?.message || 'Failed to bootstrap workspace access.');
-      }
-
-      const data = payload.data as BootstrapWorkspaceResponse;
-      setWorkspaceId(data.workspaceId);
-      setWorkspaceName(data.workspaceName || '');
-      setAccessToken(data.accessToken);
-
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('workspaceId', data.workspaceId);
-        localStorage.setItem('workspaceName', data.workspaceName || '');
-        localStorage.setItem('workspaceToken', data.accessToken);
-      }
-    } catch (error) {
-      setBootstrapError(
-        error instanceof Error ? error.message : 'Failed to prepare upload access.'
-      );
-    } finally {
-      setBootstrapBusy(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const storedWorkspaceId = localStorage.getItem('workspaceId') || '';
-    const storedWorkspaceName = localStorage.getItem('workspaceName') || '';
-    const storedToken = localStorage.getItem('workspaceToken') || '';
-
-    if (storedWorkspaceId && storedToken) {
-      setWorkspaceId(storedWorkspaceId);
-      setWorkspaceName(storedWorkspaceName);
-      setAccessToken(storedToken);
-      return;
-    }
-
-    void bootstrapWorkspaceAccess();
-  }, [bootstrapWorkspaceAccess]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    if (workspaceId) localStorage.setItem('workspaceId', workspaceId);
-  }, [workspaceId]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    if (workspaceName) localStorage.setItem('workspaceName', workspaceName);
-  }, [workspaceName]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    if (accessToken) localStorage.setItem('workspaceToken', accessToken);
-  }, [accessToken]);
-
   useEffect(() => {
     if (typeof window === 'undefined' || !workspaceId) return;
     const persistedEvent = localStorage.getItem(getPersistedEventKey(workspaceId)) || '';
@@ -233,7 +166,7 @@ export default function UploadPage() {
   }, [workspaceId, accessToken, getPersistedJobKey]);
 
   const loadEvents = useCallback(async () => {
-    if (!workspaceId || !accessToken) {
+    if (!workspaceReady) {
       setEvents([]);
       return;
     }
@@ -263,14 +196,14 @@ export default function UploadPage() {
     } catch {
       setEvents([]);
     }
-  }, [workspaceId, accessToken, selectedEventId]);
+  }, [workspaceId, accessToken, selectedEventId, workspaceReady]);
 
   useEffect(() => {
     void loadEvents();
   }, [loadEvents]);
 
   const loadAwsOcrControl = useCallback(async () => {
-    if (!workspaceId || !accessToken) {
+    if (!workspaceReady) {
       setAwsOcrControl(null);
       return;
     }
@@ -290,7 +223,7 @@ export default function UploadPage() {
     } catch {
       setAwsOcrControl(null);
     }
-  }, [workspaceId, accessToken]);
+  }, [workspaceId, accessToken, workspaceReady]);
 
   useEffect(() => {
     loadAwsOcrControl();
@@ -403,7 +336,7 @@ export default function UploadPage() {
 
   const triggerAwsOcrControl = useCallback(
     async (action: 'START' | 'STOP', source: 'manual' | 'auto' = 'manual', force = false) => {
-      if (!workspaceId || !accessToken) return;
+      if (!workspaceReady) return;
       setAwsControlBusy(action);
       if (source === 'manual') setAwsControlMessage(null);
 
@@ -439,7 +372,7 @@ export default function UploadPage() {
         setAwsControlBusy(null);
       }
     },
-    [workspaceId, accessToken]
+    [workspaceId, accessToken, workspaceReady]
   );
 
   const createScanJob = useCallback(async (totalFiles: number) => {
@@ -521,11 +454,11 @@ export default function UploadPage() {
     const imageFiles = files.filter((f) => f.type.startsWith('image/'));
     if (imageFiles.length === 0) return;
 
-    if (!workspaceId || !accessToken) {
-      if (!bootstrapBusy) {
-        void bootstrapWorkspaceAccess();
+    if (!workspaceReady) {
+      if (!sessionLoading) {
+        void refreshSession();
       }
-      setSubmitMessage({ type: 'error', text: 'Preparing workspace access. Please try again in a moment.' });
+      setSubmitMessage({ type: 'error', text: 'Connecting workspace. Try upload again in a moment.' });
       return;
     }
 
@@ -615,9 +548,9 @@ export default function UploadPage() {
     }
   }, [
     workspaceId,
-    accessToken,
-    bootstrapBusy,
-    bootstrapWorkspaceAccess,
+    workspaceReady,
+    sessionLoading,
+    refreshSession,
     selectedEventId,
     createScanJob,
     uploadScreenshotArtifact,
@@ -644,8 +577,8 @@ export default function UploadPage() {
 
   const createEvent = async () => {
     if (!newEventName.trim()) return;
-    if (!workspaceId || !accessToken) {
-      setSubmitMessage({ type: 'error', text: 'Workspace access is not ready yet.' });
+    if (!workspaceReady) {
+      setSubmitMessage({ type: 'error', text: 'Workspace is still connecting.' });
       return;
     }
 
@@ -691,9 +624,10 @@ export default function UploadPage() {
   const completedCount = entries.filter((entry) => entry.status === 'completed').length;
   const failedCount = entries.filter((entry) => entry.status === 'failed').length;
 
-  const queueDepth = awsOcrControl?.queueStats
-    ? awsOcrControl.queueStats.pending + awsOcrControl.queueStats.inFlight + awsOcrControl.queueStats.delayed
-    : null;
+  const workerState = (awsOcrControl?.instanceState || '').toLowerCase();
+  const workerRunning = workerState === 'running' || workerState === 'pending';
+  const workerLabel = !awsOcrControl?.enabled ? 'Disabled' : workerRunning ? 'Online' : 'Standby';
+  const workerTone = !awsOcrControl?.enabled ? 'neutral' : workerRunning ? 'good' : 'warn';
 
   const completedProfileRows = entries.filter(
     (entry) =>
@@ -714,11 +648,11 @@ export default function UploadPage() {
     <div className="page-container">
       <PageHero
         title="Upload Queue"
-        subtitle="Queue-first OCR ingestion. Files upload instantly and process on the EC2 worker without freezing the browser."
+        subtitle="Queue-first OCR ingestion. Files upload instantly and process in the background without freezing your browser."
         actions={
           <FilterBar>
-            <button className="btn btn-secondary btn-sm" onClick={loadAwsOcrControl}>
-              <RefreshCw size={14} /> Refresh Infra
+            <button className="btn btn-secondary btn-sm" onClick={() => void refreshSession()} disabled={sessionLoading}>
+              <RefreshCw size={14} /> {sessionLoading ? 'Connecting...' : 'Reconnect'}
             </button>
           </FilterBar>
         }
@@ -731,27 +665,14 @@ export default function UploadPage() {
         <KpiCard label="Failed" value={failedCount} hint="Needs retry" tone={failedCount > 0 ? 'bad' : 'neutral'} />
       </div>
 
-      <Panel title="Workspace" className="mb-24">
-        <div className="flex items-center justify-between gap-12">
-          <div className="text-sm text-muted">
-            {bootstrapBusy
-              ? 'Preparing single-kingdom workspace access...'
-              : workspaceId
-                ? `Connected to ${workspaceName || 'your kingdom workspace'}.`
-                : 'Workspace access not ready yet.'}
-            {bootstrapError ? ` ${bootstrapError}` : ''}
-          </div>
-          <button
-            className="btn btn-secondary btn-sm"
-            onClick={() => void bootstrapWorkspaceAccess()}
-            disabled={bootstrapBusy}
-          >
-            <RefreshCw size={14} /> {bootstrapBusy ? 'Connecting...' : 'Reconnect'}
-          </button>
+      <Panel title="Event + Worker" className="mb-24">
+        <div className="text-sm text-muted mb-12">
+          {workspaceReady
+            ? `Connected to ${workspaceName || 'your kingdom workspace'}.`
+            : sessionLoading
+              ? 'Connecting workspace...'
+              : sessionError || 'Workspace session is not ready yet.'}
         </div>
-      </Panel>
-
-      <Panel title="Event + Worker Control" className="mb-24">
         <div className="grid-2" style={{ gap: 12 }}>
           <div>
             <div className="form-group" style={{ marginBottom: 0 }}>
@@ -778,31 +699,16 @@ export default function UploadPage() {
             <div className="flex items-center gap-8" style={{ marginBottom: 8 }}>
               <ShieldCheck size={14} />
               <strong>AWS OCR Worker</strong>
-              <StatusPill
-                label={awsOcrControl?.enabled ? 'Enabled' : 'Disabled'}
-                tone={awsOcrControl?.enabled ? 'good' : 'neutral'}
-              />
+              <StatusPill label={workerLabel} tone={workerTone} />
             </div>
-            <div className="text-sm text-muted">
-              Mode: <strong>{awsOcrControl?.uploadMode || 'queue_first'}</strong>
-            </div>
-            <div className="text-sm text-muted">
-              Queue: {queueDepth != null ? queueDepth : '—'}
-              {awsOcrControl?.queueStats
-                ? ` (pending ${awsOcrControl.queueStats.pending}, in-flight ${awsOcrControl.queueStats.inFlight})`
-                : ''}
-            </div>
-            <div className="text-sm text-muted">
-              EC2: {awsOcrControl?.instanceState || 'unknown'}
-              {awsOcrControl?.instanceId ? ` • ${awsOcrControl.instanceId}` : ''}
-            </div>
+            <div className="text-sm text-muted">Use manual start only when you want OCR warm before uploading.</div>
             <FilterBar className="mt-12" style={{ gap: 8 }}>
               <button
                 className="btn btn-primary btn-sm"
                 onClick={() => triggerAwsOcrControl('START', 'manual', true)}
                 disabled={!awsOcrControl?.enabled || awsControlBusy === 'START'}
               >
-                <Play size={14} /> {awsControlBusy === 'START' ? 'Starting...' : 'Force Start'}
+                <Play size={14} /> {awsControlBusy === 'START' ? 'Starting...' : 'Start Worker'}
               </button>
               <button
                 className="btn btn-secondary btn-sm"
@@ -911,8 +817,6 @@ export default function UploadPage() {
                   <th>File</th>
                   <th>Status</th>
                   <th>Size</th>
-                  <th>Task</th>
-                  <th>Hint</th>
                   <th>Updated</th>
                 </tr>
               </thead>
@@ -927,8 +831,6 @@ export default function UploadPage() {
                       <StatusPill label={entry.status.toUpperCase()} tone={statusToneForRow(entry.status)} />
                     </td>
                     <td>{formatBytes(entry.sizeBytes)}</td>
-                    <td>{entry.taskId || '—'}</td>
-                    <td>{entry.archetypeHint || 'auto'}</td>
                     <td>{new Date(entry.updatedAt).toLocaleTimeString()}</td>
                   </tr>
                 ))}
