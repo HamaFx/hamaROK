@@ -142,9 +142,9 @@ export default function AppShell({ children }: { children: ReactNode }) {
       <aside className="app-sidebar" aria-label="Primary">
         <div className="app-brand-wrap">
           <Link href="/" className="app-brand">
-            <Image src="/hana-logo.svg" alt="Hana logo" className="app-brand-logo" width={176} height={44} priority />
+            <Image src="/hama-logo.svg" alt="Hama logo" className="app-brand-logo" width={176} height={44} priority />
           </Link>
-          <span className="app-badge">HANA OPS</span>
+          <span className="app-badge">HAMA OPS</span>
         </div>
 
         <div className="app-sidebar-scroll">
@@ -157,12 +157,12 @@ export default function AppShell({ children }: { children: ReactNode }) {
       <div className="app-main">
         <header className="app-topbar">
           <div className="app-topbar-main">
-            <Link href="/" className="app-header-brand">
-              <Image src="/hana-logo.svg" alt="Hana logo" className="app-header-logo" width={176} height={44} priority />
-            </Link>
-            <div className="app-topbar-heading">
-              <strong>{activeNav.label}</strong>
-              <span>{groupLabel(activeNav.group)}</span>
+            <div className="app-topbar-title">
+              <span className="app-topbar-product">Hama Command Center</span>
+              <div className="app-topbar-heading">
+                <strong>{activeNav.label}</strong>
+                <span>{groupLabel(activeNav.group)}</span>
+              </div>
             </div>
           </div>
           <div className="app-topbar-context">
@@ -172,6 +172,10 @@ export default function AppShell({ children }: { children: ReactNode }) {
                 <span className="label">Workspace</span>
                 <span className="value">{workspaceLabel}</span>
               </span>
+            </Link>
+            <Link href="/settings" className="app-context-chip app-settings-chip">
+              <Cog size={14} />
+              <span className="value">Settings</span>
             </Link>
           </div>
         </header>

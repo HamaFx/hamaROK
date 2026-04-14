@@ -233,55 +233,59 @@ h6 {
   position: sticky;
   top: 0;
   z-index: 50;
-  min-height: 64px;
+  min-height: 62px;
   border-bottom: 1px solid var(--line-soft);
   background: rgba(11, 15, 25, 0.85);
   backdrop-filter: blur(18px);
   display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 8px;
-  padding: 10px 14px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 14px;
 }
 
 .app-topbar-main {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.app-header-brand {
-  display: inline-flex;
-  align-items: center;
   min-width: 0;
+  flex: 1;
 }
 
-.app-header-logo {
-  height: 34px;
-  width: auto;
-  display: block;
+.app-topbar-title {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 2px;
+}
+
+.app-topbar-product {
+  color: var(--text-3);
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
 }
 
 .app-topbar-heading {
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  justify-content: center;
-  gap: 2px;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
 }
 
 .app-topbar-heading strong {
-  font-size: 0.95rem;
+  font-size: 1rem;
   letter-spacing: 0.02em;
+  white-space: nowrap;
 }
 
 .app-topbar-heading span {
   color: var(--text-3);
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   font-weight: 700;
+  white-space: nowrap;
 }
 
 .app-topbar-context,
@@ -292,7 +296,7 @@ h6 {
 }
 
 .app-topbar-context {
-  justify-content: space-between;
+  justify-content: flex-end;
 }
 
 .app-context-chip {
@@ -358,6 +362,14 @@ h6 {
   flex-direction: column;
   gap: 2px;
   min-width: 0;
+}
+
+.app-settings-chip {
+  padding: 6px 10px;
+}
+
+.app-settings-chip .value {
+  max-width: none;
 }
 
 .icon-btn {
@@ -1586,8 +1598,7 @@ h6 {
   }
 
   .app-topbar {
-    min-height: 64px;
-    flex-direction: row;
+    min-height: 62px;
     align-items: center;
     justify-content: space-between;
     padding: 0 20px;
@@ -1596,7 +1607,7 @@ h6 {
 
   .app-topbar-context {
     justify-content: flex-end;
-    flex: 1;
+    flex: 0 0 auto;
   }
 
   .app-context-chip .value {
@@ -1625,6 +1636,24 @@ h6 {
 }
 
 @media (max-width: 960px) {
+  .app-topbar {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+
+  .app-topbar-main {
+    flex: 1 1 100%;
+  }
+
+  .app-topbar-context {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .app-settings-chip {
+    display: none;
+  }
+
   .app-context-chip.muted {
     display: none;
   }
