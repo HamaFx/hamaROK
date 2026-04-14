@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   Camera,
   CheckCircle2,
@@ -34,6 +35,7 @@ interface UploadQueueEntry {
   updatedAt: string;
   error?: string;
   archetypeHint?: string;
+  metadata?: Record<string, unknown>;
 }
 
 interface TaskRow {
@@ -105,6 +107,7 @@ function statusToneForRow(status: QueueRowStatus): 'good' | 'warn' | 'bad' | 'ne
 }
 
 export default function UploadPage() {
+  const router = useRouter();
   const [events, setEvents] = useState<EventOption[]>([]);
   const [selectedEventId, setSelectedEventId] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -131,6 +134,16 @@ export default function UploadPage() {
   const [awsControlMessage, setAwsControlMessage] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const completionNotifiedRef = useRef<string | null>(null);
+
+  const getPersistedJobKey = useCallback(
+    (id: string) => `upload:activeScanJob:${id}`,
+    []
+  );
+  const getPersistedEventKey = useCallback(
+    (id: string) => `upload:selectedEvent:${id}`,
+    []
+  );
 
   const bootstrapWorkspaceAccess = useCallback(async () => {
     setBootstrapBusy(true);
@@ -195,6 +208,29 @@ export default function UploadPage() {
     if (typeof window === 'undefined') return;
     if (accessToken) localStorage.setItem('workspaceToken', accessToken);
   }, [accessToken]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !workspaceId) return;
+    const persistedEvent = localStorage.getItem(getPersistedEventKey(workspaceId)) || '';
+    if (persistedEvent) {
+      setSelectedEventId(persistedEvent);
+    }
+  }, [workspaceId, getPersistedEventKey]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !workspaceId) return;
+    if (selectedEventId) {
+      localStorage.setItem(getPersistedEventKey(workspaceId), selectedEventId);
+    }
+  }, [workspaceId, selectedEventId, getPersistedEventKey]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !workspaceId || !accessToken) return;
+    const persistedJobId = localStorage.getItem(getPersistedJobKey(workspaceId)) || '';
+    if (persistedJobId) {
+      setScanJobId((prev) => prev || persistedJobId);
+    }
+  }, [workspaceId, accessToken, getPersistedJobKey]);
 
   const loadEvents = useCallback(async () => {
     if (!workspaceId || !accessToken) {
@@ -264,6 +300,7 @@ export default function UploadPage() {
     if (!scanJobId || !workspaceId || !accessToken) return;
 
     let cancelled = false;
+    completionNotifiedRef.current = null;
 
     const loadTasks = async () => {
       try {
@@ -271,34 +308,82 @@ export default function UploadPage() {
           headers: { 'x-access-token': accessToken },
         });
         const payload = await res.json();
-        if (!res.ok || cancelled) return;
+        if (!res.ok || cancelled) {
+          if (res.status === 404 || res.status === 403) {
+            setScanJobId(null);
+            setScanJobState(null);
+            setEntries([]);
+            if (typeof window !== 'undefined') {
+              localStorage.removeItem(getPersistedJobKey(workspaceId));
+            }
+          }
+          return;
+        }
 
         const rows = (Array.isArray(payload?.data) ? payload.data : []) as TaskRow[];
-        const rowsByTaskId = new Map(rows.map((row) => [row.id, row]));
+        const fromTasks: UploadQueueEntry[] = rows.map((task) => {
+          const fileName =
+            (task.artifact?.metadata &&
+            typeof task.artifact.metadata === 'object' &&
+            !Array.isArray(task.artifact.metadata) &&
+            typeof (task.artifact.metadata as Record<string, unknown>).fileName === 'string'
+              ? String((task.artifact.metadata as Record<string, unknown>).fileName)
+              : null) || `artifact-${task.artifactId.slice(0, 8)}`;
 
-        setEntries((prev) =>
-          prev.map((entry) => {
-            if (!entry.taskId) return entry;
-            const task = rowsByTaskId.get(entry.taskId);
-            if (!task) return entry;
-            return {
-              ...entry,
-              status: mapTaskStatus(task.status),
-              updatedAt: task.updatedAt,
-              error: task.lastError || undefined,
-              archetypeHint: task.archetypeHint || undefined,
-            };
-          })
-        );
+          return {
+            id: task.id,
+            fileName,
+            status: mapTaskStatus(task.status),
+            sizeBytes: 0,
+            taskId: task.id,
+            artifactId: task.artifactId,
+            updatedAt: task.updatedAt,
+            error: task.lastError || undefined,
+            archetypeHint: task.archetypeHint || undefined,
+            metadata: task.metadata || undefined,
+          };
+        });
+
+        setEntries((prev) => {
+          const uploading = prev.filter((entry) => entry.status === 'uploading' && !entry.taskId);
+          return [...uploading, ...fromTasks];
+        });
 
         const completed = rows.filter((row) => row.status === 'COMPLETED').length;
         const failed = rows.filter((row) => row.status === 'FAILED').length;
+        const nextStatus =
+          completed + failed >= rows.length && rows.length > 0
+            ? failed > 0
+              ? 'FAILED'
+              : 'REVIEW'
+            : 'PROCESSING';
+
         setScanJobState(() => ({
           id: scanJobId,
-          status: completed + failed >= rows.length && rows.length > 0 ? (failed > 0 ? 'FAILED' : 'REVIEW') : 'PROCESSING',
+          status: nextStatus,
           totalFiles: rows.length,
           processedFiles: completed + failed,
         }));
+
+        if (typeof window !== 'undefined') {
+          localStorage.setItem(getPersistedJobKey(workspaceId), scanJobId);
+        }
+
+        const isTerminal = nextStatus === 'REVIEW' || nextStatus === 'FAILED';
+        if (isTerminal && completionNotifiedRef.current !== scanJobId) {
+          completionNotifiedRef.current = scanJobId;
+          if (nextStatus === 'REVIEW') {
+            setSubmitMessage({
+              type: 'success',
+              text: `Processing finished. ${completed} screenshot(s) are ready for review.`,
+            });
+          } else {
+            setSubmitMessage({
+              type: 'error',
+              text: `Processing finished with failures (${failed}/${rows.length}). Review or retry failed rows.`,
+            });
+          }
+        }
       } catch {
         // Keep last known state; UI still shows local row progress.
       }
@@ -314,7 +399,7 @@ export default function UploadPage() {
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, [scanJobId, workspaceId, accessToken, loadAwsOcrControl]);
+  }, [scanJobId, workspaceId, accessToken, loadAwsOcrControl, getPersistedJobKey]);
 
   const triggerAwsOcrControl = useCallback(
     async (action: 'START' | 'STOP', source: 'manual' | 'auto' = 'manual', force = false) => {
@@ -456,6 +541,9 @@ export default function UploadPage() {
       const job = await createScanJob(imageFiles.length);
       setScanJobId(job.id);
       setScanJobState(job);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(getPersistedJobKey(workspaceId), job.id);
+      }
 
       const newRows: UploadQueueEntry[] = imageFiles.map((file, index) => ({
         id: `${Date.now()}-${index}`,
@@ -537,6 +625,7 @@ export default function UploadPage() {
     awsOcrControl?.enabled,
     awsOcrControl?.startLambdaConfigured,
     triggerAwsOcrControl,
+    getPersistedJobKey,
   ]);
 
   const onDragOver = (e: React.DragEvent) => {
@@ -590,6 +679,11 @@ export default function UploadPage() {
   const clearRows = () => {
     setEntries([]);
     setSubmitMessage(null);
+    setScanJobId(null);
+    setScanJobState(null);
+    if (typeof window !== 'undefined' && workspaceId) {
+      localStorage.removeItem(getPersistedJobKey(workspaceId));
+    }
   };
 
   const queuedCount = entries.filter((entry) => entry.status === 'queued').length;
@@ -600,6 +694,21 @@ export default function UploadPage() {
   const queueDepth = awsOcrControl?.queueStats
     ? awsOcrControl.queueStats.pending + awsOcrControl.queueStats.inFlight + awsOcrControl.queueStats.delayed
     : null;
+
+  const completedProfileRows = entries.filter(
+    (entry) =>
+      entry.status === 'completed' &&
+      entry.metadata &&
+      String((entry.metadata as Record<string, unknown>).ingestionDomain || '') ===
+        'PROFILE_SNAPSHOT'
+  ).length;
+  const completedRankingRows = entries.filter(
+    (entry) =>
+      entry.status === 'completed' &&
+      entry.metadata &&
+      String((entry.metadata as Record<string, unknown>).ingestionDomain || '') ===
+        'RANKING_CAPTURE'
+  ).length;
 
   return (
     <div className="page-container">
@@ -750,6 +859,33 @@ export default function UploadPage() {
         >
           <div className="text-sm text-muted">
             Status: <strong>{scanJobState?.status || 'PROCESSING'}</strong>
+          </div>
+        </Panel>
+      ) : null}
+
+      {scanJobState && (scanJobState.status === 'REVIEW' || scanJobState.status === 'FAILED') ? (
+        <Panel
+          title="Processing Finished"
+          subtitle={
+            scanJobState.status === 'REVIEW'
+              ? 'OCR processing is complete. Continue to review queues.'
+              : 'Some rows failed. Review completed rows and retry failed screenshots if needed.'
+          }
+          className="mb-24"
+          actions={
+            <FilterBar>
+              <button className="btn btn-secondary btn-sm" onClick={() => router.push('/review')}>
+                OCR Review ({completedProfileRows})
+              </button>
+              <button className="btn btn-secondary btn-sm" onClick={() => router.push('/rankings/review')}>
+                Ranking Review ({completedRankingRows})
+              </button>
+            </FilterBar>
+          }
+        >
+          <div className="text-sm text-muted">
+            Completed: {entries.filter((entry) => entry.status === 'completed').length} • Failed:{' '}
+            {entries.filter((entry) => entry.status === 'failed').length}
           </div>
         </Panel>
       ) : null}
