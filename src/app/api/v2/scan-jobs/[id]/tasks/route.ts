@@ -4,6 +4,8 @@ import { fail, handleApiError, ok } from '@/lib/api-response';
 import { parsePagination } from '@/lib/v2';
 import { prisma } from '@/lib/prisma';
 import { authorizeWorkspaceAccess } from '@/lib/workspace-auth';
+import { makeServerCacheKey, withServerCache } from '@/lib/server-cache';
+import { scanJobCacheTag, workspaceCacheTags } from '@/lib/cache-scopes';
 
 function parseStatuses(value: string | null): IngestionTaskStatus[] {
   if (!value) return [];
@@ -54,61 +56,78 @@ export async function GET(
       ...(statusFilter.length > 0 ? { status: { in: statusFilter } } : {}),
     };
 
-    const [rows, total, summaryRows] = await Promise.all([
-      prisma.ingestionTask.findMany({
-        where,
-        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
-        take: limit,
-        skip: offset,
-        include: {
-          artifact: {
-            select: {
-              id: true,
-              type: true,
-              url: true,
-              metadata: true,
-            },
-          },
-        },
-      }),
-      prisma.ingestionTask.count({ where }),
-      prisma.ingestionTask.groupBy({
-        by: ['status'],
-        where: { scanJobId },
-        _count: { _all: true },
-      }),
-    ]);
-
-    const summary: Record<string, number> = {};
-    for (const row of summaryRows) {
-      summary[row.status] = row._count._all;
-    }
-
-    return ok(
-      rows.map((task) => ({
-        id: task.id,
-        workspaceId: task.workspaceId,
-        scanJobId: task.scanJobId,
-        artifactId: task.artifactId,
-        eventId: task.eventId,
-        status: task.status,
-        archetypeHint: task.archetypeHint,
-        attemptCount: task.attemptCount,
-        lastError: task.lastError,
-        startedAt: task.startedAt?.toISOString() || null,
-        completedAt: task.completedAt?.toISOString() || null,
-        createdAt: task.createdAt.toISOString(),
-        updatedAt: task.updatedAt.toISOString(),
-        metadata: task.metadata,
-        artifact: task.artifact,
-      })),
-      {
-        total,
+    const tags = workspaceCacheTags(scanJob.workspaceId);
+    const cached = await withServerCache(
+      makeServerCacheKey('api:v2:scan-job:tasks', {
+        scanJobId,
+        statusFilter: [...statusFilter].sort(),
         limit,
         offset,
-        summary,
+      }),
+      {
+        ttlMs: 2_000,
+        tags: [tags.all, tags.scanJobs, scanJobCacheTag(scanJobId)],
+      },
+      async () => {
+        const [rows, total, summaryRows] = await Promise.all([
+          prisma.ingestionTask.findMany({
+            where,
+            orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+            take: limit,
+            skip: offset,
+            include: {
+              artifact: {
+                select: {
+                  id: true,
+                  type: true,
+                  url: true,
+                  metadata: true,
+                },
+              },
+            },
+          }),
+          prisma.ingestionTask.count({ where }),
+          prisma.ingestionTask.groupBy({
+            by: ['status'],
+            where: { scanJobId },
+            _count: { _all: true },
+          }),
+        ]);
+
+        const summary: Record<string, number> = {};
+        for (const row of summaryRows) {
+          summary[row.status] = row._count._all;
+        }
+
+        return {
+          rows: rows.map((task) => ({
+            id: task.id,
+            workspaceId: task.workspaceId,
+            scanJobId: task.scanJobId,
+            artifactId: task.artifactId,
+            eventId: task.eventId,
+            status: task.status,
+            archetypeHint: task.archetypeHint,
+            attemptCount: task.attemptCount,
+            lastError: task.lastError,
+            startedAt: task.startedAt?.toISOString() || null,
+            completedAt: task.completedAt?.toISOString() || null,
+            createdAt: task.createdAt.toISOString(),
+            updatedAt: task.updatedAt.toISOString(),
+            metadata: task.metadata,
+            artifact: task.artifact,
+          })),
+          meta: {
+            total,
+            limit,
+            offset,
+            summary,
+          },
+        };
       }
     );
+
+    return ok(cached.rows, cached.meta);
   } catch (error) {
     if (error instanceof Error && error.message.startsWith('Invalid ingestion task status')) {
       return fail('VALIDATION_ERROR', error.message, 400);

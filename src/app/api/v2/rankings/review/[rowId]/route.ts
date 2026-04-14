@@ -4,6 +4,8 @@ import { z } from 'zod';
 import { fail, handleApiError, ok, readJson } from '@/lib/api-response';
 import { authorizeWorkspaceAccess } from '@/lib/workspace-auth';
 import { applyRankingReviewAction } from '@/lib/rankings/service';
+import { invalidateServerCacheTags } from '@/lib/server-cache';
+import { rankingRunCacheTag, workspaceCacheTags } from '@/lib/cache-scopes';
 
 const correctionSchema = z.object({
   sourceRank: z.number().int().min(1).max(5000).optional().nullable(),
@@ -52,6 +54,11 @@ export async function PATCH(
       aliasRaw: body.aliasRaw,
       corrected: body.corrected,
     });
+
+    invalidateServerCacheTags([
+      ...Object.values(workspaceCacheTags(body.workspaceId)),
+      rankingRunCacheTag(result.run.id),
+    ]);
 
     return ok(result);
   } catch (error) {

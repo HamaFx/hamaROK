@@ -8,6 +8,8 @@ import { authorizeWorkspaceAccess } from '@/lib/workspace-auth';
 import { withIdempotency } from '@/lib/idempotency';
 import { isAdbCaptureRndEnabled } from '@/lib/env';
 import { dispatchOcrWork } from '@/lib/aws/ocr-dispatch';
+import { makeServerCacheKey, withServerCache, invalidateServerCacheTags } from '@/lib/server-cache';
+import { workspaceCacheTags } from '@/lib/cache-scopes';
 
 const createScanJobSchema = z.object({
   workspaceId: z.string().min(1),
@@ -47,38 +49,55 @@ export async function GET(request: NextRequest) {
       ...(status ? { status } : {}),
     };
 
-    const [jobs, total] = await Promise.all([
-      prisma.scanJob.findMany({
-        where,
-        orderBy: { createdAt: 'desc' },
-        take: limit,
-        skip: offset,
-        include: {
-          _count: { select: { ocrExtractions: true, artifacts: true } },
-        },
+    const tags = workspaceCacheTags(workspaceId);
+    const cached = await withServerCache(
+      makeServerCacheKey('api:v2:scan-jobs', {
+        workspaceId,
+        status,
+        limit,
+        offset,
       }),
-      prisma.scanJob.count({ where }),
-    ]);
+      {
+        ttlMs: 4_000,
+        tags: [tags.all, tags.scanJobs],
+      },
+      async () => {
+        const [jobs, total] = await Promise.all([
+          prisma.scanJob.findMany({
+            where,
+            orderBy: { createdAt: 'desc' },
+            take: limit,
+            skip: offset,
+            include: {
+              _count: { select: { ocrExtractions: true, artifacts: true } },
+            },
+          }),
+          prisma.scanJob.count({ where }),
+        ]);
 
-    return ok(
-      jobs.map((job) => ({
-        id: job.id,
-        workspaceId: job.workspaceId,
-        eventId: job.eventId,
-        status: job.status,
-        source: job.source,
-        totalFiles: job.totalFiles,
-        processedFiles: job.processedFiles,
-        lowConfidenceFiles: job.lowConfidenceFiles,
-        notes: job.notes,
-        error: job.error,
-        createdAt: job.createdAt.toISOString(),
-        startedAt: job.startedAt?.toISOString() ?? null,
-        completedAt: job.completedAt?.toISOString() ?? null,
-        counts: job._count,
-      })),
-      { total, limit, offset }
+        return {
+          rows: jobs.map((job) => ({
+            id: job.id,
+            workspaceId: job.workspaceId,
+            eventId: job.eventId,
+            status: job.status,
+            source: job.source,
+            totalFiles: job.totalFiles,
+            processedFiles: job.processedFiles,
+            lowConfidenceFiles: job.lowConfidenceFiles,
+            notes: job.notes,
+            error: job.error,
+            createdAt: job.createdAt.toISOString(),
+            startedAt: job.startedAt?.toISOString() ?? null,
+            completedAt: job.completedAt?.toISOString() ?? null,
+            counts: job._count,
+          })),
+          meta: { total, limit, offset },
+        };
+      }
     );
+
+    return ok(cached.rows, cached.meta);
   } catch (error) {
     return handleApiError(error);
   }
@@ -148,6 +167,10 @@ export async function POST(request: NextRequest) {
         },
       });
     }
+
+    invalidateServerCacheTags([
+      ...Object.values(workspaceCacheTags(body.workspaceId)),
+    ]);
 
     return ok(
       idempotent.value,

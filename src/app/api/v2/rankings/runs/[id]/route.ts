@@ -3,6 +3,8 @@ import { WorkspaceRole } from '@prisma/client';
 import { fail, handleApiError, ok } from '@/lib/api-response';
 import { authorizeWorkspaceAccess } from '@/lib/workspace-auth';
 import { getRankingRunById } from '@/lib/rankings/service';
+import { makeServerCacheKey, withServerCache } from '@/lib/server-cache';
+import { rankingRunCacheTag, workspaceCacheTags } from '@/lib/cache-scopes';
 
 export async function GET(
   request: NextRequest,
@@ -20,10 +22,22 @@ export async function GET(
       return fail(auth.code, auth.message, auth.code === 'UNAUTHORIZED' ? 401 : 403);
     }
 
-    const run = await getRankingRunById({
-      workspaceId,
-      runId: id,
-    });
+    const tags = workspaceCacheTags(workspaceId);
+    const run = await withServerCache(
+      makeServerCacheKey('api:v2:rankings:run', {
+        workspaceId,
+        runId: id,
+      }),
+      {
+        ttlMs: 8_000,
+        tags: [tags.all, tags.rankings, tags.rankingRuns, rankingRunCacheTag(id)],
+      },
+      () =>
+        getRankingRunById({
+          workspaceId,
+          runId: id,
+        })
+    );
 
     return ok(run);
   } catch (error) {

@@ -32,6 +32,8 @@ import {
   normalizeMetricKey,
   normalizeRankingType,
 } from '@/lib/rankings/normalize';
+import { invalidateServerCacheTags } from '@/lib/server-cache';
+import { scanJobCacheTag, workspaceCacheTags } from '@/lib/cache-scopes';
 
 const PROFILE_POWER_RANKING_TYPE = normalizeRankingType('governor_profile_power');
 const PROFILE_POWER_METRIC_KEY = normalizeMetricKey('power');
@@ -632,6 +634,11 @@ export async function PATCH(
         correctionCount: correctionEntries.length,
       };
     });
+
+    invalidateServerCacheTags([
+      ...Object.values(workspaceCacheTags(extraction.scanJob.workspaceId)),
+      scanJobCacheTag(extraction.scanJobId),
+    ]);
 
     return ok({
       id: result.extraction.id,

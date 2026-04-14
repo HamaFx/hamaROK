@@ -25,6 +25,12 @@ import {
   type RankingRowInput,
 } from '@/lib/rankings/service';
 import { dispatchOcrWork } from '@/lib/aws/ocr-dispatch';
+import {
+  invalidateServerCacheTags,
+  makeServerCacheKey,
+  withServerCache,
+} from '@/lib/server-cache';
+import { workspaceCacheTags } from '@/lib/cache-scopes';
 
 const rowSchema = z.object({
   sourceRank: z.number().int().min(1).max(5000).optional().nullable(),
@@ -77,14 +83,30 @@ export async function GET(request: NextRequest) {
       return fail(auth.code, auth.message, auth.code === 'UNAUTHORIZED' ? 401 : 403);
     }
 
-    const runs = await listRankingRuns({
-      workspaceId,
-      eventId,
-      rankingType,
-      status,
-      limit,
-      offset,
-    });
+    const tags = workspaceCacheTags(workspaceId);
+    const runs = await withServerCache(
+      makeServerCacheKey('api:v2:rankings:runs', {
+        workspaceId,
+        eventId,
+        rankingType,
+        status,
+        limit,
+        offset,
+      }),
+      {
+        ttlMs: 8_000,
+        tags: [tags.all, tags.rankings, tags.rankingRuns],
+      },
+      () =>
+        listRankingRuns({
+          workspaceId,
+          eventId,
+          rankingType,
+          status,
+          limit,
+          offset,
+        })
+    );
 
     return ok(runs.rows, {
       total: runs.total,
@@ -155,6 +177,10 @@ export async function POST(request: NextRequest) {
         },
       });
     }
+
+    invalidateServerCacheTags([
+      ...Object.values(workspaceCacheTags(body.workspaceId)),
+    ]);
 
     return ok(
       created,

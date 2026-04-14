@@ -8,6 +8,12 @@ import {
   invokeAwsOcrControlAction,
 } from '@/lib/aws/ocr-control';
 import { getUploadMode } from '@/lib/env';
+import {
+  invalidateServerCacheTags,
+  makeServerCacheKey,
+  withServerCache,
+} from '@/lib/server-cache';
+import { workspaceCacheTags } from '@/lib/cache-scopes';
 
 const controlSchema = z.object({
   workspaceId: z.string().min(1),
@@ -28,7 +34,15 @@ export async function GET(request: NextRequest) {
       return fail(auth.code, auth.message, auth.code === 'UNAUTHORIZED' ? 401 : 403);
     }
 
-    const status = await getAwsOcrControlStatus();
+    const tags = workspaceCacheTags(workspaceId);
+    const status = await withServerCache(
+      makeServerCacheKey('api:v2:infra:aws-ocr', { workspaceId }),
+      {
+        ttlMs: 3_000,
+        tags: [tags.all, tags.awsOcr],
+      },
+      getAwsOcrControlStatus
+    );
     return ok({
       ...status,
       uploadMode: getUploadMode(),
@@ -52,6 +66,9 @@ export async function POST(request: NextRequest) {
         force: body.force,
         source: 'manual',
       });
+      invalidateServerCacheTags([
+        ...Object.values(workspaceCacheTags(body.workspaceId)),
+      ]);
       const status = await getAwsOcrControlStatus();
       return ok({
         action: body.action,

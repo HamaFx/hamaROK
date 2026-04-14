@@ -5,12 +5,14 @@ import { fail, handleApiError, ok } from '@/lib/api-response';
 import {
   getTaskWithRelations,
   mergeJson,
-  syncScanJobProgress,
+  syncScanJobProgressWithOptions,
   toIngestionTaskResponse,
 } from '@/lib/ingestion-service';
 import { nextFailureStatus, MAX_INGESTION_ATTEMPTS } from '@/lib/ingestion-task';
 import { assertValidServiceRequest } from '@/lib/service-auth';
 import { prisma } from '@/lib/prisma';
+import { invalidateServerCacheTags } from '@/lib/server-cache';
+import { scanJobCacheTag, workspaceCacheTags } from '@/lib/cache-scopes';
 
 const failSchema = z.object({
   error: z.string().min(1).max(400),
@@ -77,13 +79,20 @@ export async function POST(
         },
       });
 
-      const scanJob = await syncScanJobProgress(tx, task.scanJobId);
+      const scanJob = await syncScanJobProgressWithOptions(tx, task.scanJobId, {
+        recomputeLowConfidence: false,
+      });
 
       return {
         task: updatedTask,
         scanJob,
       };
     });
+
+    invalidateServerCacheTags([
+      ...Object.values(workspaceCacheTags(task.workspaceId)),
+      scanJobCacheTag(task.scanJobId),
+    ]);
 
     return ok({
       task: toIngestionTaskResponse(result.task),

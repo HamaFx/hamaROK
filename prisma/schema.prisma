@@ -216,6 +216,7 @@ model ScanJob {
 
   @@unique([workspaceId, idempotencyKey])
   @@index([workspaceId, status])
+  @@index([workspaceId, createdAt])
   @@index([createdAt])
 }
 
@@ -330,6 +331,7 @@ model IngestionTask {
   @@unique([scanJobId, artifactId])
   @@index([workspaceId, status, createdAt])
   @@index([scanJobId, createdAt])
+  @@index([scanJobId, status, createdAt])
   @@index([artifactId])
 }
 
@@ -359,6 +361,7 @@ model OcrExtraction {
   profile        OcrProfile?         @relation(fields: [profileId], references: [id], onDelete: SetNull)
 
   @@index([scanJobId, status])
+  @@index([scanJobId, status, createdAt])
   @@index([profileId])
   @@index([lowConfidence])
 }
@@ -470,6 +473,7 @@ model RankingRow {
 
   @@unique([runId, rowHash])
   @@index([workspaceId, identityStatus, createdAt])
+  @@index([workspaceId, runId, identityStatus, createdAt])
   @@index([workspaceId, governorNameNormalized])
   @@index([runId, sourceRank])
 }
@@ -500,6 +504,7 @@ model RankingSnapshot {
 
   @@unique([workspaceId, eventId, rankingType, identityKey])
   @@index([workspaceId, eventId, rankingType, status])
+  @@index([workspaceId, eventId, rankingType, metricKey, status, metricValue, sourceRank, governorNameNormalized])
   @@index([workspaceId, metricValue, sourceRank, governorNameNormalized])
 }
 

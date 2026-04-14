@@ -4,6 +4,8 @@ import { ApiHttpError, fail, handleApiError, ok, requireParam } from '@/lib/api-
 import { parseCommaValues, parsePagination } from '@/lib/v2';
 import { authorizeWorkspaceAccess } from '@/lib/workspace-auth';
 import { listRankingReviewRows } from '@/lib/rankings/service';
+import { makeServerCacheKey, withServerCache } from '@/lib/server-cache';
+import { workspaceCacheTags } from '@/lib/cache-scopes';
 
 function parseStatuses(value: string | null): RankingIdentityStatus[] {
   const parts = parseCommaValues(value);
@@ -38,14 +40,30 @@ export async function GET(request: NextRequest) {
       return fail(auth.code, auth.message, auth.code === 'UNAUTHORIZED' ? 401 : 403);
     }
 
-    const rows = await listRankingReviewRows({
-      workspaceId,
-      eventId,
-      rankingType,
-      status: statuses,
-      limit,
-      offset,
-    });
+    const tags = workspaceCacheTags(workspaceId);
+    const rows = await withServerCache(
+      makeServerCacheKey('api:v2:rankings:review', {
+        workspaceId,
+        eventId,
+        rankingType,
+        statuses: [...statuses].sort(),
+        limit,
+        offset,
+      }),
+      {
+        ttlMs: 8_000,
+        tags: [tags.all, tags.rankings, tags.rankingReview],
+      },
+      () =>
+        listRankingReviewRows({
+          workspaceId,
+          eventId,
+          rankingType,
+          status: statuses,
+          limit,
+          offset,
+        })
+    );
 
     return ok(rows.rows, {
       total: rows.total,

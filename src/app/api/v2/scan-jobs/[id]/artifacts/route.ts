@@ -13,6 +13,8 @@ import { normalizeArchetypeHint } from '@/lib/ingestion-task';
 import { prisma } from '@/lib/prisma';
 import { dispatchOcrWork } from '@/lib/aws/ocr-dispatch';
 import { authorizeWorkspaceAccess } from '@/lib/workspace-auth';
+import { invalidateServerCacheTags } from '@/lib/server-cache';
+import { scanJobCacheTag, workspaceCacheTags } from '@/lib/cache-scopes';
 
 const createArtifactTaskSchema = z.object({
   workspaceId: z.string().min(1),
@@ -173,6 +175,11 @@ export async function POST(
         },
       });
     }
+
+    invalidateServerCacheTags([
+      ...Object.values(workspaceCacheTags(body.workspaceId)),
+      scanJobCacheTag(scanJobId),
+    ]);
 
     return ok(
       idempotent.value,

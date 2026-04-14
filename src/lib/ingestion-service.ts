@@ -18,20 +18,47 @@ function toTaskSummary(rows: Array<{ status: IngestionTaskStatus; _count: { _all
 }
 
 export async function syncScanJobProgress(db: PrismaLike, scanJobId: string) {
-  const [grouped, total, lowConfidence] = await Promise.all([
+  return syncScanJobProgressWithOptions(db, scanJobId, {});
+}
+
+export async function syncScanJobProgressWithOptions(
+  db: PrismaLike,
+  scanJobId: string,
+  options: {
+    recomputeLowConfidence?: boolean;
+  } = {}
+) {
+  const recomputeLowConfidence = options.recomputeLowConfidence ?? true;
+
+  const [grouped, total, existingScanJob, lowConfidenceCount] = await Promise.all([
     db.ingestionTask.groupBy({
       by: ['status'],
       where: { scanJobId },
       _count: { _all: true },
     }),
     db.ingestionTask.count({ where: { scanJobId } }),
-    db.ocrExtraction.count({
-      where: {
-        scanJobId,
-        lowConfidence: true,
+    db.scanJob.findUnique({
+      where: { id: scanJobId },
+      select: {
+        lowConfidenceFiles: true,
+        startedAt: true,
+        completedAt: true,
+        error: true,
       },
     }),
+    recomputeLowConfidence
+      ? db.ocrExtraction.count({
+          where: {
+            scanJobId,
+            lowConfidence: true,
+          },
+        })
+      : Promise.resolve<number | null>(null),
   ]);
+
+  if (!existingScanJob) {
+    throw new Error(`Scan job ${scanJobId} not found.`);
+  }
 
   const summary = toTaskSummary(grouped);
   const completed = summary.COMPLETED || 0;
@@ -49,17 +76,32 @@ export async function syncScanJobProgress(db: PrismaLike, scanJobId: string) {
     status = ScanJobStatus.REVIEW;
   }
 
+  const lowConfidence = recomputeLowConfidence
+    ? lowConfidenceCount ?? existingScanJob.lowConfidenceFiles
+    : existingScanJob.lowConfidenceFiles;
   const now = new Date();
+  const patch: Prisma.ScanJobUpdateInput = {
+    status,
+    processedFiles: terminal,
+    lowConfidenceFiles: lowConfidence,
+  };
+  if (status === ScanJobStatus.PROCESSING && !existingScanJob.startedAt) {
+    patch.startedAt = now;
+  }
+  if (terminal >= total && total > 0) {
+    patch.completedAt = now;
+  } else if (existingScanJob.completedAt) {
+    patch.completedAt = null;
+  }
+  if (status === ScanJobStatus.FAILED) {
+    patch.error = 'All ingestion tasks failed.';
+  } else if (existingScanJob.error) {
+    patch.error = null;
+  }
+
   const updated = await db.scanJob.update({
     where: { id: scanJobId },
-    data: {
-      status,
-      processedFiles: terminal,
-      lowConfidenceFiles: lowConfidence,
-      startedAt: status === ScanJobStatus.PROCESSING ? now : undefined,
-      completedAt: terminal >= total && total > 0 ? now : null,
-      error: status === ScanJobStatus.FAILED ? 'All ingestion tasks failed.' : null,
-    },
+    data: patch,
     select: {
       id: true,
       status: true,

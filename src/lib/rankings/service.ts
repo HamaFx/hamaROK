@@ -1363,14 +1363,23 @@ export async function listCanonicalRankings(args: ListCanonicalRankingsInput) {
   const [rows, total] = await Promise.all([
     prisma.rankingSnapshot.findMany({
       where,
-      include: {
-        governor: {
-          select: {
-            id: true,
-            governorId: true,
-            name: true,
-          },
-        },
+      select: {
+        id: true,
+        workspaceId: true,
+        eventId: true,
+        rankingType: true,
+        metricKey: true,
+        identityKey: true,
+        governorId: true,
+        governorNameRaw: true,
+        governorNameNormalized: true,
+        sourceRank: true,
+        metricValue: true,
+        status: true,
+        updatedAt: true,
+        createdAt: true,
+        lastRunId: true,
+        lastRowId: true,
       },
       take: 5000,
     }),
@@ -1422,6 +1431,23 @@ export async function listCanonicalRankings(args: ListCanonicalRankingsInput) {
       ? encodeRankingCursor({ rowId: page[page.length - 1].item.row.id })
       : null;
 
+  const governorDbIds = [...new Set(page.map((entry) => entry.item.row.governorId).filter(Boolean))] as string[];
+  const governors = governorDbIds.length > 0
+    ? await prisma.governor.findMany({
+        where: {
+          id: {
+            in: governorDbIds,
+          },
+        },
+        select: {
+          id: true,
+          governorId: true,
+          name: true,
+        },
+      })
+    : [];
+  const governorById = new Map(governors.map((governor) => [governor.id, governor]));
+
   return {
     total,
     nextCursor,
@@ -1433,7 +1459,9 @@ export async function listCanonicalRankings(args: ListCanonicalRankingsInput) {
       metricKey: entry.item.row.metricKey,
       identityKey: entry.item.row.identityKey,
       governorId: entry.item.row.governorId,
-      governor: entry.item.row.governor,
+      governor: entry.item.row.governorId
+        ? governorById.get(entry.item.row.governorId) || null
+        : null,
       governorNameRaw: entry.item.row.governorNameRaw,
       governorNameNormalized: entry.item.row.governorNameNormalized,
       metricValue: entry.item.row.metricValue.toString(),
@@ -1495,14 +1523,17 @@ export async function getRankingSummary(args: {
     }),
     prisma.rankingSnapshot.findMany({
       where,
-      include: {
-        governor: {
-          select: {
-            id: true,
-            governorId: true,
-            name: true,
-          },
-        },
+      select: {
+        id: true,
+        rankingType: true,
+        metricKey: true,
+        governorId: true,
+        governorNameRaw: true,
+        metricValue: true,
+        sourceRank: true,
+        status: true,
+        updatedAt: true,
+        governorNameNormalized: true,
       },
       take: 3000,
     }),
@@ -1571,6 +1602,25 @@ export async function getRankingSummary(args: {
     existing.total += row.metricValue;
   }
 
+  const topLimit = Math.max(1, Math.min(100, args.topN));
+  const topSlice = sortedTop.slice(0, topLimit);
+  const governorDbIds = [...new Set(topSlice.map((row) => row.governorId).filter(Boolean))] as string[];
+  const governors = governorDbIds.length > 0
+    ? await prisma.governor.findMany({
+        where: {
+          id: {
+            in: governorDbIds,
+          },
+        },
+        select: {
+          id: true,
+          governorId: true,
+          name: true,
+        },
+      })
+    : [];
+  const governorById = new Map(governors.map((governor) => [governor.id, governor]));
+
   return {
     total: topRows.length,
     statusCounts: statusCounts.reduce<Record<string, number>>((acc, item) => {
@@ -1583,12 +1633,12 @@ export async function getRankingSummary(args: {
       total: item._count._all,
       latestAt: item._max.updatedAt?.toISOString() || null,
     })),
-    topRows: sortedTop.slice(0, Math.max(1, Math.min(100, args.topN))).map((row) => ({
+    topRows: topSlice.map((row) => ({
       id: row.id,
       rankingType: row.rankingType,
       metricKey: row.metricKey,
       governorId: row.governorId,
-      governor: row.governor,
+      governor: row.governorId ? governorById.get(row.governorId) || null : null,
       governorNameRaw: row.governorNameRaw,
       metricValue: row.metricValue.toString(),
       sourceRank: row.sourceRank,

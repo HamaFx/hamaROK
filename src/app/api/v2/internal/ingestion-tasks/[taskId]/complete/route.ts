@@ -12,11 +12,13 @@ import { createRankingRunWithRows } from '@/lib/rankings/service';
 import {
   getTaskWithRelations,
   mergeJson,
-  syncScanJobProgress,
+  syncScanJobProgressWithOptions,
   toIngestionTaskResponse,
 } from '@/lib/ingestion-service';
 import { assertValidServiceRequest } from '@/lib/service-auth';
 import { prisma } from '@/lib/prisma';
+import { invalidateServerCacheTags } from '@/lib/server-cache';
+import { scanJobCacheTag, workspaceCacheTags } from '@/lib/cache-scopes';
 
 const rowSchema = z.object({
   sourceRank: z.number().int().min(1).max(5000).optional().nullable(),
@@ -213,7 +215,9 @@ export async function POST(
           },
         });
 
-        const scanJob = await syncScanJobProgress(tx, task.scanJobId);
+        const scanJob = await syncScanJobProgressWithOptions(tx, task.scanJobId, {
+          recomputeLowConfidence: true,
+        });
 
         return {
           task: updatedTask,
@@ -221,6 +225,11 @@ export async function POST(
           scanJob,
         };
       });
+
+      invalidateServerCacheTags([
+        ...Object.values(workspaceCacheTags(task.workspaceId)),
+        scanJobCacheTag(task.scanJobId),
+      ]);
 
       return ok({
         task: toIngestionTaskResponse(result.task),
@@ -295,13 +304,20 @@ export async function POST(
         },
       });
 
-      const scanJob = await syncScanJobProgress(tx, task.scanJobId);
+      const scanJob = await syncScanJobProgressWithOptions(tx, task.scanJobId, {
+        recomputeLowConfidence: false,
+      });
 
       return {
         task: updatedTask,
         scanJob,
       };
     });
+
+    invalidateServerCacheTags([
+      ...Object.values(workspaceCacheTags(task.workspaceId)),
+      scanJobCacheTag(task.scanJobId),
+    ]);
 
     return ok({
       task: toIngestionTaskResponse(result.task),

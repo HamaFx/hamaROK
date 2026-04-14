@@ -4,6 +4,8 @@ import { ApiHttpError, fail, handleApiError, ok, requireParam } from '@/lib/api-
 import { parseCommaValues } from '@/lib/v2';
 import { authorizeWorkspaceAccess } from '@/lib/workspace-auth';
 import { listCanonicalRankings } from '@/lib/rankings/service';
+import { makeServerCacheKey, withServerCache } from '@/lib/server-cache';
+import { workspaceCacheTags } from '@/lib/cache-scopes';
 
 function parseStatuses(value: string | null): RankingSnapshotStatus[] {
   const parts = parseCommaValues(value);
@@ -55,30 +57,63 @@ export async function GET(request: NextRequest) {
       return fail(auth.code, auth.message, auth.code === 'UNAUTHORIZED' ? 401 : 403);
     }
 
-    const result = await listCanonicalRankings({
-      workspaceId,
-      eventId,
-      rankingType,
-      metricKey,
-      q,
-      sort,
-      status,
-      limit,
-      cursor,
-    });
+    const tags = workspaceCacheTags(workspaceId);
+    const cached = await withServerCache(
+      makeServerCacheKey('api:v2:rankings:list', {
+        workspaceId,
+        eventId,
+        rankingType,
+        metricKey,
+        q,
+        sort,
+        status: [...status].sort(),
+        limit,
+        cursor,
+      }),
+      {
+        ttlMs: 8_000,
+        tags: [tags.all, tags.rankings],
+      },
+      async () => {
+        const result = await listCanonicalRankings({
+          workspaceId,
+          eventId,
+          rankingType,
+          metricKey,
+          q,
+          sort,
+          status,
+          limit,
+          cursor,
+        });
 
-    return ok(result.rows, {
-      total: result.total,
-      limit,
-      nextCursor: result.nextCursor,
-      sortRequested: sort || null,
-      sortApplied: 'metricValue DESC, sourceRank ASC NULLS LAST, governorNameNormalized ASC, rowId ASC',
-      sort: [
-        'metricValue DESC',
-        'sourceRank ASC NULLS LAST',
-        'governorNameNormalized ASC',
-        'rowId ASC',
-      ],
+        return {
+          rows: result.rows,
+          meta: {
+            total: result.total,
+            limit,
+            nextCursor: result.nextCursor,
+            sortRequested: sort || null,
+            sortApplied:
+              'metricValue DESC, sourceRank ASC NULLS LAST, governorNameNormalized ASC, rowId ASC',
+            sort: [
+              'metricValue DESC',
+              'sourceRank ASC NULLS LAST',
+              'governorNameNormalized ASC',
+              'rowId ASC',
+            ],
+          },
+        };
+      }
+    );
+
+    return ok(cached.rows, {
+      total: cached.meta.total,
+      limit: cached.meta.limit,
+      nextCursor: cached.meta.nextCursor,
+      sortRequested: cached.meta.sortRequested,
+      sortApplied: cached.meta.sortApplied,
+      sort: cached.meta.sort,
     });
   } catch (error) {
     return handleApiError(error);

@@ -2,9 +2,15 @@ import { NextRequest } from 'next/server';
 import { IngestionTaskStatus } from '@prisma/client';
 import { z } from 'zod';
 import { fail, handleApiError, ok } from '@/lib/api-response';
-import { getTaskWithRelations, syncScanJobProgress, toIngestionTaskResponse } from '@/lib/ingestion-service';
+import {
+  getTaskWithRelations,
+  syncScanJobProgressWithOptions,
+  toIngestionTaskResponse,
+} from '@/lib/ingestion-service';
 import { assertValidServiceRequest } from '@/lib/service-auth';
 import { prisma } from '@/lib/prisma';
+import { invalidateServerCacheTags } from '@/lib/server-cache';
+import { scanJobCacheTag, workspaceCacheTags } from '@/lib/cache-scopes';
 
 const startSchema = z.object({
   attempt: z.number().int().min(1).max(20).optional(),
@@ -69,13 +75,20 @@ export async function POST(
         },
       });
 
-      const scanJob = await syncScanJobProgress(tx, task.scanJobId);
+      const scanJob = await syncScanJobProgressWithOptions(tx, task.scanJobId, {
+        recomputeLowConfidence: false,
+      });
 
       return {
         task: updated,
         scanJob,
       };
     });
+
+    invalidateServerCacheTags([
+      ...Object.values(workspaceCacheTags(task.workspaceId)),
+      scanJobCacheTag(task.scanJobId),
+    ]);
 
     return ok({
       task: toIngestionTaskResponse(updatedTask.task),
