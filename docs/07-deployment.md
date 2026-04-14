@@ -1,336 +1,130 @@
-# Deployment Guide — Vercel
+# Deployment Guide — Vercel Frontend + AWS EC2 OCR Worker
 
-## Prerequisites
+This project is deployed as a split system:
 
-1. **GitHub Account** — Code hosted on GitHub
-2. **Vercel Account** — Free tier (sign up at vercel.com)
-3. **Node.js 18+** — For local development
+- Web app + API on **Vercel** (Next.js)
+- OCR queue + worker control on **AWS** (SQS + Lambda + EC2 worker)
+- Database and blob storage on **Vercel Postgres** + **Vercel Blob**
 
----
+## 1. Required Services
 
-## Step-by-Step Deployment
+1. Vercel project connected to this repository.
+2. Vercel Postgres attached to the project.
+3. Vercel Blob attached to the project.
+4. AWS account with access to SQS, Lambda, EC2, EventBridge, IAM, SSM.
 
-### 1. Push to GitHub
+## 2. Vercel Environment Variables
+
+Set these in Vercel for `production`, `preview`, and `development` as needed.
+
+### Core (required)
+
+- `POSTGRES_PRISMA_URL`
+- `POSTGRES_URL_NON_POOLING`
+- `BLOB_READ_WRITE_TOKEN`
+- `NEXT_PUBLIC_APP_URL` (your public app URL)
+- `APP_SIGNING_SECRET` (same secret used by internal worker callbacks)
+
+### OCR Dispatch/Control (required for EC2 OCR mode)
+
+- `UPLOAD_MODE=queue_first`
+- `AWS_OCR_CONTROL_ENABLED=true`
+- `AWS_REGION=<aws-region>`
+- `AWS_OCR_QUEUE_URL=<sqs-queue-url>`
+- `AWS_OCR_START_LAMBDA=<start-lambda-name>`
+- `AWS_OCR_STOP_LAMBDA=<stop-lambda-name>`
+- `AWS_OCR_INSTANCE_ID=<ec2-instance-id>`
+- `AWS_ACCESS_KEY_ID=<aws-access-key>`
+- `AWS_SECRET_ACCESS_KEY=<aws-secret-key>`
+
+## 3. Provision or Update AWS OCR Infrastructure
+
+Run from repo root:
 
 ```bash
-cd hamaROK
-git init
-git add .
-git commit -m "Initial commit: RoK Command Center"
-git remote add origin https://github.com/YOUR_USERNAME/hamaROK.git
-git push -u origin main
+APP_URL="https://<your-vercel-domain>" \
+SERVICE_SECRET="<same-as-APP_SIGNING_SECRET>" \
+./scripts/setup-aws-ocr-scale-zero.sh
 ```
 
-### 2. Import to Vercel
+What this script configures:
 
-1. Go to [vercel.com/new](https://vercel.com/new)
-2. Click "Import Git Repository"
-3. Select your `hamaROK` repository
-4. Framework Preset: **Next.js** (auto-detected)
-5. Click "Deploy"
+- SQS queue + DLQ
+- EC2 OCR worker instance + systemd worker service
+- Lambda start/stop functions
+- EventBridge schedules for auto start/stop
+- Signed callback wiring to `/api/v2/internal/ingestion-tasks/*`
 
-### 3. Add Vercel Postgres
+Important: rerun this script after OCR worker logic changes so EC2 gets the newest embedded worker code.
 
-1. Go to your project in the Vercel Dashboard
-2. Click **Storage** tab
-3. Click **Create Database**
-4. Select **Postgres** (powered by Neon)
-5. Name it: `rok-command-center-db`
-6. Select region: **US East** (or closest to you)
-7. Click **Create**
+## 4. Sync AWS OCR Env to Vercel
 
-Vercel automatically adds these environment variables:
-```
-POSTGRES_URL
-POSTGRES_PRISMA_URL
-POSTGRES_URL_NON_POOLING
-POSTGRES_USER
-POSTGRES_PASSWORD
-POSTGRES_DATABASE
-POSTGRES_HOST
-```
-
-### 4. Add Vercel Blob
-
-1. In the **Storage** tab, click **Create** again
-2. Select **Blob**
-3. Name it: `rok-screenshots`
-4. Click **Create**
-
-This adds:
-```
-BLOB_READ_WRITE_TOKEN
-```
-
-### 5. Run Database Migration
-
-The build command handles this automatically:
-
-```json
-// package.json
-{
-  "scripts": {
-    "build": "prisma generate && prisma migrate deploy && next build"
-  }
-}
-```
-
-Or run manually via Vercel CLI:
 ```bash
-npx vercel env pull .env.local
+./scripts/configure-vercel-aws-ocr.sh
+```
+
+This updates Vercel env vars for OCR dispatch/control keys.
+
+## 5. Database Migration
+
+From local shell or CI:
+
+```bash
 npx prisma migrate deploy
 ```
 
-### 6. Redeploy
+Current schema requires `ActivityMetricKey` enum values including:
 
-After adding Storage, trigger a redeployment:
-1. Go to **Deployments** tab
-2. Click the three dots on latest deployment
-3. Click **Redeploy**
+- `POWER_GROWTH`
+- `CONTRIBUTION_POINTS`
+- `FORT_DESTROYING`
+- `KILL_POINTS_GROWTH`
 
----
+## 6. Production Validation
 
-## Local Development Setup
-
-```bash
-# 1. Clone the repo
-git clone https://github.com/YOUR_USERNAME/hamaROK.git
-cd hamaROK
-
-# 2. Install dependencies
-npm install
-
-# 3. Install Vercel CLI
-npm i -g vercel
-
-# 4. Link to Vercel project
-vercel link
-
-# 5. Pull environment variables
-vercel env pull .env.local
-
-# 6. Run database migrations
-npx prisma migrate dev
-
-# 7. Start development server
-npm run dev
-```
-
-Open http://localhost:3000
-
----
-
-## Environment Variables
-
-### Required for Production (auto-set by Vercel)
-
-| Variable                  | Source          | Description                    |
-|---------------------------|-----------------|--------------------------------|
-| `POSTGRES_PRISMA_URL`     | Vercel Postgres | Connection string (pooled)     |
-| `POSTGRES_URL_NON_POOLING`| Vercel Postgres | Direct connection (migrations) |
-| `BLOB_READ_WRITE_TOKEN`   | Vercel Blob     | Blob storage auth token        |
-
-### Optional
-
-| Variable               | Default | Description                                              |
-|------------------------|---------|----------------------------------------------------------|
-| `NEXT_PUBLIC_APP_URL`  | —       | Public URL for sharing links                             |
-| `OPENAI_API_KEY`       | —       | Optional OCR fallback provider credential (OpenAI)       |
-| `GOOGLE_VISION_API_KEY`| —       | Optional OCR fallback provider credential (Google Vision)|
-| `GOOGLE_APPLICATION_CREDENTIALS` | — | Optional service-account JSON file path (self-hosted/local) |
-| `GOOGLE_VISION_SERVICE_ACCOUNT_JSON` | — | Optional raw service-account JSON (recommended for Vercel env var) |
-| `AWS_OCR_CONTROL_ENABLED` | `false` | Enable AWS OCR dispatch (SQS + start-lambda trigger) |
-| `AWS_REGION` | `us-east-1` | AWS region for OCR dispatch services |
-| `AWS_OCR_QUEUE_URL` | — | SQS queue URL for OCR work items |
-| `AWS_OCR_START_LAMBDA` | — | Lambda name to wake OCR worker immediately after enqueue |
-| `AWS_OCR_STOP_LAMBDA` | — | Lambda name used by manual stop controls in UI/API |
-| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | — | AWS credentials for Vercel runtime when IAM role auth is unavailable |
-
-### Local Development (.env.local)
-
-```env
-# Auto-populated by `vercel env pull`
-POSTGRES_PRISMA_URL="postgres://..."
-POSTGRES_URL_NON_POOLING="postgres://..."
-BLOB_READ_WRITE_TOKEN="vercel_blob_..."
-
-# Optional
-NEXT_PUBLIC_APP_URL="http://localhost:3000"
-OPENAI_API_KEY=""
-GOOGLE_VISION_API_KEY=""
-GOOGLE_APPLICATION_CREDENTIALS=""
-GOOGLE_VISION_SERVICE_ACCOUNT_JSON=""
-AWS_OCR_CONTROL_ENABLED="false"
-AWS_REGION="us-east-1"
-AWS_OCR_QUEUE_URL=""
-AWS_OCR_START_LAMBDA=""
-AWS_OCR_STOP_LAMBDA=""
-AWS_ACCESS_KEY_ID=""
-AWS_SECRET_ACCESS_KEY=""
-```
-
-> Google Vision OCR requires billing enabled on the Google Cloud project.
-
-> **Never commit `.env.local` to Git!** It's in `.gitignore` by default.
-
----
-
-## Build Configuration
-
-### next.config.ts
-
-```typescript
-import type { NextConfig } from 'next';
-
-const nextConfig: NextConfig = {
-  images: {
-    remotePatterns: [
-      {
-        protocol: 'https',
-        hostname: '*.public.blob.vercel-storage.com',
-      },
-    ],
-  },
-  webpack: (config, { isServer }) => {
-    if (isServer) {
-      config.resolve.alias.canvas = false;
-    }
-    return config;
-  },
-};
-
-export default nextConfig;
-```
-
-### Vercel Project Settings
-
-| Setting          | Value                                               |
-|------------------|-----------------------------------------------------|
-| Framework        | Next.js                                             |
-| Build Command    | `prisma generate && prisma migrate deploy && next build` |
-| Output Directory | `.next`                                             |
-| Install Command  | `npm install`                                       |
-| Node.js Version  | 18.x or 20.x                                       |
-
----
-
-## Vercel Free Tier Limits
-
-| Resource               | Limit            | Our Estimated Usage     |
-|------------------------|------------------|-------------------------|
-| Bandwidth              | 100 GB/month     | ~1 GB/month             |
-| Serverless Invocations | 100K/month       | ~5K/month               |
-| Function Duration      | 10 seconds       | ~2 sec average          |
-| Postgres Storage       | 256 MB           | ~5 MB/year              |
-| Postgres Compute       | 60 hrs/month     | ~2 hrs/month            |
-| Blob Storage           | 1 GB             | ~60 MB/month            |
-| Blob Writes            | 1000/day         | ~50/day max             |
-
-**Conclusion**: Free tier is more than sufficient for a single alliance.
-
----
-
-## CI/CD Pipeline
-
-Vercel handles CI/CD automatically:
-
-```
-Push to GitHub
-    │
-    ├── Vercel detects new commit
-    │
-    ├── Runs build command:
-    │     prisma generate
-    │     prisma migrate deploy
-    │     next build
-    │
-    ├── If build succeeds:
-    │     Deploy to production (main branch)
-    │     Deploy to preview (other branches)
-    │
-    └── If build fails:
-          Keep previous deployment active
-          Show error in dashboard
-```
-
-### Preview Deployments
-
-Every pull request gets a unique preview URL:
-```
-https://hamarok-pr-5-username.vercel.app
-```
-
-This is great for testing changes before merging.
-
----
-
-## AWS OCR Scale-to-Zero Automation
-
-The repo includes turnkey scripts for AWS OCR worker automation:
+### Full automated check
 
 ```bash
-# Provision or update AWS queue + worker + start/stop automation
-./scripts/setup-aws-ocr-scale-zero.sh
-
-# Sync AWS OCR env vars into Vercel (prod/preview/dev)
-./scripts/configure-vercel-aws-ocr.sh
-
-# Run full validation (local, AWS, Vercel, production health checks)
-./scripts/final-system-check.sh
+./scripts/final-system-check.sh hama-rok https://<your-vercel-domain>
 ```
 
----
+This verifies:
 
-## Custom Domain (Optional)
+- local lint/typecheck/test/build
+- AWS queue/instance/lambdas/rules
+- required Vercel env vars
+- production URL health
+- `/api/healthz` readiness
 
-1. Go to **Settings** → **Domains**
-2. Add your domain (e.g., `rok.yourdomain.com`)
-3. Configure DNS:
-   - **CNAME**: `rok` → `cname.vercel-dns.com`
-4. Vercel auto-provisions SSL certificate
-
----
-
-## Monitoring
-
-### Built-in Vercel Analytics
-
-- **Web Vitals**: LCP, FID, CLS scores
-- **Function Logs**: API route execution logs
-- **Error Tracking**: Runtime error reports
-
-### Database Monitoring
-
-1. Go to **Storage** → **Postgres**
-2. View: query count, compute hours, storage usage
-3. Set up alerts for approaching limits
-
----
-
-## Troubleshooting
-
-### Common Issues
-
-| Issue | Solution |
-|-------|----------|
-| `prisma migrate deploy` fails | Check `POSTGRES_URL_NON_POOLING` is set |
-| Blob upload 403 error | Verify `BLOB_READ_WRITE_TOKEN` is set |
-| OCR not loading | Check webpack canvas alias in next.config |
-| BigInt serialization error | Ensure JSON serializer handles BigInt→string |
-| Build timeout | Increase function maxDuration in vercel.json |
-
-### Useful Commands
+### Manual quick checks
 
 ```bash
-# Check Vercel project status
-vercel ls
-
-# View deployment logs
-vercel logs
-
-# Pull latest env vars
-vercel env pull .env.local
-
-# Run production build locally
-npm run build && npm run start
+curl -sS https://<your-vercel-domain>/api/healthz | jq
 ```
+
+Expected:
+
+- HTTP `200`
+- `status: "ok"`
+- `checks.env.ok = true`
+- `checks.database.ok = true`
+
+Then upload a ranking screenshot and confirm:
+
+1. A scan job is created.
+2. Ingestion task transitions to `COMPLETED`.
+3. Ranking run is created with strict header/metric pair.
+
+## 7. Security Notes
+
+- Never commit `.env.local`.
+- `APP_SIGNING_SECRET` must match between Vercel and EC2 worker setup input.
+- Rotate AWS keys periodically.
+- Use least-privilege IAM for Vercel AWS credentials where possible.
+
+## 8. Troubleshooting
+
+- `Health endpoint returns 503`: inspect `/api/healthz` payload for failed check.
+- `Ingestion tasks keep failing`: verify `APP_SIGNING_SECRET` match and worker callback URL.
+- `Queue grows but no processing`: check start lambda, EventBridge rule states, and EC2 instance state.
+- `Build fails in CI`: ensure `POSTGRES_PRISMA_URL` exists during build step.

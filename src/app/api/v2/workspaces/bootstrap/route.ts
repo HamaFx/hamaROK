@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma';
 import { createOpaqueToken, hashAccessToken } from '@/lib/security';
 import { getDefaultFallbackOcrModel } from '@/lib/ocr/fallback-config';
 import { PRIMARY_KINGDOM_NUMBER } from '@/lib/alliances';
+import { DEFAULT_WEEK_RESET_UTC_OFFSET } from '@/lib/weekly-events';
 
 const bootstrapSchema = z.object({
   name: z.string().min(2).max(80).optional(),
@@ -70,6 +71,7 @@ export async function POST(request: Request) {
             fallbackOcrMonthlyBudgetUsd: 5,
             fallbackOcrProvider: 'google_vision',
             fallbackOcrModel: getDefaultFallbackOcrModel('google_vision'),
+            weekResetUtcOffset: DEFAULT_WEEK_RESET_UTC_OFFSET,
           },
         });
 

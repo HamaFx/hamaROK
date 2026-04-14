@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { fail, handleApiError, ok, readJson, requireParam } from '@/lib/api-response';
 import { authorizeWorkspaceAccess } from '@/lib/workspace-auth';
 import { listActivityStandards, upsertActivityStandards } from '@/lib/activity/service';
+import { weeklyMetricKeySchema } from '@/lib/activity/metrics';
 import { invalidateServerCacheTags } from '@/lib/server-cache';
 import { workspaceCacheTags } from '@/lib/cache-scopes';
 
@@ -12,7 +13,7 @@ export const revalidate = 0;
 
 const standardSchema = z.object({
   allianceTag: z.string().min(2).max(12),
-  metricKey: z.enum(['power_growth', 'contribution_points']),
+  metricKey: weeklyMetricKeySchema,
   minimumValue: z.union([z.string(), z.number(), z.bigint()]),
   isActive: z.boolean().optional(),
 });

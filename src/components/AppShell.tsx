@@ -5,6 +5,7 @@ import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { useMemo, useState, type ReactNode } from 'react';
 import {
+  Activity,
   BarChart3,
   CalendarDays,
   ChevronRight,
@@ -32,6 +33,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { href: '/', label: 'Dashboard', hint: 'Command center and recent activity', icon: Home, group: 'core' },
   { href: '/upload', label: 'Upload', hint: 'Queue screenshots for OCR processing', icon: ImageUp, group: 'core' },
+  { href: '/activity', label: 'Activity', hint: 'Weekly compliance and player tracking', icon: Activity, group: 'core' },
   { href: '/events', label: 'Events', hint: 'Manage scan windows and timelines', icon: CalendarDays, group: 'core' },
   { href: '/governors', label: 'Governors', hint: 'Search member records and history', icon: Users, group: 'core' },
   { href: '/compare', label: 'Compare', hint: 'Compare two events side by side', icon: Workflow, group: 'analysis' },
@@ -43,7 +45,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/settings', label: 'Settings', hint: 'Workspace and automation controls', icon: Cog, group: 'ops' },
 ];
 
-const MOBILE_PRIMARY = ['/', '/upload', '/rankings', '/insights'];
+const MOBILE_PRIMARY = ['/', '/upload', '/activity', '/rankings'];
 
 function matchPath(pathname: string, href: string) {
   if (href === '/') return pathname === '/';

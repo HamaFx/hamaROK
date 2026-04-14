@@ -6,12 +6,41 @@ import {
   normalizeMetricKey,
   normalizeRankingType,
   parseRankingMetric,
+  validateStrictRankingTypeMetricPair,
 } from '@/lib/rankings/normalize';
 
 describe('ranking normalize helpers', () => {
   it('normalizes ranking type and metric key consistently', () => {
     expect(normalizeRankingType('INDIVIDUAL POWER RANKINGS')).toBe('individual_power');
     expect(normalizeMetricKey('Contribution Points')).toBe('contribution_points');
+  });
+
+  it('validates strict ranking type and metric key pairs', () => {
+    expect(
+      validateStrictRankingTypeMetricPair('INDIVIDUAL POWER RANKINGS', 'POWER')
+    ).toMatchObject({
+      ok: true,
+      rankingType: 'individual_power',
+      metricKey: 'power',
+      expectedMetricKey: 'power',
+    });
+
+    expect(
+      validateStrictRankingTypeMetricPair('FORT DESTROYER RANKINGS', 'contribution_points')
+    ).toMatchObject({
+      ok: false,
+      rankingType: 'fort_destroyer',
+      metricKey: 'contribution_points',
+      expectedMetricKey: 'fort_destroying',
+    });
+
+    expect(
+      validateStrictRankingTypeMetricPair('Governor Profile', 'power')
+    ).toMatchObject({
+      ok: false,
+      rankingType: 'governor_profile_power',
+      expectedMetricKey: null,
+    });
   });
 
   it('normalizes governor aliases with punctuation and spaces removed', () => {

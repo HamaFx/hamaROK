@@ -20,6 +20,7 @@ import { prisma } from '@/lib/prisma';
 import { invalidateServerCacheTags } from '@/lib/server-cache';
 import { scanJobCacheTag, workspaceCacheTags } from '@/lib/cache-scopes';
 import { splitGovernorNameAndAlliance } from '@/lib/alliances';
+import { validateStrictRankingTypeMetricPair } from '@/lib/rankings/normalize';
 
 const rowSchema = z.object({
   sourceRank: z.number().int().min(1).max(5000).optional().nullable(),
@@ -302,6 +303,23 @@ export async function POST(
     }
 
     const ranking = body.ranking!;
+    const strictPair = validateStrictRankingTypeMetricPair(
+      ranking.rankingType,
+      ranking.metricKey
+    );
+    if (!strictPair.ok) {
+      return fail(
+        'VALIDATION_ERROR',
+        strictPair.reason || 'Unsupported rankingType/metricKey pair.',
+        400,
+        {
+          rankingType: strictPair.rankingType,
+          metricKey: strictPair.metricKey,
+          expectedMetricKey: strictPair.expectedMetricKey,
+        }
+      );
+    }
+
     const enrichedRankingRows = ranking.rows.map((row) => {
       const split = splitGovernorNameAndAlliance({
         governorNameRaw: row.governorNameRaw,

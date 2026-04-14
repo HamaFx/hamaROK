@@ -4,28 +4,108 @@ import {
   splitGovernorNameAndAlliance,
 } from '@/lib/alliances';
 
-export function normalizeRankingType(value: string): string {
-  return (
-    String(value || '')
-      .trim()
-      .replace(/\s+/g, ' ')
-      .replace(/RANKINGS?$/i, '')
-      .trim()
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '_')
-      .replace(/^_+|_+$/g, '') || 'unknown'
-  );
+const RANKING_TYPE_SYNONYMS: Record<string, string> = {
+  individual_power: 'individual_power',
+  mad_scientist: 'mad_scientist',
+  fort_destroyer: 'fort_destroyer',
+  fort_destroy: 'fort_destroyer',
+  fort_destroying: 'fort_destroyer',
+  governor_profile_power: 'governor_profile_power',
+  governor_profile: 'governor_profile_power',
+  kill_point: 'kill_point',
+  kill_points: 'kill_point',
+};
+
+const STRICT_RANKING_TYPE_METRIC_MAP: Record<string, string> = {
+  individual_power: 'power',
+  mad_scientist: 'contribution_points',
+  fort_destroyer: 'fort_destroying',
+  kill_point: 'kill_points',
+};
+
+export interface StrictRankingPairValidation {
+  ok: boolean;
+  rankingType: string;
+  metricKey: string;
+  expectedMetricKey: string | null;
+  reason?: string;
 }
 
+export function normalizeRankingType(value: string): string {
+  const base = String(value || '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .replace(/RANKINGS?$/i, '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '') || 'unknown';
+  return RANKING_TYPE_SYNONYMS[base] ?? base;
+}
+
+const METRIC_KEY_SYNONYMS: Record<string, string> = {
+  power: 'power',
+  contribution_points: 'contribution_points',
+  contribution: 'contribution_points',
+  tech_contribution: 'contribution_points',
+  fort_destroying: 'fort_destroying',
+  fort_destroy: 'fort_destroying',
+  fort: 'fort_destroying',
+  destroy: 'fort_destroying',
+  kill_points: 'kill_points',
+  kill_point: 'kill_points',
+  kp: 'kill_points',
+};
+
 export function normalizeMetricKey(value: string): string {
-  return (
-    String(value || '')
-      .trim()
-      .replace(/\s+/g, ' ')
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '_')
-      .replace(/^_+|_+$/g, '') || 'metric'
-  );
+  const base = String(value || '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '') || 'metric';
+  return METRIC_KEY_SYNONYMS[base] ?? base;
+}
+
+export function getStrictMetricForRankingType(value: string): string | null {
+  const rankingType = normalizeRankingType(value);
+  return STRICT_RANKING_TYPE_METRIC_MAP[rankingType] ?? null;
+}
+
+export function validateStrictRankingTypeMetricPair(
+  rankingTypeValue: string,
+  metricKeyValue: string
+): StrictRankingPairValidation {
+  const rankingType = normalizeRankingType(rankingTypeValue);
+  const metricKey = normalizeMetricKey(metricKeyValue);
+  const expectedMetricKey = getStrictMetricForRankingType(rankingType);
+
+  if (!expectedMetricKey) {
+    return {
+      ok: false,
+      rankingType,
+      metricKey,
+      expectedMetricKey: null,
+      reason: `Unsupported rankingType "${rankingType}".`,
+    };
+  }
+
+  if (metricKey !== expectedMetricKey) {
+    return {
+      ok: false,
+      rankingType,
+      metricKey,
+      expectedMetricKey,
+      reason: `rankingType "${rankingType}" requires metricKey "${expectedMetricKey}" (received "${metricKey}").`,
+    };
+  }
+
+  return {
+    ok: true,
+    rankingType,
+    metricKey,
+    expectedMetricKey,
+  };
 }
 
 export function normalizeGovernorAlias(value: string): string {

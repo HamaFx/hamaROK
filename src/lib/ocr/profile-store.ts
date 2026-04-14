@@ -5,6 +5,32 @@ import {
   normalizeRuntimeProfile,
   type OcrRuntimeProfile,
 } from './profiles';
+import { OCR_TEMPLATES } from './templates';
+
+function inferProfileArchetype(args: {
+  profileKey: string;
+  sourceTemplateId?: string | null;
+}): 'governor-profile' | 'rankboard' | null {
+  const sourceTemplateId = args.sourceTemplateId || null;
+  const profileKey = String(args.profileKey || '').trim();
+
+  const byTemplateId = sourceTemplateId
+    ? OCR_TEMPLATES.find((template) => template.id === sourceTemplateId)
+    : null;
+  if (byTemplateId?.archetype) {
+    return byTemplateId.archetype;
+  }
+
+  const byProfileKey = OCR_TEMPLATES.find((template) => template.id === profileKey);
+  if (byProfileKey?.archetype) {
+    return byProfileKey.archetype;
+  }
+
+  const normalized = profileKey.toLowerCase();
+  if (normalized.includes('rank')) return 'rankboard';
+  if (normalized.includes('profile')) return 'governor-profile';
+  return null;
+}
 
 export async function listWorkspaceRuntimeProfiles(
   workspaceId: string,
@@ -24,6 +50,10 @@ export async function listWorkspaceRuntimeProfiles(
         id: profile.id,
         profileKey: profile.profileKey,
         name: profile.name,
+        archetype: inferProfileArchetype({
+          profileKey: profile.profileKey,
+          sourceTemplateId: profile.sourceTemplateId,
+        }),
         version: profile.version,
         sourceTemplateId: profile.sourceTemplateId,
         minWidth: profile.minWidth,

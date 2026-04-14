@@ -1,0 +1,42 @@
+[
+  {
+    "file": "Example Screenshots/IMG_7131.PNG",
+    "headerText": "INDIVIDUAL POWER RANKINGS",
+    "metricLabel": "Power",
+    "expectedArchetype": "rankboard",
+    "expectedRankingType": "individual_power",
+    "expectedMetricKey": "power"
+  },
+  {
+    "file": "Example Screenshots/IMG_7132.PNG",
+    "headerText": "INDIVIDUAL POWER RANKINGS",
+    "metricLabel": "Power",
+    "expectedArchetype": "rankboard",
+    "expectedRankingType": "individual_power",
+    "expectedMetricKey": "power"
+  },
+  {
+    "file": "Example Screenshots/IMG_7133.PNG",
+    "headerText": "MAD SCIENTIST RANKINGS",
+    "metricLabel": "Contribution Points",
+    "expectedArchetype": "rankboard",
+    "expectedRankingType": "mad_scientist",
+    "expectedMetricKey": "contribution_points"
+  },
+  {
+    "file": "Example Screenshots/IMG_7134.PNG",
+    "headerText": "FORT DESTROYER RANKINGS",
+    "metricLabel": "Forts Destroyed",
+    "expectedArchetype": "rankboard",
+    "expectedRankingType": "fort_destroyer",
+    "expectedMetricKey": "fort_destroying"
+  },
+  {
+    "file": "Example Screenshots/Screenshot_20260410-195821.JPG",
+    "headerText": "GOVERNOR PROFILE",
+    "metricLabel": "Power",
+    "expectedArchetype": "governor-profile",
+    "expectedRankingType": "governor_profile_power",
+    "expectedMetricKey": "power"
+  }
+]

@@ -9,6 +9,10 @@ import {
   getDefaultFallbackOcrModel,
   normalizeFallbackOcrProvider,
 } from '@/lib/ocr/fallback-config';
+import {
+  DEFAULT_WEEK_RESET_UTC_OFFSET,
+  normalizeWeekResetUtcOffset,
+} from '@/lib/weekly-events';
 
 const fallbackProviderSchema = z
   .string()
@@ -32,6 +36,15 @@ const settingsSchema = z.object({
   fallbackOcrProvider: fallbackProviderSchema.optional(),
   fallbackOcrModel: z.string().min(1).max(80).optional(),
   featureAdbCaptureRnd: z.boolean().optional(),
+  weekResetUtcOffset: z
+    .string()
+    .min(6)
+    .max(6)
+    .transform((value) => normalizeWeekResetUtcOffset(value))
+    .refine((value): value is string => value != null, {
+      message: 'weekResetUtcOffset must match format +HH:MM or -HH:MM.',
+    })
+    .optional(),
 });
 
 export async function GET(
@@ -105,6 +118,7 @@ export async function POST(
           requestedModel ||
           getDefaultFallbackOcrModel(requestedProvider || defaultProvider),
         featureAdbCaptureRnd: body.featureAdbCaptureRnd ?? false,
+        weekResetUtcOffset: body.weekResetUtcOffset || DEFAULT_WEEK_RESET_UTC_OFFSET,
       },
       update: {
         t4Weight: body.t4Weight,
@@ -122,6 +136,7 @@ export async function POST(
           requestedModel ||
           (requestedProvider ? getDefaultFallbackOcrModel(requestedProvider) : undefined),
         featureAdbCaptureRnd: body.featureAdbCaptureRnd ?? undefined,
+        weekResetUtcOffset: body.weekResetUtcOffset ?? undefined,
       },
     });
 

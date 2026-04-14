@@ -58,19 +58,27 @@ interface WeeklyEventInfo {
   name: string;
   weekKey: string | null;
   startsAt: string | null;
+  endsAt?: string | null;
+  isClosed?: boolean;
 }
 
 interface WeeklyActivitySummary {
   membersTracked: number;
+  unresolvedIdentityCount?: number;
+  noPowerBaselineCount?: number;
+  noKillPointsBaselineCount?: number;
   allianceSummary: Array<{
     allianceTag: string;
     allianceLabel: string;
     members: number;
     passCount: number;
     failCount: number;
+    partialCount?: number;
     noStandardCount: number;
     totalContribution: string;
     totalPowerGrowth: string;
+    totalFortDestroying?: string;
+    totalKillPointsGrowth?: string;
   }>;
 }
 
@@ -110,6 +118,29 @@ function allianceClass(tag: string | null) {
   return `alliance-${tag.toLowerCase()}`;
 }
 
+const RANKING_TYPE_FILTERS = [
+  { value: '', label: 'All Types' },
+  { value: 'individual_power', label: 'Individual Power' },
+  { value: 'mad_scientist', label: 'Mad Scientist' },
+  { value: 'fort_destroyer', label: 'Fort Destroyer' },
+  { value: 'kill_point', label: 'Kill Point' },
+];
+
+const METRIC_FILTERS = [
+  { value: '', label: 'All Metrics' },
+  { value: 'power', label: 'Power' },
+  { value: 'contribution_points', label: 'Contribution Points' },
+  { value: 'fort_destroying', label: 'Fort Destroying' },
+  { value: 'kill_points', label: 'Kill Points' },
+];
+
+const ALLIANCE_FILTERS = [
+  { value: '', label: 'All Alliances' },
+  { value: 'GODt', label: '[GODt]' },
+  { value: 'V57', label: '[V57]' },
+  { value: 'P57R', label: '[P57R]' },
+];
+
 export default function RankingsPage() {
   const {
     workspaceId,
@@ -123,6 +154,11 @@ export default function RankingsPage() {
   const [search, setSearch] = useState('');
   const [rows, setRows] = useState<CanonicalRow[]>([]);
   const [weeklyEvent, setWeeklyEvent] = useState<WeeklyEventInfo | null>(null);
+  const [weeks, setWeeks] = useState<WeeklyEventInfo[]>([]);
+  const [selectedWeekKey, setSelectedWeekKey] = useState<string>('');
+  const [rankingTypeFilter, setRankingTypeFilter] = useState('');
+  const [metricFilter, setMetricFilter] = useState('');
+  const [allianceFilter, setAllianceFilter] = useState('');
   const [weeklyActivity, setWeeklyActivity] = useState<WeeklyActivityResponse | null>(null);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [cursorStack, setCursorStack] = useState<Array<string | null>>([null]);
@@ -133,14 +169,33 @@ export default function RankingsPage() {
     'metricValue DESC, sourceRank ASC NULLS LAST, normalizedName ASC, rowId ASC'
   );
 
-  const loadWeeklyContext = useCallback(async () => {
+  const loadWeekOptions = useCallback(async () => {
     if (!workspaceReady) {
+      setWeeks([]);
       setWeeklyEvent(null);
-      setWeeklyActivity(null);
       return null;
     }
 
     try {
+      const weeksRes = await fetch(
+        `/api/v2/activity/weeks?workspaceId=${encodeURIComponent(workspaceId)}&limit=26`,
+        {
+          headers: { 'x-access-token': accessToken },
+        }
+      );
+      const weeksPayload = await weeksRes.json();
+      const weekRows = (Array.isArray(weeksPayload?.data) ? weeksPayload.data : []) as WeeklyEventInfo[];
+
+      if (weekRows.length > 0) {
+        setWeeks(weekRows);
+        const preferred =
+          weekRows.find((week) => week.weekKey === selectedWeekKey) ||
+          weekRows[0];
+        setSelectedWeekKey(preferred.weekKey || '');
+        setWeeklyEvent(preferred);
+        return preferred.weekKey || null;
+      }
+
       const weeklyRes = await fetch(
         `/api/v2/events/weekly?workspaceId=${encodeURIComponent(workspaceId)}&autoCreate=true`,
         {
@@ -149,8 +204,9 @@ export default function RankingsPage() {
       );
       const weeklyPayload = await weeklyRes.json();
       if (!weeklyRes.ok || !weeklyPayload?.data?.id) {
+        setWeeks([]);
         setWeeklyEvent(null);
-        setWeeklyActivity(null);
+        setSelectedWeekKey('');
         return null;
       }
 
@@ -159,31 +215,47 @@ export default function RankingsPage() {
         name: weeklyPayload.data.name,
         weekKey: weeklyPayload.data.weekKey || null,
         startsAt: weeklyPayload.data.startsAt || null,
+        endsAt: weeklyPayload.data.endsAt || null,
+        isClosed: Boolean(weeklyPayload.data.isClosed),
       };
+      setWeeks([week]);
       setWeeklyEvent(week);
-
-      const activityRes = await fetch(
-        `/api/v2/activity/weekly?workspaceId=${encodeURIComponent(workspaceId)}${
-          week.weekKey ? `&weekKey=${encodeURIComponent(week.weekKey)}` : ''
-        }`,
-        {
-          headers: { 'x-access-token': accessToken },
-        }
-      );
-      const activityPayload = await activityRes.json();
-      if (activityRes.ok && activityPayload?.data) {
-        setWeeklyActivity(activityPayload.data as WeeklyActivityResponse);
-      } else {
-        setWeeklyActivity(null);
-      }
-
-      return week;
+      setSelectedWeekKey(week.weekKey || '');
+      return week.weekKey || null;
     } catch {
+      setWeeks([]);
       setWeeklyEvent(null);
-      setWeeklyActivity(null);
       return null;
     }
-  }, [workspaceId, accessToken, workspaceReady]);
+  }, [workspaceId, accessToken, workspaceReady, selectedWeekKey]);
+
+  const loadWeeklyActivity = useCallback(
+    async (weekKey: string | null) => {
+      if (!workspaceReady) {
+        setWeeklyActivity(null);
+        return;
+      }
+      try {
+        const activityRes = await fetch(
+          `/api/v2/activity/weekly?workspaceId=${encodeURIComponent(workspaceId)}${
+            weekKey ? `&weekKey=${encodeURIComponent(weekKey)}` : ''
+          }`,
+          {
+            headers: { 'x-access-token': accessToken },
+          }
+        );
+        const activityPayload = await activityRes.json();
+        if (activityRes.ok && activityPayload?.data) {
+          setWeeklyActivity(activityPayload.data as WeeklyActivityResponse);
+        } else {
+          setWeeklyActivity(null);
+        }
+      } catch {
+        setWeeklyActivity(null);
+      }
+    },
+    [workspaceId, accessToken, workspaceReady]
+  );
 
   const loadData = useCallback(
     async (cursor: string | null = null, weekKeyOverride?: string | null) => {
@@ -199,8 +271,11 @@ export default function RankingsPage() {
         });
 
         if (search.trim()) params.set('q', search.trim());
-        const activeWeekKey = weekKeyOverride ?? weeklyEvent?.weekKey;
+        const activeWeekKey = weekKeyOverride ?? (selectedWeekKey || null);
         if (activeWeekKey) params.set('weekKey', activeWeekKey);
+        if (rankingTypeFilter) params.set('rankingType', rankingTypeFilter);
+        if (metricFilter) params.set('metricKey', metricFilter);
+        if (allianceFilter) params.set('alliance', allianceFilter);
         if (cursor) params.set('cursor', cursor);
 
         const rowsRes = await fetch(`/api/v2/rankings?${params.toString()}`, {
@@ -223,24 +298,68 @@ export default function RankingsPage() {
         setLoading(false);
       }
     },
-    [workspaceId, accessToken, search, workspaceReady, weeklyEvent?.weekKey]
+    [
+      workspaceId,
+      accessToken,
+      search,
+      workspaceReady,
+      selectedWeekKey,
+      rankingTypeFilter,
+      metricFilter,
+      allianceFilter,
+    ]
   );
 
   const refresh = useCallback(() => {
     const run = async () => {
       setCursorStack([null]);
       setNextCursor(null);
-      const weekly = await loadWeeklyContext();
-      await loadData(null, weekly?.weekKey || null);
+      const weekKey = await loadWeekOptions();
+      await Promise.all([loadWeeklyActivity(weekKey), loadData(null, weekKey)]);
     };
     void run();
-  }, [loadData, loadWeeklyContext]);
+  }, [loadData, loadWeekOptions, loadWeeklyActivity]);
 
   useEffect(() => {
     if (workspaceReady) {
       refresh();
     }
   }, [workspaceReady, refresh]);
+
+  useEffect(() => {
+    if (!workspaceReady || !selectedWeekKey) return;
+    const selectedWeek = weeks.find((week) => week.weekKey === selectedWeekKey) || null;
+    if (selectedWeek) {
+      setWeeklyEvent(selectedWeek);
+    }
+    setCursorStack([null]);
+    setNextCursor(null);
+    void Promise.all([loadWeeklyActivity(selectedWeekKey), loadData(null, selectedWeekKey)]);
+  }, [
+    workspaceReady,
+    selectedWeekKey,
+    rankingTypeFilter,
+    metricFilter,
+    allianceFilter,
+    weeks,
+    loadWeeklyActivity,
+    loadData,
+  ]);
+
+  const currentWeekIndex = useMemo(
+    () => weeks.findIndex((week) => week.weekKey === selectedWeekKey),
+    [weeks, selectedWeekKey]
+  );
+
+  const goPreviousWeek = () => {
+    if (currentWeekIndex < 0 || currentWeekIndex >= weeks.length - 1) return;
+    setSelectedWeekKey(weeks[currentWeekIndex + 1].weekKey || '');
+  };
+
+  const goNextWeek = () => {
+    if (currentWeekIndex <= 0) return;
+    setSelectedWeekKey(weeks[currentWeekIndex - 1].weekKey || '');
+  };
 
   const goNext = () => {
     if (!nextCursor) return;
@@ -398,23 +517,72 @@ export default function RankingsPage() {
       {weeklyEvent ? (
         <section className="ranking-controls-card mb-16">
           <FilterBar className="ranking-controls-top">
-            <div>
-              <strong>{weeklyEvent.name}</strong>
-              <div className="text-sm text-muted">
-                {weeklyEvent.weekKey || 'week key pending'}
-                {weeklyEvent.startsAt
-                  ? ` • ${new Date(weeklyEvent.startsAt).toLocaleDateString(undefined, {
-                      weekday: 'short',
-                      month: 'short',
-                      day: 'numeric',
-                    })}`
-                  : ''}
-              </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <button
+                className="btn btn-secondary btn-sm"
+                onClick={goPreviousWeek}
+                disabled={loading || currentWeekIndex >= weeks.length - 1}
+              >
+                <ArrowLeft size={14} /> Prev Week
+              </button>
+              <select
+                className="form-select"
+                value={selectedWeekKey}
+                onChange={(event) => setSelectedWeekKey(event.target.value)}
+                style={{ minWidth: 240 }}
+              >
+                {weeks.map((week) => (
+                  <option key={week.id} value={week.weekKey || ''}>
+                    {week.name}
+                  </option>
+                ))}
+              </select>
+              <button
+                className="btn btn-secondary btn-sm"
+                onClick={goNextWeek}
+                disabled={loading || currentWeekIndex <= 0}
+              >
+                Next Week <ArrowRight size={14} />
+              </button>
             </div>
             {weeklyActivity ? (
               <div className="text-sm text-muted">
                 Tracked Members: <strong>{weeklyActivity.summary.membersTracked}</strong>
               </div>
+            ) : null}
+          </FilterBar>
+          <FilterBar style={{ marginTop: 10, flexWrap: 'wrap' }}>
+            <span className="text-sm text-muted">
+              {weeklyEvent.weekKey || 'week key pending'}
+              {weeklyEvent.startsAt
+                ? ` • ${new Date(weeklyEvent.startsAt).toLocaleDateString(undefined, {
+                    weekday: 'short',
+                    month: 'short',
+                    day: 'numeric',
+                  })}`
+                : ''}
+            </span>
+            {weeklyActivity?.summary?.unresolvedIdentityCount != null ? (
+              <StatusPill
+                label={`Unlinked rows ${weeklyActivity.summary.unresolvedIdentityCount}`}
+                tone={
+                  weeklyActivity.summary.unresolvedIdentityCount > 0 ? 'warn' : 'good'
+                }
+              />
+            ) : null}
+            {weeklyActivity?.summary?.noPowerBaselineCount != null ? (
+              <StatusPill
+                label={`No power baseline ${weeklyActivity.summary.noPowerBaselineCount}`}
+                tone={weeklyActivity.summary.noPowerBaselineCount > 0 ? 'warn' : 'good'}
+              />
+            ) : null}
+            {weeklyActivity?.summary?.noKillPointsBaselineCount != null ? (
+              <StatusPill
+                label={`No KP baseline ${weeklyActivity.summary.noKillPointsBaselineCount}`}
+                tone={
+                  weeklyActivity.summary.noKillPointsBaselineCount > 0 ? 'warn' : 'good'
+                }
+              />
             ) : null}
           </FilterBar>
           {weeklyActivity?.summary?.allianceSummary?.length ? (
@@ -435,9 +603,53 @@ export default function RankingsPage() {
             <Search size={16} className="search-icon" style={{ marginLeft: '4px' }} />
             <input placeholder="Search player name or governor ID..." value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
-          <button className="btn btn-secondary" onClick={refresh} disabled={loading || !workspaceReady} style={{ padding: '0 16px' }}>
+          <select
+            className="form-select"
+            value={rankingTypeFilter}
+            onChange={(event) => setRankingTypeFilter(event.target.value)}
+            style={{ minWidth: 190 }}
+          >
+            {RANKING_TYPE_FILTERS.map((item) => (
+              <option key={item.value} value={item.value}>
+                {item.label}
+              </option>
+            ))}
+          </select>
+          <select
+            className="form-select"
+            value={metricFilter}
+            onChange={(event) => setMetricFilter(event.target.value)}
+            style={{ minWidth: 190 }}
+          >
+            {METRIC_FILTERS.map((item) => (
+              <option key={item.value} value={item.value}>
+                {item.label}
+              </option>
+            ))}
+          </select>
+          <button
+            className="btn btn-secondary"
+            onClick={() => {
+              setCursorStack([null]);
+              setNextCursor(null);
+              void loadData(null, selectedWeekKey || null);
+            }}
+            disabled={loading || !workspaceReady}
+            style={{ padding: '0 16px' }}
+          >
             <Filter size={14} /> Search
           </button>
+        </FilterBar>
+        <FilterBar style={{ marginTop: 10 }}>
+          {ALLIANCE_FILTERS.map((alliance) => (
+            <button
+              key={alliance.value}
+              className={`btn btn-sm ${allianceFilter === alliance.value ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => setAllianceFilter(alliance.value)}
+            >
+              {alliance.label}
+            </button>
+          ))}
         </FilterBar>
       </section>
 

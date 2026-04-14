@@ -6,15 +6,22 @@ REGION="${AWS_REGION:-$(aws configure get region || true)}"
 REGION="${REGION:-us-east-1}"
 
 QUEUE_NAME="${PREFIX}-ocr-jobs"
+INSTANCE_NAME="${PREFIX}-ocr-worker"
 START_LAMBDA_NAME="${PREFIX}-ocr-start-worker"
 STOP_LAMBDA_NAME="${PREFIX}-ocr-stop-worker"
 
 QUEUE_URL="$(aws --region "$REGION" sqs get-queue-url --queue-name "$QUEUE_NAME" --query 'QueueUrl' --output text)"
+INSTANCE_ID="$(aws --region "$REGION" ec2 describe-instances --filters "Name=tag:Name,Values=${INSTANCE_NAME}" "Name=instance-state-name,Values=pending,running,stopping,stopped" --query 'Reservations[].Instances[0].InstanceId' --output text | awk 'NR==1{print $1}')"
 AWS_ACCESS_KEY_ID_VALUE="${AWS_ACCESS_KEY_ID:-$(aws configure get aws_access_key_id || true)}"
 AWS_SECRET_ACCESS_KEY_VALUE="${AWS_SECRET_ACCESS_KEY:-$(aws configure get aws_secret_access_key || true)}"
 
 if [[ -z "$QUEUE_URL" || "$QUEUE_URL" == "None" ]]; then
   echo "Failed to resolve queue URL for '$QUEUE_NAME' in region '$REGION'." >&2
+  exit 1
+fi
+
+if [[ -z "$INSTANCE_ID" || "$INSTANCE_ID" == "None" ]]; then
+  echo "Failed to resolve OCR worker instance for name '$INSTANCE_NAME' in region '$REGION'." >&2
   exit 1
 fi
 
@@ -43,6 +50,8 @@ for env in production preview development; do
     upsert_env "AWS_OCR_QUEUE_URL" "$QUEUE_URL" "$env" "$preview_branch"
     upsert_env "AWS_OCR_START_LAMBDA" "$START_LAMBDA_NAME" "$env" "$preview_branch"
     upsert_env "AWS_OCR_STOP_LAMBDA" "$STOP_LAMBDA_NAME" "$env" "$preview_branch"
+    upsert_env "AWS_OCR_INSTANCE_ID" "$INSTANCE_ID" "$env" "$preview_branch"
+    upsert_env "UPLOAD_MODE" "queue_first" "$env" "$preview_branch"
     upsert_env "AWS_ACCESS_KEY_ID" "$AWS_ACCESS_KEY_ID_VALUE" "$env" "$preview_branch"
     upsert_env "AWS_SECRET_ACCESS_KEY" "$AWS_SECRET_ACCESS_KEY_VALUE" "$env" "$preview_branch"
   else
@@ -51,6 +60,8 @@ for env in production preview development; do
     upsert_env "AWS_OCR_QUEUE_URL" "$QUEUE_URL" "$env"
     upsert_env "AWS_OCR_START_LAMBDA" "$START_LAMBDA_NAME" "$env"
     upsert_env "AWS_OCR_STOP_LAMBDA" "$STOP_LAMBDA_NAME" "$env"
+    upsert_env "AWS_OCR_INSTANCE_ID" "$INSTANCE_ID" "$env"
+    upsert_env "UPLOAD_MODE" "queue_first" "$env"
     upsert_env "AWS_ACCESS_KEY_ID" "$AWS_ACCESS_KEY_ID_VALUE" "$env"
     upsert_env "AWS_SECRET_ACCESS_KEY" "$AWS_SECRET_ACCESS_KEY_VALUE" "$env"
   fi
@@ -59,5 +70,6 @@ done
 echo "Vercel AWS OCR environment synced successfully."
 echo "Region: $REGION"
 echo "Queue:  $QUEUE_URL"
+echo "Worker Instance: $INSTANCE_ID"
 echo "Start Lambda: $START_LAMBDA_NAME"
 echo "Stop Lambda:  $STOP_LAMBDA_NAME"

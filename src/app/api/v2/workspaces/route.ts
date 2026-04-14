@@ -7,6 +7,7 @@ import { parsePagination } from '@/lib/v2';
 import { createOpaqueToken, hashAccessToken } from '@/lib/security';
 import { getDefaultFallbackOcrModel } from '@/lib/ocr/fallback-config';
 import { PRIMARY_KINGDOM_NUMBER } from '@/lib/alliances';
+import { DEFAULT_WEEK_RESET_UTC_OFFSET } from '@/lib/weekly-events';
 
 const createWorkspaceSchema = z.object({
   name: z.string().min(2).max(80),
@@ -108,6 +109,7 @@ export async function POST(request: NextRequest) {
           fallbackOcrMonthlyBudgetUsd: 5,
           fallbackOcrProvider: defaultFallbackProvider,
           fallbackOcrModel: getDefaultFallbackOcrModel(defaultFallbackProvider),
+          weekResetUtcOffset: DEFAULT_WEEK_RESET_UTC_OFFSET,
         },
       });
 

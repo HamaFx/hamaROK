@@ -143,6 +143,8 @@ model Workspace {
 enum ActivityMetricKey {
   POWER_GROWTH
   CONTRIBUTION_POINTS
+  FORT_DESTROYING
+  KILL_POINTS_GROWTH
 }
 
 model AllianceActivityStandard {
@@ -176,6 +178,7 @@ model WorkspaceSettings {
   fallbackOcrProvider   String    @default("google_vision")
   fallbackOcrModel      String    @default("DOCUMENT_TEXT_DETECTION")
   featureAdbCaptureRnd Boolean   @default(false)
+  weekResetUtcOffset   String    @default("+00:00")
   updatedAt            DateTime  @updatedAt
   workspace            Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 }

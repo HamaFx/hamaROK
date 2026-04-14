@@ -12,6 +12,7 @@ interface SettingsConfig {
   kpPerPowerRatio: number;
   deadPerPowerRatio: number;
   discordWebhook: string;
+  weekResetUtcOffset: string;
 }
 
 type AllianceTag = 'GODt' | 'V57' | 'P57R';
@@ -20,14 +21,16 @@ interface ActivityStandardState {
   allianceTag: AllianceTag;
   allianceLabel: string;
   contributionPoints: string;
+  fortDestroying: string;
   powerGrowth: string;
+  killPointsGrowth: string;
   isActive: boolean;
 }
 
 interface ActivityStandardApiRow {
   allianceTag: string;
   allianceLabel: string;
-  metricKey: 'contribution_points' | 'power_growth';
+  metricKey: 'contribution_points' | 'power_growth' | 'fort_destroying' | 'kill_points_growth';
   minimumValue: string;
   isActive: boolean;
 }
@@ -45,6 +48,7 @@ const DEFAULTS: SettingsConfig = {
   kpPerPowerRatio: 0.3,
   deadPerPowerRatio: 0.02,
   discordWebhook: '',
+  weekResetUtcOffset: '+00:00',
 };
 
 function defaultStandards(): ActivityStandardState[] {
@@ -52,7 +56,9 @@ function defaultStandards(): ActivityStandardState[] {
     allianceTag: alliance.tag,
     allianceLabel: alliance.label,
     contributionPoints: '0',
+    fortDestroying: '0',
     powerGrowth: '0',
+    killPointsGrowth: '0',
     isActive: true,
   }));
 }
@@ -121,6 +127,10 @@ export default function SettingsPage() {
           kpPerPowerRatio: settingsData.kpPerPowerRatio ?? DEFAULTS.kpPerPowerRatio,
           deadPerPowerRatio: settingsData.deadPerPowerRatio ?? DEFAULTS.deadPerPowerRatio,
           discordWebhook: settingsData.discordWebhook ?? DEFAULTS.discordWebhook,
+          weekResetUtcOffset:
+            typeof settingsData.weekResetUtcOffset === 'string'
+              ? settingsData.weekResetUtcOffset
+              : DEFAULTS.weekResetUtcOffset,
         });
 
         if (standardsRes.ok) {
@@ -136,8 +146,14 @@ export default function SettingsPage() {
             if (row.metricKey === 'contribution_points') {
               merged[idx].contributionPoints = normalizeIntegerInput(String(row.minimumValue || '0'));
             }
+            if (row.metricKey === 'fort_destroying') {
+              merged[idx].fortDestroying = normalizeIntegerInput(String(row.minimumValue || '0'));
+            }
             if (row.metricKey === 'power_growth') {
               merged[idx].powerGrowth = normalizeIntegerInput(String(row.minimumValue || '0'));
+            }
+            if (row.metricKey === 'kill_points_growth') {
+              merged[idx].killPointsGrowth = normalizeIntegerInput(String(row.minimumValue || '0'));
             }
             merged[idx].isActive = row.isActive ?? true;
             if (row.allianceLabel) {
@@ -183,8 +199,20 @@ export default function SettingsPage() {
         },
         {
           allianceTag: row.allianceTag,
+          metricKey: 'fort_destroying',
+          minimumValue: normalizeIntegerInput(row.fortDestroying),
+          isActive: row.isActive,
+        },
+        {
+          allianceTag: row.allianceTag,
           metricKey: 'power_growth',
           minimumValue: normalizeIntegerInput(row.powerGrowth),
+          isActive: row.isActive,
+        },
+        {
+          allianceTag: row.allianceTag,
+          metricKey: 'kill_points_growth',
+          minimumValue: normalizeIntegerInput(row.killPointsGrowth),
           isActive: row.isActive,
         },
       ]);
@@ -237,13 +265,16 @@ export default function SettingsPage() {
     const { name, value } = e.target;
     setConfig((prev) => ({
       ...prev,
-      [name]: name === 'discordWebhook' ? value : Number(value),
+      [name]:
+        name === 'discordWebhook' || name === 'weekResetUtcOffset'
+          ? value
+          : Number(value),
     }));
   };
 
   const handleStandardChange = (
     allianceTag: AllianceTag,
-    key: 'contributionPoints' | 'powerGrowth',
+    key: 'contributionPoints' | 'fortDestroying' | 'powerGrowth' | 'killPointsGrowth',
     value: string
   ) => {
     setStandards((prev) =>
@@ -273,15 +304,25 @@ export default function SettingsPage() {
       (sum, row) => sum + BigInt(normalizeIntegerInput(row.contributionPoints)),
       BigInt(0)
     );
+    const totalFort = standards.reduce(
+      (sum, row) => sum + BigInt(normalizeIntegerInput(row.fortDestroying)),
+      BigInt(0)
+    );
     const totalGrowth = standards.reduce(
       (sum, row) => sum + BigInt(normalizeIntegerInput(row.powerGrowth)),
+      BigInt(0)
+    );
+    const totalKpGrowth = standards.reduce(
+      (sum, row) => sum + BigInt(normalizeIntegerInput(row.killPointsGrowth)),
       BigInt(0)
     );
 
     return {
       trackedAlliances: members,
       totalContribution: totalContribution.toString(),
+      totalFort: totalFort.toString(),
       totalGrowth: totalGrowth.toString(),
+      totalKpGrowth: totalKpGrowth.toString(),
     };
   }, [standards]);
 
@@ -422,15 +463,36 @@ export default function SettingsPage() {
 
         <Panel
           title="Weekly Activity Standards"
-          subtitle="Minimum thresholds reset every Monday 00:00 UTC."
+          subtitle="Minimum thresholds reset weekly using the configured game reset offset."
         >
+          <div className="form-group mb-12">
+            <label className="form-label">
+              <span>Week Reset UTC Offset</span>
+              <span>{config.weekResetUtcOffset}</span>
+            </label>
+            <input
+              type="text"
+              name="weekResetUtcOffset"
+              className="form-input"
+              value={config.weekResetUtcOffset}
+              onChange={handleConfigChange}
+              placeholder="+00:00"
+              pattern="^[+-](0\\d|1[0-4]):[0-5]\\d$"
+            />
+            <div className="text-sm text-muted mt-6">
+              Format `+HH:MM` or `-HH:MM` (example `+03:00`).
+            </div>
+          </div>
+
           <div className="data-table-wrap">
             <table className="data-table data-table-dense">
               <thead>
                 <tr>
                   <th>Alliance</th>
                   <th>Contribution Min</th>
+                  <th>Fort Destroy Min</th>
                   <th>Power Growth Min</th>
+                  <th>KP Growth Min</th>
                 </tr>
               </thead>
               <tbody>
@@ -456,11 +518,35 @@ export default function SettingsPage() {
                         type="text"
                         inputMode="numeric"
                         className="form-input"
+                        value={row.fortDestroying}
+                        onChange={(e) =>
+                          handleStandardChange(row.allianceTag, 'fortDestroying', e.target.value)
+                        }
+                        aria-label={`${row.allianceLabel} fort destroying minimum`}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        className="form-input"
                         value={row.powerGrowth}
                         onChange={(e) =>
                           handleStandardChange(row.allianceTag, 'powerGrowth', e.target.value)
                         }
                         aria-label={`${row.allianceLabel} power growth minimum`}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        className="form-input"
+                        value={row.killPointsGrowth}
+                        onChange={(e) =>
+                          handleStandardChange(row.allianceTag, 'killPointsGrowth', e.target.value)
+                        }
+                        aria-label={`${row.allianceLabel} kill points growth minimum`}
                       />
                     </td>
                   </tr>
@@ -472,7 +558,7 @@ export default function SettingsPage() {
           <FilterBar className="mt-12">
             <Shield size={14} />
             <span className="text-sm text-muted">
-              Weekly baseline totals: Contribution {formatInt(weeklySummary.totalContribution)} • Power Growth {formatInt(weeklySummary.totalGrowth)}
+              Totals: Contribution {formatInt(weeklySummary.totalContribution)} • Fort {formatInt(weeklySummary.totalFort)} • Power Growth {formatInt(weeklySummary.totalGrowth)} • KP Growth {formatInt(weeklySummary.totalKpGrowth)}
             </span>
           </FilterBar>
         </Panel>

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
+  Activity,
   CalendarClock,
   Database,
   ShieldAlert,
@@ -29,6 +30,40 @@ interface EventSummary {
   createdAt: string;
 }
 
+interface WeeklyEventInfo {
+  id: string;
+  name: string;
+  weekKey: string | null;
+  startsAt: string | null;
+}
+
+interface WeeklyActivityResponse {
+  event: {
+    id: string;
+    weekKey: string | null;
+    name: string;
+  };
+  rows: Array<{
+    governorDbId: string;
+    governorName: string;
+    contributionPoints: string;
+    powerGrowth: string | null;
+  }>;
+  summary: {
+    membersTracked: number;
+    unresolvedIdentityCount: number;
+    noPowerBaselineCount: number;
+    noKillPointsBaselineCount: number;
+    allianceSummary: Array<{
+      allianceTag: string;
+      allianceLabel: string;
+      members: number;
+      passCount: number;
+      failCount: number;
+    }>;
+  };
+}
+
 export default function Dashboard() {
   const {
     workspaceId,
@@ -39,6 +74,8 @@ export default function Dashboard() {
   } = useWorkspaceSession();
   const [events, setEvents] = useState<EventSummary[]>([]);
   const [governorCount, setGovernorCount] = useState(0);
+  const [weeklyEvent, setWeeklyEvent] = useState<WeeklyEventInfo | null>(null);
+  const [weeklyActivity, setWeeklyActivity] = useState<WeeklyActivityResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -52,17 +89,21 @@ export default function Dashboard() {
 
       try {
         setLoading(true);
-        const [evRes, govRes] = await Promise.all([
+        const [evRes, govRes, weeklyRes] = await Promise.all([
           fetch(`/api/v2/events?${new URLSearchParams({ workspaceId, limit: '50' }).toString()}`, {
             headers: { 'x-access-token': accessToken },
           }),
           fetch(`/api/v2/governors?${new URLSearchParams({ workspaceId, limit: '1' }).toString()}`, {
             headers: { 'x-access-token': accessToken },
           }),
+          fetch(`/api/v2/events/weekly?${new URLSearchParams({ workspaceId, autoCreate: 'true' }).toString()}`, {
+            headers: { 'x-access-token': accessToken },
+          }),
         ]);
 
         const evPayload = await evRes.json();
         const govPayload = await govRes.json();
+        const weeklyPayload = await weeklyRes.json();
 
         if (evRes.ok && Array.isArray(evPayload?.data)) {
           setEvents(evPayload.data as EventSummary[]);
@@ -75,6 +116,34 @@ export default function Dashboard() {
         } else {
           setGovernorCount(0);
         }
+
+        if (weeklyRes.ok && weeklyPayload?.data?.id) {
+          const weeklyInfo: WeeklyEventInfo = {
+            id: weeklyPayload.data.id,
+            name: weeklyPayload.data.name,
+            weekKey: weeklyPayload.data.weekKey || null,
+            startsAt: weeklyPayload.data.startsAt || null,
+          };
+          setWeeklyEvent(weeklyInfo);
+
+          const activityRes = await fetch(
+            `/api/v2/activity/weekly?workspaceId=${encodeURIComponent(workspaceId)}${
+              weeklyInfo.weekKey ? `&weekKey=${encodeURIComponent(weeklyInfo.weekKey)}` : ''
+            }`,
+            {
+              headers: { 'x-access-token': accessToken },
+            }
+          );
+          const activityPayload = await activityRes.json();
+          if (activityRes.ok && activityPayload?.data) {
+            setWeeklyActivity(activityPayload.data as WeeklyActivityResponse);
+          } else {
+            setWeeklyActivity(null);
+          }
+        } else {
+          setWeeklyEvent(null);
+          setWeeklyActivity(null);
+        }
       } finally {
         setLoading(false);
       }
@@ -84,8 +153,6 @@ export default function Dashboard() {
   }, [workspaceReady, workspaceId, accessToken, sessionLoading]);
 
   const totalSnapshots = useMemo(() => events.reduce((sum, e) => sum + e.snapshotCount, 0), [events]);
-  const latestEventDate = useMemo(() => (events[0] ? formatDate(events[0].createdAt) : '—'), [events]);
-
   return (
     <div className="page-container">
       <PageHero
@@ -104,12 +171,65 @@ export default function Dashboard() {
         <KpiCard icon={<FileBox size={18} />} label="Snapshots" value={loading ? '—' : totalSnapshots} hint="Captured profiles" tone="good" />
         <KpiCard
           icon={<CalendarClock size={18} />}
-          label="Latest Event"
-          value={loading ? '—' : latestEventDate}
-          hint="Newest ingest window"
+          label="Current Week"
+          value={loading ? '—' : weeklyEvent?.weekKey || '—'}
+          hint={loading ? 'Loading weekly window' : weeklyEvent?.name || 'No weekly event'}
           tone="neutral"
         />
       </div>
+
+      {weeklyActivity ? (
+        <Panel
+          title="Weekly Activity Snapshot"
+          subtitle={`${weeklyActivity.summary.membersTracked} tracked members • ${weeklyActivity.event.name}`}
+          actions={
+            <Link href="/activity" className="btn btn-secondary btn-sm">
+              <Activity size={14} /> Open Activity
+            </Link>
+          }
+          className="mb-24"
+        >
+          <div className="ranking-mobile-meta-line" style={{ flexWrap: 'wrap', marginBottom: 12 }}>
+            {weeklyActivity.summary.allianceSummary.map((alliance) => (
+              <span key={alliance.allianceTag}>
+                {alliance.allianceLabel}: {alliance.passCount}/{alliance.members} pass
+              </span>
+            ))}
+          </div>
+          <div className="grid-2">
+            <div>
+              <h4 style={{ margin: '0 0 8px' }}>Top Contribution</h4>
+              {(weeklyActivity.rows || []).slice(0, 3).map((row) => (
+                <div key={`c-${row.governorDbId}`} className="ranking-mobile-meta-line" style={{ justifyContent: 'space-between' }}>
+                  <span>{row.governorName}</span>
+                  <strong>{Number(row.contributionPoints).toLocaleString()}</strong>
+                </div>
+              ))}
+            </div>
+            <div>
+              <h4 style={{ margin: '0 0 8px' }}>Top Power Growth</h4>
+              {[...(weeklyActivity.rows || [])]
+                .sort((a, b) => {
+                  const diff = BigInt(b.powerGrowth || '0') - BigInt(a.powerGrowth || '0');
+                  if (diff === BigInt(0)) return 0;
+                  return diff > BigInt(0) ? 1 : -1;
+                })
+                .slice(0, 3)
+                .map((row) => (
+                  <div key={`p-${row.governorDbId}`} className="ranking-mobile-meta-line" style={{ justifyContent: 'space-between' }}>
+                    <span>{row.governorName}</span>
+                    <strong>{row.powerGrowth != null ? Number(row.powerGrowth).toLocaleString() : 'N/A'}</strong>
+                  </div>
+                ))}
+            </div>
+          </div>
+          <div className="ranking-mobile-meta-line" style={{ marginTop: 12 }}>
+            <span>Unlinked: {weeklyActivity.summary.unresolvedIdentityCount}</span>
+            <span>No power baseline: {weeklyActivity.summary.noPowerBaselineCount}</span>
+            <span>No KP baseline: {weeklyActivity.summary.noKillPointsBaselineCount}</span>
+          </div>
+        </Panel>
+      ) : null}
 
       <Panel
         title="Recent Events"

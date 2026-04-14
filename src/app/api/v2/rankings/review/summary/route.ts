@@ -1,9 +1,9 @@
 import { NextRequest } from 'next/server';
 import { RankingIdentityStatus, WorkspaceRole } from '@prisma/client';
 import { ApiHttpError, fail, handleApiError, ok, requireParam } from '@/lib/api-response';
-import { parseCommaValues, parsePagination } from '@/lib/v2';
+import { parseCommaValues } from '@/lib/v2';
 import { authorizeWorkspaceAccess } from '@/lib/workspace-auth';
-import { listRankingReviewRows } from '@/lib/rankings/service';
+import { getRankingReviewQueueSummary } from '@/lib/rankings/service';
 import { makeServerCacheKey, withServerCache } from '@/lib/server-cache';
 import { workspaceCacheTags } from '@/lib/cache-scopes';
 
@@ -31,10 +31,7 @@ export async function GET(request: NextRequest) {
     const url = new URL(request.url);
     const workspaceId = requireParam(url.searchParams.get('workspaceId'), 'workspaceId');
     const eventId = url.searchParams.get('eventId')?.trim() || null;
-    const rankingType = url.searchParams.get('rankingType')?.trim() || null;
-    const metricKey = url.searchParams.get('metricKey')?.trim() || null;
     const statuses = parseStatuses(url.searchParams.get('status'));
-    const { limit, offset } = parsePagination(request, { limit: 50, offset: 0 });
 
     const auth = await authorizeWorkspaceAccess(request, workspaceId, WorkspaceRole.VIEWER);
     if (!auth.ok) {
@@ -42,38 +39,27 @@ export async function GET(request: NextRequest) {
     }
 
     const tags = workspaceCacheTags(workspaceId);
-    const rows = await withServerCache(
-      makeServerCacheKey('api:v2:rankings:review', {
+    const summary = await withServerCache(
+      makeServerCacheKey('api:v2:rankings:review:summary', {
         workspaceId,
         eventId,
-        rankingType,
-        metricKey,
         statuses: [...statuses].sort(),
-        limit,
-        offset,
       }),
       {
         ttlMs: 8_000,
         tags: [tags.all, tags.rankings, tags.rankingReview],
       },
       () =>
-        listRankingReviewRows({
+        getRankingReviewQueueSummary({
           workspaceId,
           eventId,
-          rankingType,
-          metricKey,
           status: statuses,
-          limit,
-          offset,
         })
     );
 
-    return ok(rows.rows, {
-      total: rows.total,
-      limit,
-      offset,
-    });
+    return ok(summary);
   } catch (error) {
     return handleApiError(error);
   }
 }
+

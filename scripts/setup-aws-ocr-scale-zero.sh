@@ -850,29 +850,30 @@ def _extract_profile(lines: List[Dict[str, Any]], width: int, height: int, trace
         },
     }
 
-def _normalize_ranking_type(header_text: str) -> str:
-    cleaned = re.sub(r'RANKINGS?', '', header_text.upper())
-    cleaned = re.sub(r'[^A-Z0-9 ]', ' ', cleaned)
-    cleaned = re.sub(r'\s+', ' ', cleaned).strip()
-    return re.sub(r'[^a-z0-9]+', '_', cleaned.lower()).strip('_') or 'unknown'
+STRICT_RANKING_HEADER_MAP: List[Tuple[str, str, str]] = [
+    ('INDIVIDUAL POWER', 'individual_power', 'power'),
+    ('MAD SCIENTIST', 'mad_scientist', 'contribution_points'),
+    ('FORT DESTROYER', 'fort_destroyer', 'fort_destroying'),
+    ('KILL POINTS', 'kill_point', 'kill_points'),
+    ('KILL POINT', 'kill_point', 'kill_points'),
+]
 
-def _detect_metric_key(header_text: str) -> str:
-    text = header_text.upper()
-    if 'POWER' in text:
-        return 'power'
-    if 'CONTRIBUTION' in text:
-        return 'contribution_points'
-    if 'FORTS DESTROYED' in text:
-        return 'forts_destroyed'
-    if 'KILL' in text:
-        return 'kill_points'
-    return 'metric'
+def _classify_ranking_header(header_text: str) -> Tuple[Optional[str], Optional[str], str]:
+    cleaned = re.sub(r'[^A-Z0-9 ]', ' ', str(header_text or '').upper())
+    cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+    without_rank_suffix = re.sub(r'\bRANKINGS?\b', ' ', cleaned)
+    without_rank_suffix = re.sub(r'\s+', ' ', without_rank_suffix).strip()
+
+    for pattern, ranking_type, metric_key in STRICT_RANKING_HEADER_MAP:
+        if pattern in without_rank_suffix:
+            return ranking_type, metric_key, without_rank_suffix
+
+    return None, None, without_rank_suffix
 
 def _extract_ranking(lines: List[Dict[str, Any]], width: int, height: int) -> Dict[str, Any]:
     header_lines = [line for line in lines if line['cy'] < height * 0.2]
     header_text = ' '.join(line['text'] for line in header_lines)
-    ranking_type = _normalize_ranking_type(header_text)
-    metric_key = _detect_metric_key(header_text)
+    ranking_type, metric_key, normalized_header = _classify_ranking_header(header_text)
 
     metric_anchors = [
         line for line in lines
@@ -987,10 +988,15 @@ def _extract_ranking(lines: List[Dict[str, Any]], width: int, height: int) -> Di
     )
 
     avg_conf = sum(row['confidence'] for row in rows) / len(rows) if rows else 0.0
+    classification_error = None
+    if not ranking_type or not metric_key:
+        classification_error = (
+            f'Unsupported ranking header "{(normalized_header or header_text or "unknown")[:120]}".'
+        )
 
     return {
-        'rankingType': ranking_type,
-        'metricKey': metric_key,
+        'rankingType': ranking_type or 'unknown',
+        'metricKey': metric_key or 'metric',
         'headerText': header_text[:120],
         'rows': rows,
         'metadata': {
@@ -999,6 +1005,8 @@ def _extract_ranking(lines: List[Dict[str, Any]], width: int, height: int) -> Di
             'averageConfidence': avg_conf,
             'kingdomNumber': PRIMARY_KINGDOM_NUMBER,
             'trackedAlliances': [item['tag'] for item in TRACKED_ALLIANCES],
+            'normalizedHeader': normalized_header[:120],
+            'classificationError': classification_error,
         },
     }
 
@@ -1039,6 +1047,9 @@ def _handle_ingestion_message(msg: Dict[str, Any]) -> bool:
 
         if archetype == 'ranking_board':
             ranking = _extract_ranking(lines, width, height)
+            classification_error = (ranking.get('metadata') or {}).get('classificationError')
+            if classification_error:
+                raise RuntimeError(str(classification_error))
             if len(ranking.get('rows', [])) == 0:
                 raise RuntimeError('ranking extraction produced no rows')
             complete_payload = {

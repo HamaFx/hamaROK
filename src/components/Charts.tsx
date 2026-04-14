@@ -164,3 +164,64 @@ export function GrowthLineChart({
     </section>
   );
 }
+
+export function WeeklyActivityLineChart({
+  timeline,
+}: {
+  timeline: Array<{
+    weekName: string;
+    contributionPoints: number;
+    fortDestroying: number;
+    powerGrowth: number;
+    killPointsGrowth: number;
+  }>;
+}) {
+  return (
+    <section className="chart-container" aria-label="Weekly activity timeline chart">
+      <h3>Weekly Activity Trends</h3>
+      <div style={{ width: '100%', height: 320 }}>
+        <ResponsiveContainer>
+          <LineChart data={timeline}>
+            <CartesianGrid strokeDasharray="2 4" stroke="rgba(113, 138, 165, 0.16)" />
+            <XAxis dataKey="weekName" stroke="#8da5c2" tick={{ fontSize: 11 }} />
+            <YAxis tickFormatter={(v) => abbreviateNumber(v)} stroke="#8da5c2" />
+            <Tooltip content={<CustomTooltip />} />
+            <Legend wrapperStyle={{ fontSize: '12px', color: '#9ab0cb' }} />
+            <Line
+              type="monotone"
+              dataKey="contributionPoints"
+              stroke="#3b82f6"
+              strokeWidth={2}
+              dot={{ r: 2.5 }}
+              name="Contribution"
+            />
+            <Line
+              type="monotone"
+              dataKey="fortDestroying"
+              stroke="#10b981"
+              strokeWidth={2}
+              dot={{ r: 2.5 }}
+              name="Fort"
+            />
+            <Line
+              type="monotone"
+              dataKey="powerGrowth"
+              stroke="#f59e0b"
+              strokeWidth={2}
+              dot={{ r: 2.5 }}
+              name="Power Growth"
+            />
+            <Line
+              type="monotone"
+              dataKey="killPointsGrowth"
+              stroke="#ef4444"
+              strokeWidth={2}
+              dot={{ r: 2.5 }}
+              name="KP Growth"
+            />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+    </section>
+  );
+}

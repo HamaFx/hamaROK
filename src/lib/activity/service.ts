@@ -9,13 +9,19 @@ import {
 import { prisma } from '@/lib/prisma';
 import { normalizeMetricKey, normalizeRankingType } from '@/lib/rankings/normalize';
 import { ensureWeeklyEventForWorkspace, findWeeklyEventByKey } from '@/lib/weekly-events';
+import { isWeeklyMetricKey, WeeklyMetricKey } from '@/lib/activity/metrics';
+import {
+  deriveOverallComplianceStatus,
+  WeeklyMetricComplianceStatus,
+} from '@/lib/activity/scoring';
 
 const METRIC_KEY_POWER = normalizeMetricKey('power');
 const METRIC_KEY_CONTRIBUTION = normalizeMetricKey('contribution_points');
+const METRIC_KEY_FORT_DESTROYING = normalizeMetricKey('fort_destroying');
+const METRIC_KEY_KILL_POINTS = normalizeMetricKey('kill_points');
 const RANKING_TYPE_INDIVIDUAL_POWER = normalizeRankingType('individual_power');
 const RANKING_TYPE_PROFILE_POWER = normalizeRankingType('governor_profile_power');
 
-export type WeeklyMetricKey = 'power_growth' | 'contribution_points';
 type TrackedAllianceTag = 'GODt' | 'V57' | 'P57R';
 
 interface ResolvedTrackedAlliance {
@@ -26,9 +32,9 @@ interface ResolvedTrackedAlliance {
 
 interface WeeklyMetricValue {
   metricKey: WeeklyMetricKey;
-  value: bigint;
+  value: bigint | null;
   minimumValue: bigint | null;
-  status: 'PASS' | 'FAIL' | 'NO_STANDARD';
+  status: WeeklyMetricComplianceStatus;
 }
 
 interface StandardInput {
@@ -39,15 +45,25 @@ interface StandardInput {
 }
 
 function toMetricEnum(metricKey: WeeklyMetricKey): ActivityMetricKey {
-  return metricKey === 'power_growth'
-    ? ActivityMetricKey.POWER_GROWTH
-    : ActivityMetricKey.CONTRIBUTION_POINTS;
+  switch (metricKey) {
+    case 'power_growth': return ActivityMetricKey.POWER_GROWTH;
+    case 'contribution_points': return ActivityMetricKey.CONTRIBUTION_POINTS;
+    case 'fort_destroying': return ActivityMetricKey.FORT_DESTROYING;
+    case 'kill_points_growth': return ActivityMetricKey.KILL_POINTS_GROWTH;
+    default:
+      throw new ApiHttpError('VALIDATION_ERROR', `Unsupported metric key: ${metricKey}`, 400);
+  }
 }
 
 function fromMetricEnum(metricKey: ActivityMetricKey): WeeklyMetricKey {
-  return metricKey === ActivityMetricKey.POWER_GROWTH
-    ? 'power_growth'
-    : 'contribution_points';
+  switch (metricKey) {
+    case ActivityMetricKey.POWER_GROWTH: return 'power_growth';
+    case ActivityMetricKey.CONTRIBUTION_POINTS: return 'contribution_points';
+    case ActivityMetricKey.FORT_DESTROYING: return 'fort_destroying';
+    case ActivityMetricKey.KILL_POINTS_GROWTH: return 'kill_points_growth';
+    default:
+      throw new ApiHttpError('VALIDATION_ERROR', `Unsupported metric enum: ${metricKey}`, 400);
+  }
 }
 
 function toBigInt(value: string | number | bigint | null | undefined): bigint {
@@ -60,7 +76,8 @@ function toBigInt(value: string | number | bigint | null | undefined): bigint {
   return BigInt(digits);
 }
 
-function scoreMetric(value: bigint, minimumValue: bigint | null): WeeklyMetricValue['status'] {
+function scoreMetric(value: bigint | null, minimumValue: bigint | null): WeeklyMetricValue['status'] {
+  if (value == null) return 'NO_BASELINE';
   if (minimumValue == null) return 'NO_STANDARD';
   return value >= minimumValue ? 'PASS' : 'FAIL';
 }
@@ -151,8 +168,8 @@ export async function upsertActivityStandards(args: {
 }) {
   const prepared = args.standards.map((row) => {
     const tag = String(row.allianceTag || '').trim();
-    const metricKey = row.metricKey;
-    if (!tag || !['power_growth', 'contribution_points'].includes(metricKey)) {
+    const metricKey = String(row.metricKey || '').trim();
+    if (!tag || !isWeeklyMetricKey(metricKey)) {
       throw new ApiHttpError('VALIDATION_ERROR', 'Invalid activity standard input.', 400);
     }
     const alliance = TRACKED_ALLIANCES.find((item) => item.tag.toUpperCase() === tag.toUpperCase());
@@ -278,91 +295,140 @@ export async function getWeeklyActivityReport(args: {
 
   const governorIds = trackedMembers.map((item) => item.governor.id);
 
-  const [currentContributionRows, currentPowerRows, currentSnapshotPower, previousPowerRows, previousSnapshotPower] =
-    await Promise.all([
-      prisma.rankingSnapshot.findMany({
-        where: {
-          workspaceId: args.workspaceId,
-          eventId: event.id,
-          metricKey: METRIC_KEY_CONTRIBUTION,
-          status: RankingSnapshotStatus.ACTIVE,
-          governorId: {
-            in: governorIds.length > 0 ? governorIds : ['__none__'],
+  const govIdFilter = governorIds.length > 0 ? governorIds : ['__none__'];
+
+  const [
+    currentContributionRows,
+    currentFortRows,
+    currentKpRankingRows,
+    previousKpRankingRows,
+    currentPowerRows,
+    currentSnapshotPower,
+    previousPowerRows,
+    previousSnapshotPower,
+    currentSnapshotKp,
+    previousSnapshotKp,
+    unresolvedIdentityCount,
+  ] = await Promise.all([
+    // Contribution points (weekly reset — raw value from ranking board)
+    prisma.rankingSnapshot.findMany({
+      where: {
+        workspaceId: args.workspaceId,
+        eventId: event.id,
+        metricKey: METRIC_KEY_CONTRIBUTION,
+        status: RankingSnapshotStatus.ACTIVE,
+        governorId: { in: govIdFilter },
+      },
+      select: { governorId: true, metricValue: true, updatedAt: true },
+    }),
+    // Fort destroying (weekly reset — raw value from ranking board)
+    prisma.rankingSnapshot.findMany({
+      where: {
+        workspaceId: args.workspaceId,
+        eventId: event.id,
+        metricKey: METRIC_KEY_FORT_DESTROYING,
+        status: RankingSnapshotStatus.ACTIVE,
+        governorId: { in: govIdFilter },
+      },
+      select: { governorId: true, metricValue: true, updatedAt: true },
+    }),
+    // Kill points from ranking board (progressive — need current week)
+    prisma.rankingSnapshot.findMany({
+      where: {
+        workspaceId: args.workspaceId,
+        eventId: event.id,
+        metricKey: METRIC_KEY_KILL_POINTS,
+        status: RankingSnapshotStatus.ACTIVE,
+        governorId: { in: govIdFilter },
+      },
+      select: { governorId: true, metricValue: true, updatedAt: true },
+    }),
+    // Kill points from ranking board (progressive — need previous week for delta)
+    previousEvent
+      ? prisma.rankingSnapshot.findMany({
+          where: {
+            workspaceId: args.workspaceId,
+            eventId: previousEvent.id,
+            metricKey: METRIC_KEY_KILL_POINTS,
+            status: RankingSnapshotStatus.ACTIVE,
+            governorId: { in: govIdFilter },
           },
-        },
-        select: {
-          governorId: true,
-          metricValue: true,
-          updatedAt: true,
-        },
-      }),
-      prisma.rankingSnapshot.findMany({
-        where: {
-          workspaceId: args.workspaceId,
-          eventId: event.id,
-          metricKey: METRIC_KEY_POWER,
-          status: RankingSnapshotStatus.ACTIVE,
-          governorId: {
-            in: governorIds.length > 0 ? governorIds : ['__none__'],
+          select: { governorId: true, metricValue: true, updatedAt: true },
+        })
+      : Promise.resolve([]),
+    // Power from ranking board (progressive — need current week)
+    prisma.rankingSnapshot.findMany({
+      where: {
+        workspaceId: args.workspaceId,
+        eventId: event.id,
+        metricKey: METRIC_KEY_POWER,
+        status: RankingSnapshotStatus.ACTIVE,
+        governorId: { in: govIdFilter },
+      },
+      select: { governorId: true, metricValue: true, rankingType: true, updatedAt: true },
+    }),
+    // Power from profile snapshots (current week fallback)
+    prisma.snapshot.findMany({
+      where: {
+        workspaceId: args.workspaceId,
+        eventId: event.id,
+        governorId: { in: govIdFilter },
+      },
+      select: { governorId: true, power: true, killPoints: true, createdAt: true },
+    }),
+    // Power from ranking board (previous week for delta)
+    previousEvent
+      ? prisma.rankingSnapshot.findMany({
+          where: {
+            workspaceId: args.workspaceId,
+            eventId: previousEvent.id,
+            metricKey: METRIC_KEY_POWER,
+            status: RankingSnapshotStatus.ACTIVE,
+            governorId: { in: govIdFilter },
           },
-        },
-        select: {
-          governorId: true,
-          metricValue: true,
-          rankingType: true,
-          updatedAt: true,
-        },
-      }),
-      prisma.snapshot.findMany({
-        where: {
-          workspaceId: args.workspaceId,
-          eventId: event.id,
-          governorId: {
-            in: governorIds.length > 0 ? governorIds : ['__none__'],
+          select: { governorId: true, metricValue: true, rankingType: true, updatedAt: true },
+        })
+      : Promise.resolve([]),
+    // Power from profile snapshots (previous week fallback)
+    previousEvent
+      ? prisma.snapshot.findMany({
+          where: {
+            workspaceId: args.workspaceId,
+            eventId: previousEvent.id,
+            governorId: { in: govIdFilter },
           },
-        },
-        select: {
-          governorId: true,
-          power: true,
-          createdAt: true,
-        },
-      }),
-      previousEvent
-        ? prisma.rankingSnapshot.findMany({
-            where: {
-              workspaceId: args.workspaceId,
-              eventId: previousEvent.id,
-              metricKey: METRIC_KEY_POWER,
-              status: RankingSnapshotStatus.ACTIVE,
-              governorId: {
-                in: governorIds.length > 0 ? governorIds : ['__none__'],
-              },
-            },
-            select: {
-              governorId: true,
-              metricValue: true,
-              rankingType: true,
-              updatedAt: true,
-            },
-          })
-        : Promise.resolve([]),
-      previousEvent
-        ? prisma.snapshot.findMany({
-            where: {
-              workspaceId: args.workspaceId,
-              eventId: previousEvent.id,
-              governorId: {
-                in: governorIds.length > 0 ? governorIds : ['__none__'],
-              },
-            },
-            select: {
-              governorId: true,
-              power: true,
-              createdAt: true,
-            },
-          })
-        : Promise.resolve([]),
-    ]);
+          select: { governorId: true, power: true, killPoints: true, createdAt: true },
+        })
+      : Promise.resolve([]),
+    // Kill points from profile snapshots (current week fallback)
+    prisma.snapshot.findMany({
+      where: {
+        workspaceId: args.workspaceId,
+        eventId: event.id,
+        governorId: { in: govIdFilter },
+      },
+      select: { governorId: true, killPoints: true, createdAt: true },
+    }),
+    // Kill points from profile snapshots (previous week fallback)
+    previousEvent
+      ? prisma.snapshot.findMany({
+          where: {
+            workspaceId: args.workspaceId,
+            eventId: previousEvent.id,
+            governorId: { in: govIdFilter },
+          },
+          select: { governorId: true, killPoints: true, createdAt: true },
+        })
+      : Promise.resolve([]),
+    prisma.rankingSnapshot.count({
+      where: {
+        workspaceId: args.workspaceId,
+        eventId: event.id,
+        governorId: null,
+        status: RankingSnapshotStatus.UNRESOLVED,
+      },
+    }),
+  ]);
 
   const standardsByAllianceMetric = new Map<string, bigint>();
   for (const row of standardsRows) {
@@ -372,6 +438,7 @@ export async function getWeeklyActivityReport(args: {
     );
   }
 
+  // --- Contribution (weekly reset: highest value wins) ---
   const contributionByGovernor = new Map<string, bigint>();
   for (const row of currentContributionRows) {
     if (!row.governorId) continue;
@@ -381,23 +448,56 @@ export async function getWeeklyActivityReport(args: {
     }
   }
 
+  // --- Fort destroying (weekly reset: highest value wins) ---
+  const fortByGovernor = new Map<string, bigint>();
+  for (const row of currentFortRows) {
+    if (!row.governorId) continue;
+    const existing = fortByGovernor.get(row.governorId);
+    if (!existing || row.metricValue > existing) {
+      fortByGovernor.set(row.governorId, row.metricValue);
+    }
+  }
+
+  // --- Kill points (progressive: delta between weeks) ---
+  const currentKpByGovernor = new Map<string, bigint>();
+  for (const row of currentKpRankingRows) {
+    if (!row.governorId) continue;
+    const existing = currentKpByGovernor.get(row.governorId);
+    if (!existing || row.metricValue > existing) {
+      currentKpByGovernor.set(row.governorId, row.metricValue);
+    }
+  }
+  // Fallback to profile snapshot kill points
+  for (const row of currentSnapshotKp) {
+    if (!currentKpByGovernor.has(row.governorId)) {
+      currentKpByGovernor.set(row.governorId, row.killPoints);
+    }
+  }
+
+  const previousKpByGovernor = new Map<string, bigint>();
+  for (const row of previousKpRankingRows) {
+    if (!row.governorId) continue;
+    const existing = previousKpByGovernor.get(row.governorId);
+    if (!existing || row.metricValue > existing) {
+      previousKpByGovernor.set(row.governorId, row.metricValue);
+    }
+  }
+  for (const row of previousSnapshotKp) {
+    if (!previousKpByGovernor.has(row.governorId)) {
+      previousKpByGovernor.set(row.governorId, row.killPoints);
+    }
+  }
+
+  // --- Power (progressive: delta between weeks) ---
   const currentPowerByGovernor = new Map<string, bigint>();
   const currentPowerCandidates = new Map<
     string,
-    Array<{
-      metricValue: bigint;
-      rankingType: string;
-      updatedAt: Date;
-    }>
+    Array<{ metricValue: bigint; rankingType: string; updatedAt: Date }>
   >();
   for (const row of currentPowerRows) {
     if (!row.governorId) continue;
     const bucket = currentPowerCandidates.get(row.governorId) || [];
-    bucket.push({
-      metricValue: row.metricValue,
-      rankingType: row.rankingType,
-      updatedAt: row.updatedAt,
-    });
+    bucket.push({ metricValue: row.metricValue, rankingType: row.rankingType, updatedAt: row.updatedAt });
     currentPowerCandidates.set(row.governorId, bucket);
   }
   for (const [governorId, candidates] of currentPowerCandidates.entries()) {
@@ -413,20 +513,12 @@ export async function getWeeklyActivityReport(args: {
   const previousPowerByGovernor = new Map<string, bigint>();
   const previousPowerCandidates = new Map<
     string,
-    Array<{
-      metricValue: bigint;
-      rankingType: string;
-      updatedAt: Date;
-    }>
+    Array<{ metricValue: bigint; rankingType: string; updatedAt: Date }>
   >();
   for (const row of previousPowerRows) {
     if (!row.governorId) continue;
     const bucket = previousPowerCandidates.get(row.governorId) || [];
-    bucket.push({
-      metricValue: row.metricValue,
-      rankingType: row.rankingType,
-      updatedAt: row.updatedAt,
-    });
+    bucket.push({ metricValue: row.metricValue, rankingType: row.rankingType, updatedAt: row.updatedAt });
     previousPowerCandidates.set(row.governorId, bucket);
   }
   for (const [governorId, candidates] of previousPowerCandidates.entries()) {
@@ -439,54 +531,92 @@ export async function getWeeklyActivityReport(args: {
     }
   }
 
+  // --- Build per-governor rows with all 4 metrics ---
   const rows = trackedMembers.map((member) => {
     const governorId = member.governor.id;
-    const contributionValue = contributionByGovernor.get(governorId) || BigInt(0);
-    const currentPower = currentPowerByGovernor.get(governorId) || BigInt(0);
-    const previousPower = previousPowerByGovernor.get(governorId) || BigInt(0);
-    const powerGrowthValue = currentPower - previousPower;
+    const tag = member.alliance.tag;
 
-    const contributionMinimum =
-      standardsByAllianceMetric.get(`${member.alliance.tag}::contribution_points`) ?? null;
-    const powerGrowthMinimum =
-      standardsByAllianceMetric.get(`${member.alliance.tag}::power_growth`) ?? null;
+    const contributionValue = contributionByGovernor.get(governorId) || BigInt(0);
+    const fortValue = fortByGovernor.get(governorId) || BigInt(0);
+    const currentPowerValue = currentPowerByGovernor.get(governorId) ?? null;
+    const previousPowerValue = previousPowerByGovernor.get(governorId) ?? null;
+    const powerBaselineReady = currentPowerValue != null && previousPowerValue != null;
+    const powerGrowthValue = powerBaselineReady
+      ? currentPowerValue - previousPowerValue
+      : null;
+    const currentKpValue = currentKpByGovernor.get(governorId) ?? null;
+    const previousKpValue = previousKpByGovernor.get(governorId) ?? null;
+    const killPointsBaselineReady = currentKpValue != null && previousKpValue != null;
+    const kpGrowthValue = killPointsBaselineReady
+      ? currentKpValue - previousKpValue
+      : null;
+
+    const contributionMin = standardsByAllianceMetric.get(`${tag}::contribution_points`) ?? null;
+    const powerGrowthMin = standardsByAllianceMetric.get(`${tag}::power_growth`) ?? null;
+    const fortMin = standardsByAllianceMetric.get(`${tag}::fort_destroying`) ?? null;
+    const kpGrowthMin = standardsByAllianceMetric.get(`${tag}::kill_points_growth`) ?? null;
 
     const contributionMetric: WeeklyMetricValue = {
       metricKey: 'contribution_points',
       value: contributionValue,
-      minimumValue: contributionMinimum,
-      status: scoreMetric(contributionValue, contributionMinimum),
+      minimumValue: contributionMin,
+      status: scoreMetric(contributionValue, contributionMin),
     };
     const growthMetric: WeeklyMetricValue = {
       metricKey: 'power_growth',
       value: powerGrowthValue,
-      minimumValue: powerGrowthMinimum,
-      status: scoreMetric(powerGrowthValue, powerGrowthMinimum),
+      minimumValue: powerGrowthMin,
+      status: scoreMetric(powerGrowthValue, powerGrowthMin),
     };
+    const fortMetric: WeeklyMetricValue = {
+      metricKey: 'fort_destroying',
+      value: fortValue,
+      minimumValue: fortMin,
+      status: scoreMetric(fortValue, fortMin),
+    };
+    const kpGrowthMetric: WeeklyMetricValue = {
+      metricKey: 'kill_points_growth',
+      value: kpGrowthValue,
+      minimumValue: kpGrowthMin,
+      status: scoreMetric(kpGrowthValue, kpGrowthMin),
+    };
+
+    const allStatuses: WeeklyMetricValue['status'][] = [
+      contributionMetric.status,
+      growthMetric.status,
+      fortMetric.status,
+      kpGrowthMetric.status,
+    ];
+    const overallCompliance = deriveOverallComplianceStatus(allStatuses);
 
     return {
       governorDbId: member.governor.id,
       governorId: member.governor.governorId,
       governorName: member.governor.name,
-      allianceTag: member.alliance.tag,
+      allianceTag: tag,
       allianceLabel: member.alliance.label,
-      contributionPoints: contributionMetric.value.toString(),
-      powerGrowth: growthMetric.value.toString(),
-      currentPower: currentPower.toString(),
-      previousPower: previousPower.toString(),
+      contributionPoints: (contributionMetric.value || BigInt(0)).toString(),
+      fortDestroying: (fortMetric.value || BigInt(0)).toString(),
+      powerGrowth: growthMetric.value?.toString() || null,
+      killPointsGrowth: kpGrowthMetric.value?.toString() || null,
+      currentPower: (currentPowerValue || BigInt(0)).toString(),
+      previousPower: (previousPowerValue || BigInt(0)).toString(),
+      currentKillPoints: (currentKpValue || BigInt(0)).toString(),
+      previousKillPoints: (previousKpValue || BigInt(0)).toString(),
+      powerBaselineReady,
+      killPointsBaselineReady,
       standards: {
         contributionPoints: contributionMetric.minimumValue?.toString() || null,
+        fortDestroying: fortMetric.minimumValue?.toString() || null,
         powerGrowth: growthMetric.minimumValue?.toString() || null,
+        killPointsGrowth: kpGrowthMetric.minimumValue?.toString() || null,
       },
       compliance: {
         contributionPoints: contributionMetric.status,
+        fortDestroying: fortMetric.status,
         powerGrowth: growthMetric.status,
-        overall:
-          contributionMetric.status === 'FAIL' || growthMetric.status === 'FAIL'
-            ? 'FAIL'
-            : contributionMetric.status === 'PASS' && growthMetric.status === 'PASS'
-              ? 'PASS'
-              : 'NO_STANDARD',
+        killPointsGrowth: kpGrowthMetric.status,
+        overall: overallCompliance as 'PASS' | 'FAIL' | 'PARTIAL' | 'NO_STANDARD',
       },
     };
   });
@@ -494,7 +624,7 @@ export async function getWeeklyActivityReport(args: {
   rows.sort((a, b) => {
     const metricDiff = BigInt(b.contributionPoints) - BigInt(a.contributionPoints);
     if (metricDiff !== BigInt(0)) return metricDiff > BigInt(0) ? 1 : -1;
-    const growthDiff = BigInt(b.powerGrowth) - BigInt(a.powerGrowth);
+    const growthDiff = BigInt(b.powerGrowth || '0') - BigInt(a.powerGrowth || '0');
     if (growthDiff !== BigInt(0)) return growthDiff > BigInt(0) ? 1 : -1;
     return a.governorName.localeCompare(b.governorName);
   });
@@ -508,18 +638,27 @@ export async function getWeeklyActivityReport(args: {
       const members = rows.filter((row) => row.allianceTag === alliance.tag);
       const passCount = members.filter((row) => row.compliance.overall === 'PASS').length;
       const failCount = members.filter((row) => row.compliance.overall === 'FAIL').length;
+      const partialCount = members.filter((row) => row.compliance.overall === 'PARTIAL').length;
       const noStandardCount = members.filter((row) => row.compliance.overall === 'NO_STANDARD').length;
       const totalContribution = members.reduce((sum, row) => sum + BigInt(row.contributionPoints), BigInt(0));
-      const totalGrowth = members.reduce((sum, row) => sum + BigInt(row.powerGrowth), BigInt(0));
+      const totalGrowth = members.reduce((sum, row) => sum + BigInt(row.powerGrowth || '0'), BigInt(0));
+      const totalFort = members.reduce((sum, row) => sum + BigInt(row.fortDestroying), BigInt(0));
+      const totalKpGrowth = members.reduce(
+        (sum, row) => sum + BigInt(row.killPointsGrowth || '0'),
+        BigInt(0)
+      );
       return {
         allianceTag: alliance.tag,
         allianceLabel: alliance.label,
         members: members.length,
         passCount,
         failCount,
+        partialCount,
         noStandardCount,
         totalContribution: totalContribution.toString(),
         totalPowerGrowth: totalGrowth.toString(),
+        totalFortDestroying: totalFort.toString(),
+        totalKillPointsGrowth: totalKpGrowth.toString(),
       };
     });
 
@@ -545,12 +684,29 @@ export async function getWeeklyActivityReport(args: {
     rows,
     summary: {
       membersTracked: rows.length,
+      noPowerBaselineCount: rows.filter((row) => !row.powerBaselineReady).length,
+      noKillPointsBaselineCount: rows.filter((row) => !row.killPointsBaselineReady).length,
+      unresolvedIdentityCount,
       allianceSummary,
       topContribution: rows.slice(0, 5),
       topPowerGrowth: [...rows]
         .sort((a, b) => {
-          const growthDiff = BigInt(b.powerGrowth) - BigInt(a.powerGrowth);
-          if (growthDiff !== BigInt(0)) return growthDiff > BigInt(0) ? 1 : -1;
+          const d = BigInt(b.powerGrowth || '0') - BigInt(a.powerGrowth || '0');
+          if (d !== BigInt(0)) return d > BigInt(0) ? 1 : -1;
+          return a.governorName.localeCompare(b.governorName);
+        })
+        .slice(0, 5),
+      topFortDestroying: [...rows]
+        .sort((a, b) => {
+          const d = BigInt(b.fortDestroying) - BigInt(a.fortDestroying);
+          if (d !== BigInt(0)) return d > BigInt(0) ? 1 : -1;
+          return a.governorName.localeCompare(b.governorName);
+        })
+        .slice(0, 5),
+      topKillPointsGrowth: [...rows]
+        .sort((a, b) => {
+          const d = BigInt(b.killPointsGrowth || '0') - BigInt(a.killPointsGrowth || '0');
+          if (d !== BigInt(0)) return d > BigInt(0) ? 1 : -1;
           return a.governorName.localeCompare(b.governorName);
         })
         .slice(0, 5),

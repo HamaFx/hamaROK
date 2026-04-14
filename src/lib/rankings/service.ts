@@ -28,6 +28,7 @@ import {
   normalizeMetricKey,
   normalizeRankingType,
   parseRankingMetric,
+  validateStrictRankingTypeMetricPair,
 } from './normalize';
 import {
   applyStableRanking,
@@ -645,6 +646,19 @@ function dedupeCandidatesJson(
 export async function createRankingRunWithRows(input: CreateRankingRunInput) {
   const rankingType = normalizeRankingType(input.rankingType);
   const metricKey = normalizeMetricKey(input.metricKey);
+  const strictPair = validateStrictRankingTypeMetricPair(rankingType, metricKey);
+  if (!strictPair.ok) {
+    throw new ApiHttpError(
+      'VALIDATION_ERROR',
+      strictPair.reason || 'Unsupported rankingType/metricKey pair.',
+      400,
+      {
+        rankingType: strictPair.rankingType,
+        metricKey: strictPair.metricKey,
+        expectedMetricKey: strictPair.expectedMetricKey,
+      }
+    );
+  }
   const preparedRows = prepareRows({
     rows: input.rows,
     rankingType,
@@ -1511,6 +1525,7 @@ export async function listRankingReviewRows(args: {
   workspaceId: string;
   eventId?: string | null;
   rankingType?: string | null;
+  metricKey?: string | null;
   status?: RankingIdentityStatus[];
   limit: number;
   offset: number;
@@ -1525,6 +1540,7 @@ export async function listRankingReviewRows(args: {
     run: {
       ...(args.eventId ? { eventId: args.eventId } : {}),
       ...(args.rankingType ? { rankingType: normalizeRankingType(args.rankingType) } : {}),
+      ...(args.metricKey ? { metricKey: normalizeMetricKey(args.metricKey) } : {}),
     },
   };
 
@@ -1551,6 +1567,13 @@ export async function listRankingReviewRows(args: {
             status: true,
             headerText: true,
             createdAt: true,
+            artifact: {
+              select: {
+                id: true,
+                url: true,
+                type: true,
+              },
+            },
           },
         },
       },
@@ -1586,8 +1609,82 @@ export async function listRankingReviewRows(args: {
         status: row.run.status,
         headerText: row.run.headerText,
         createdAt: row.run.createdAt.toISOString(),
+        artifact: row.run.artifact
+          ? {
+              id: row.run.artifact.id,
+              url: row.run.artifact.url,
+              type: row.run.artifact.type,
+            }
+          : null,
       },
     })),
+  };
+}
+
+export async function getRankingReviewQueueSummary(args: {
+  workspaceId: string;
+  eventId?: string | null;
+  status?: RankingIdentityStatus[];
+}) {
+  const statuses =
+    args.status && args.status.length > 0
+      ? args.status
+      : [RankingIdentityStatus.UNRESOLVED];
+
+  const runs = await prisma.rankingRun.findMany({
+    where: {
+      workspaceId: args.workspaceId,
+      ...(args.eventId ? { eventId: args.eventId } : {}),
+      rows: {
+        some: {
+          identityStatus: {
+            in: statuses,
+          },
+        },
+      },
+    },
+    select: {
+      rankingType: true,
+      metricKey: true,
+      _count: {
+        select: {
+          rows: {
+            where: {
+              identityStatus: {
+                in: statuses,
+              },
+            },
+          },
+        },
+      },
+    },
+    take: 5000,
+  });
+
+  const byTypeMap = new Map<string, { rankingType: string; metricKey: string; count: number }>();
+  let total = 0;
+
+  for (const run of runs) {
+    const count = Number(run._count.rows || 0);
+    if (count <= 0) continue;
+    total += count;
+    const key = `${run.rankingType}::${run.metricKey}`;
+    const existing = byTypeMap.get(key);
+    if (existing) {
+      existing.count += count;
+      continue;
+    }
+    byTypeMap.set(key, {
+      rankingType: run.rankingType,
+      metricKey: run.metricKey,
+      count,
+    });
+  }
+
+  return {
+    total,
+    statuses,
+    byType: [...byTypeMap.values()].sort((a, b) => b.count - a.count),
   };
 }
 

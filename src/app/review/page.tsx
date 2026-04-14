@@ -5,6 +5,7 @@ import React from 'react';
 import {
   AlertTriangle,
   CheckCircle2,
+  ImageIcon,
   RefreshCw,
   Save,
   ShieldCheck,
@@ -13,6 +14,7 @@ import {
 } from 'lucide-react';
 import type { OcrRuntimeProfile } from '@/lib/ocr/profiles';
 import { useWorkspaceSession } from '@/lib/workspace-session';
+import { getRankingTypeDisplayName, SUPPORTED_RANKING_BOARDS } from '@/lib/rankings/board-types';
 import {
   EmptyState,
   FilterBar,
@@ -45,6 +47,8 @@ interface QueueItem {
   id: string;
   scanJobId: string;
   eventId: string | null;
+  scanSource?: string;
+  scanStatus?: string;
   provider: string;
   status: ExtractionStatus;
   confidence: number;
@@ -82,6 +86,16 @@ interface QueueItem {
     type: string;
   } | null;
   createdAt: string;
+}
+
+interface RankingQueueSummary {
+  total: number;
+  statuses: string[];
+  byType: Array<{
+    rankingType: string;
+    metricKey: string;
+    count: number;
+  }>;
 }
 
 const defaultDraft = {
@@ -159,6 +173,7 @@ export default function ReviewQueuePage() {
     reviewerEditRate: number;
     reviewPassRate: number;
   } | null>(null);
+  const [rankingQueueSummary, setRankingQueueSummary] = useState<RankingQueueSummary | null>(null);
 
   const loadQueue = useCallback(async () => {
     if (!workspaceReady) {
@@ -226,6 +241,27 @@ export default function ReviewQueuePage() {
       } catch {
         setMetricsSummary(null);
       }
+
+      try {
+        const rankingParams = new URLSearchParams({
+          workspaceId,
+          status: 'UNRESOLVED',
+        });
+        const rankingRes = await fetch(
+          `/api/v2/rankings/review/summary?${rankingParams.toString()}`,
+          {
+            headers: { 'x-access-token': accessToken },
+          }
+        );
+        const rankingPayload = await rankingRes.json();
+        if (rankingRes.ok && rankingPayload?.data) {
+          setRankingQueueSummary(rankingPayload.data as RankingQueueSummary);
+        } else {
+          setRankingQueueSummary(null);
+        }
+      } catch {
+        setRankingQueueSummary(null);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load review queue.');
     } finally {
@@ -275,6 +311,14 @@ export default function ReviewQueuePage() {
     const low = items.filter((item) => item.severity.level === 'LOW').length;
     return { high, medium, low, total: items.length };
   }, [items]);
+
+  const rankingByType = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const entry of rankingQueueSummary?.byType || []) {
+      counts.set(`${entry.rankingType}::${entry.metricKey}`, entry.count);
+    }
+    return counts;
+  }, [rankingQueueSummary]);
 
   const updateDraft = (id: string, key: keyof typeof defaultDraft, value: string) => {
     setDrafts((prev) => ({
@@ -525,6 +569,34 @@ export default function ReviewQueuePage() {
         </div>
       ) : null}
 
+      <Panel
+        title="Post-Upload Routing"
+        subtitle="Profile screenshots are reviewed here. Ranking screenshots route to Ranking Review."
+        className="mb-24"
+      >
+        <div className="review-candidate-row">
+          <StatusPill label={`Governor Profile: ${summary.total}`} tone={summary.total > 0 ? 'warn' : 'good'} />
+          {SUPPORTED_RANKING_BOARDS.map((board) => {
+            const count = rankingByType.get(`${board.rankingType}::${board.metricKey}`) || 0;
+            return (
+              <StatusPill
+                key={`${board.rankingType}:${board.metricKey}`}
+                label={`${getRankingTypeDisplayName(board.rankingType)}: ${count}`}
+                tone={count > 0 ? 'warn' : 'good'}
+              />
+            );
+          })}
+        </div>
+        <div className="mt-12 text-sm text-muted">
+          Pending ranking rows: {rankingQueueSummary?.total?.toLocaleString() || 0}
+        </div>
+        <div className="mt-12">
+          <a className="btn btn-secondary btn-sm" href="/rankings/review">
+            Open Ranking Review
+          </a>
+        </div>
+      </Panel>
+
       <Panel title="Review Board">
         {loading ? (
           <SkeletonSet rows={4} />
@@ -541,6 +613,7 @@ export default function ReviewQueuePage() {
                     <div>
                       <div className="flex items-center gap-8" style={{ flexWrap: 'wrap' }}>
                         <strong>{item.values.governorName.value || 'Unknown Governor'}</strong>
+                        <StatusPill label="Governor Profile" tone="info" />
                         <StatusPill label={item.severity.level} tone={statusTone(item.severity.level)} />
                         <StatusPill label={item.status} tone="info" />
                         {item.lowConfidence ? <StatusPill label="Low Confidence" tone="warn" /> : null}
@@ -548,9 +621,33 @@ export default function ReviewQueuePage() {
                       <div className="text-sm text-muted mt-4">
                         ID {item.values.governorId.value || '—'} • {item.engineVersion || item.provider} •{' '}
                         {new Date(item.createdAt).toLocaleString()} • Overall {formatFieldConfidence(item.confidence)}
+                        {item.scanSource ? ` • ${item.scanSource}` : ''}
                       </div>
                     </div>
                   </header>
+
+                  {item.artifact?.url ? (
+                    <div style={{ padding: '12px 14px 0' }}>
+                      <a href={item.artifact.url} target="_blank" rel="noreferrer" className="text-sm">
+                        <ImageIcon size={14} style={{ verticalAlign: 'middle', marginRight: 6 }} />
+                        Open screenshot
+                      </a>
+                      <div className="mt-8">
+                        <img
+                          src={item.artifact.url}
+                          alt={`Profile screenshot for ${item.values.governorName.value || 'governor'}`}
+                          loading="lazy"
+                          style={{
+                            width: '100%',
+                            maxWidth: 460,
+                            borderRadius: 10,
+                            border: '1px solid var(--line-soft)',
+                            display: 'block',
+                          }}
+                        />
+                      </div>
+                    </div>
+                  ) : null}
 
                   <div className="review-field-grid">
                     {FIELD_ORDER.map((fieldKey) => {

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { RefreshCw, Search, TrendingUp } from 'lucide-react';
 import { useWorkspaceSession } from '@/lib/workspace-session';
 import { abbreviateNumber } from '@/lib/utils';
-import { GrowthLineChart } from '@/components/Charts';
+import { GrowthLineChart, WeeklyActivityLineChart } from '@/components/Charts';
 import {
   DataTableLite,
   EmptyState,
@@ -25,12 +25,38 @@ interface GovernorItem {
   latestPower: string;
 }
 
+interface WeeklyActivityRow {
+  governorDbId: string;
+  contributionPoints: string;
+  fortDestroying: string;
+  powerGrowth: string | null;
+  killPointsGrowth: string | null;
+  compliance: {
+    overall: 'PASS' | 'FAIL' | 'PARTIAL' | 'NO_STANDARD';
+  };
+}
+
 interface TimelineEntry {
   event: { id: string; name: string };
   power: string;
   killPoints: string;
   deads: string;
   date: string;
+}
+
+interface WeeklyActivityHistoryEntry {
+  weekKey: string;
+  weekName: string;
+  startsAt: string | null;
+  metrics: {
+    contributionPoints: string;
+    fortDestroying: string;
+    powerGrowth: string | null;
+    killPointsGrowth: string | null;
+    compliance: {
+      overall: 'PASS' | 'FAIL' | 'PARTIAL' | 'NO_STANDARD';
+    };
+  } | null;
 }
 
 export default function GovernorsPage() {
@@ -49,6 +75,8 @@ export default function GovernorsPage() {
   const [search, setSearch] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [timeline, setTimeline] = useState<TimelineEntry[] | null>(null);
+  const [weeklyActivityRows, setWeeklyActivityRows] = useState<Record<string, WeeklyActivityRow>>({});
+  const [weeklyHistory, setWeeklyHistory] = useState<WeeklyActivityHistoryEntry[] | null>(null);
   const [timelineLoading, setTimelineLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -77,11 +105,32 @@ export default function GovernorsPage() {
       if (!res.ok) {
         throw new Error(payload?.error?.message || 'Failed to load governors.');
       }
-      setGovernors(Array.isArray(payload?.data) ? payload.data : []);
+      const list = Array.isArray(payload?.data) ? payload.data : [];
+      setGovernors(list);
       setTotal(Number(payload?.meta?.total || 0));
+
+      const weeklyRes = await fetch(
+        `/api/v2/activity/weekly?workspaceId=${encodeURIComponent(workspaceId)}`,
+        {
+          headers: {
+            'x-access-token': accessToken,
+          },
+        }
+      );
+      const weeklyPayload = await weeklyRes.json();
+      if (weeklyRes.ok && Array.isArray(weeklyPayload?.data?.rows)) {
+        const map: Record<string, WeeklyActivityRow> = {};
+        for (const row of weeklyPayload.data.rows as WeeklyActivityRow[]) {
+          map[row.governorDbId] = row;
+        }
+        setWeeklyActivityRows(map);
+      } else {
+        setWeeklyActivityRows({});
+      }
     } catch (cause) {
       setGovernors([]);
       setTotal(0);
+      setWeeklyActivityRows({});
       setError(cause instanceof Error ? cause.message : 'Failed to load governors.');
     } finally {
       setLoading(false);
@@ -106,6 +155,7 @@ export default function GovernorsPage() {
     if (expandedId === id) {
       setExpandedId(null);
       setTimeline(null);
+      setWeeklyHistory(null);
       return;
     }
 
@@ -115,18 +165,38 @@ export default function GovernorsPage() {
     try {
       setError(null);
       const params = new URLSearchParams({ workspaceId });
-      const res = await fetch(`/api/v2/governors/${id}/timeline?${params.toString()}`, {
-        headers: {
-          'x-access-token': accessToken,
-        },
-      });
-      const payload = await res.json();
-      if (!res.ok) {
-        throw new Error(payload?.error?.message || 'Failed to load timeline.');
+      const [timelineRes, weeklyRes] = await Promise.all([
+        fetch(`/api/v2/governors/${id}/timeline?${params.toString()}`, {
+          headers: {
+            'x-access-token': accessToken,
+          },
+        }),
+        fetch(
+          `/api/v2/governors/${id}/weekly-activity?${new URLSearchParams({
+            workspaceId,
+            limit: '12',
+          }).toString()}`,
+          {
+            headers: {
+              'x-access-token': accessToken,
+            },
+          }
+        ),
+      ]);
+      const timelinePayload = await timelineRes.json();
+      const weeklyPayload = await weeklyRes.json();
+      if (!timelineRes.ok) {
+        throw new Error(timelinePayload?.error?.message || 'Failed to load timeline.');
       }
-      setTimeline(payload?.data?.timeline || []);
+      setTimeline(timelinePayload?.data?.timeline || []);
+      if (weeklyRes.ok && Array.isArray(weeklyPayload?.data?.history)) {
+        setWeeklyHistory(weeklyPayload.data.history as WeeklyActivityHistoryEntry[]);
+      } else {
+        setWeeklyHistory([]);
+      }
     } catch (cause) {
       setTimeline([]);
+      setWeeklyHistory([]);
       setError(cause instanceof Error ? cause.message : 'Failed to load timeline.');
     } finally {
       setTimelineLoading(false);
@@ -242,6 +312,44 @@ export default function GovernorsPage() {
                 render: (row) => row.snapshotCount,
               },
               {
+                key: 'contribution',
+                label: 'Week Contribution',
+                className: 'num',
+                mobileHidden: true,
+                render: (row) =>
+                  Number(
+                    weeklyActivityRows[row.id]?.contributionPoints || 0
+                  ).toLocaleString(),
+              },
+              {
+                key: 'fort',
+                label: 'Week Fort',
+                className: 'num',
+                mobileHidden: true,
+                render: (row) =>
+                  Number(weeklyActivityRows[row.id]?.fortDestroying || 0).toLocaleString(),
+              },
+              {
+                key: 'powerGrowth',
+                label: 'Week Power',
+                className: 'num',
+                mobileHidden: true,
+                render: (row) => {
+                  const value = weeklyActivityRows[row.id]?.powerGrowth;
+                  return value != null ? Number(value).toLocaleString() : 'N/A';
+                },
+              },
+              {
+                key: 'kpGrowth',
+                label: 'Week KP',
+                className: 'num',
+                mobileHidden: true,
+                render: (row) => {
+                  const value = weeklyActivityRows[row.id]?.killPointsGrowth;
+                  return value != null ? Number(value).toLocaleString() : 'N/A';
+                },
+              },
+              {
                 key: 'action',
                 label: 'Action',
                 render: (row) => (
@@ -271,8 +379,84 @@ export default function GovernorsPage() {
           ) : (
             <EmptyState title="No timeline data" description="This governor has no progression history yet." />
           )}
+
+          {!timelineLoading && weeklyHistory && weeklyHistory.length > 0 ? (
+            <div className="mt-16">
+              <WeeklyActivityLineChart
+                timeline={[...weeklyHistory]
+                  .reverse()
+                  .map((entry) => ({
+                    weekName: entry.weekKey,
+                    contributionPoints: Number(entry.metrics?.contributionPoints || 0),
+                    fortDestroying: Number(entry.metrics?.fortDestroying || 0),
+                    powerGrowth: Number(entry.metrics?.powerGrowth || 0),
+                    killPointsGrowth: Number(entry.metrics?.killPointsGrowth || 0),
+                  }))}
+              />
+              <table className="data-table data-table-dense">
+                <thead>
+                  <tr>
+                    <th>Week</th>
+                    <th className="num">Contribution</th>
+                    <th className="num">Fort</th>
+                    <th className="num">Power Growth</th>
+                    <th className="num">KP Growth</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {weeklyHistory.map((entry) => (
+                    <tr key={entry.weekKey}>
+                      <td>{entry.weekName}</td>
+                      <td className="num">
+                        {entry.metrics
+                          ? Number(entry.metrics.contributionPoints).toLocaleString()
+                          : 'N/A'}
+                      </td>
+                      <td className="num">
+                        {entry.metrics
+                          ? Number(entry.metrics.fortDestroying).toLocaleString()
+                          : 'N/A'}
+                      </td>
+                      <td className="num">
+                        {entry.metrics?.powerGrowth != null
+                          ? Number(entry.metrics.powerGrowth).toLocaleString()
+                          : 'N/A'}
+                      </td>
+                      <td className="num">
+                        {entry.metrics?.killPointsGrowth != null
+                          ? Number(entry.metrics.killPointsGrowth).toLocaleString()
+                          : 'N/A'}
+                      </td>
+                      <td>
+                        <StatusPill
+                          label={entry.metrics?.compliance.overall || 'NO_DATA'}
+                          tone={
+                            entry.metrics?.compliance.overall === 'PASS'
+                              ? 'good'
+                              : entry.metrics?.compliance.overall === 'FAIL'
+                                ? 'bad'
+                                : entry.metrics
+                                  ? 'warn'
+                                  : 'neutral'
+                          }
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+
           <FilterBar className="mt-16">
-            <button className="btn btn-secondary btn-sm" onClick={() => setExpandedId(null)}>
+            <button
+              className="btn btn-secondary btn-sm"
+              onClick={() => {
+                setExpandedId(null);
+                setWeeklyHistory(null);
+              }}
+            >
               Close Timeline
             </button>
           </FilterBar>

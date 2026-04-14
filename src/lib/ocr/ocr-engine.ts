@@ -382,7 +382,13 @@ async function detectScreenshotArchetype(
     if (text.includes('GOVERNOR PROFILE') || text.includes('PROFILE')) {
       return 'governor-profile';
     }
-    if (text.includes('RANKINGS')) {
+    if (
+      text.includes('RANKINGS') ||
+      text.includes('MAD SCIENTIST') ||
+      text.includes('FORT DESTROYER') ||
+      text.includes('INDIVIDUAL POWER') ||
+      text.includes('KILL POINT')
+    ) {
       return 'rankboard';
     }
     return undefined;
@@ -391,28 +397,85 @@ async function detectScreenshotArchetype(
   }
 }
 
-function normalizeRankingTypeLabel(value: string): string {
-  return (
-    String(value || '')
-      .toUpperCase()
-      .replace(/[^A-Z0-9 ]/g, ' ')
-      .replace(/\s+/g, ' ')
-      .replace(/RANKINGS?/g, '')
-      .trim()
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '_')
-      .replace(/^_+|_+$/g, '') || 'unknown'
-  );
-}
+const RANKING_TYPE_HEADER_MAP: Record<string, string> = {
+  'individual power': 'individual_power',
+  'mad scientist': 'mad_scientist',
+  'fort destroyer': 'fort_destroyer',
+  'fort destroy': 'fort_destroyer',
+  'governor profile': 'governor_profile_power',
+  'kill point': 'kill_point',
+  'kill points': 'kill_point',
+};
 
-function normalizeMetricLabel(value: string): string {
+export function normalizeRankingTypeLabel(value: string): string {
   const cleaned = String(value || '')
     .toUpperCase()
     .replace(/[^A-Z0-9 ]/g, ' ')
     .replace(/\s+/g, ' ')
-    .trim();
+    .replace(/RANKINGS?/g, '')
+    .trim()
+    .toLowerCase();
+  if (!cleaned) return 'unknown';
+  // Check known headers first
+  for (const [pattern, type] of Object.entries(RANKING_TYPE_HEADER_MAP)) {
+    if (cleaned.includes(pattern)) return type;
+  }
+  return cleaned.replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'unknown';
+}
+
+const METRIC_LABEL_MAP: Record<string, string> = {
+  'power': 'power',
+  'contribution': 'contribution_points',
+  'contribution points': 'contribution_points',
+  'tech contribution': 'contribution_points',
+  'fort': 'fort_destroying',
+  'fort destroy': 'fort_destroying',
+  'destroy': 'fort_destroying',
+  'fort destroying': 'fort_destroying',
+  'kill points': 'kill_points',
+  'kill point': 'kill_points',
+};
+
+const STRICT_RANKING_TYPE_METRIC_MAP: Record<string, string> = {
+  individual_power: 'power',
+  mad_scientist: 'contribution_points',
+  fort_destroyer: 'fort_destroying',
+  kill_point: 'kill_points',
+};
+
+export function normalizeMetricLabel(value: string): string {
+  const cleaned = String(value || '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9 ]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
   if (!cleaned) return 'metric';
-  return cleaned.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'metric';
+  // Check known metric labels first
+  for (const [pattern, key] of Object.entries(METRIC_LABEL_MAP)) {
+    if (cleaned.includes(pattern)) return key;
+  }
+  return cleaned.replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'metric';
+}
+
+function validateStrictRankingTypeMetricPair(
+  rankingType: string,
+  metricKey: string
+): { ok: boolean; reason?: string } {
+  const expectedMetric = STRICT_RANKING_TYPE_METRIC_MAP[rankingType];
+  if (!expectedMetric) {
+    return {
+      ok: false,
+      reason: `Unsupported rankingType "${rankingType}".`,
+    };
+  }
+  if (metricKey !== expectedMetric) {
+    return {
+      ok: false,
+      reason: `rankingType "${rankingType}" requires metricKey "${expectedMetric}" (received "${metricKey}").`,
+    };
+  }
+  return { ok: true };
 }
 
 function normalizeRankingName(value: string): string {
@@ -1272,6 +1335,13 @@ export async function processRankingScreenshot(
       metricHeaderReads.map((read) => read.selectedValue)
     );
     const metricKey = normalizeMetricLabel(metricHeaderText || headerText);
+    const strictPair = validateStrictRankingTypeMetricPair(rankingType, metricKey);
+    if (!strictPair.ok) {
+      throw new Error(
+        strictPair.reason ||
+          `Unsupported ranking header/metric combination (${rankingType} / ${metricKey}).`
+      );
+    }
 
     const layoutSelection = await selectBestRankingLayout(img);
     const layout = layoutSelection.selected;
