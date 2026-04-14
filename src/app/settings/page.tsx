@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { RefreshCw, Save, Settings2, Shield, SlidersHorizontal, Webhook } from 'lucide-react';
+import { RefreshCw, Save, Settings2, Shield, Webhook } from 'lucide-react';
 import { useWorkspaceSession } from '@/lib/workspace-session';
 import { FilterBar, KpiCard, PageHero, Panel, StatusPill } from '@/components/ui/primitives';
 
@@ -14,6 +14,30 @@ interface SettingsConfig {
   discordWebhook: string;
 }
 
+type AllianceTag = 'GODt' | 'V57' | 'P57R';
+
+interface ActivityStandardState {
+  allianceTag: AllianceTag;
+  allianceLabel: string;
+  contributionPoints: string;
+  powerGrowth: string;
+  isActive: boolean;
+}
+
+interface ActivityStandardApiRow {
+  allianceTag: string;
+  allianceLabel: string;
+  metricKey: 'contribution_points' | 'power_growth';
+  minimumValue: string;
+  isActive: boolean;
+}
+
+const ALLIANCES: Array<{ tag: AllianceTag; label: string }> = [
+  { tag: 'GODt', label: '[GODt] GOD of Thunder' },
+  { tag: 'V57', label: '[V57] Legacy of Velmora' },
+  { tag: 'P57R', label: '[P57R] PHOENIX RISING 4057' },
+];
+
 const DEFAULTS: SettingsConfig = {
   t4Weight: 0.5,
   t5Weight: 1.0,
@@ -22,6 +46,27 @@ const DEFAULTS: SettingsConfig = {
   deadPerPowerRatio: 0.02,
   discordWebhook: '',
 };
+
+function defaultStandards(): ActivityStandardState[] {
+  return ALLIANCES.map((alliance) => ({
+    allianceTag: alliance.tag,
+    allianceLabel: alliance.label,
+    contributionPoints: '0',
+    powerGrowth: '0',
+    isActive: true,
+  }));
+}
+
+function normalizeIntegerInput(value: string): string {
+  const digits = String(value || '').replace(/[^0-9]/g, '');
+  if (!digits) return '0';
+  return digits.replace(/^0+(?=\d)/, '');
+}
+
+function formatInt(value: string): string {
+  const n = Number(value);
+  return Number.isFinite(n) ? n.toLocaleString() : value;
+}
 
 export default function SettingsPage() {
   const {
@@ -32,7 +77,9 @@ export default function SettingsPage() {
     error: sessionError,
     refreshSession,
   } = useWorkspaceSession();
+
   const [config, setConfig] = useState<SettingsConfig>(DEFAULTS);
+  const [standards, setStandards] = useState<ActivityStandardState[]>(defaultStandards());
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -46,24 +93,61 @@ export default function SettingsPage() {
     const run = async () => {
       try {
         setLoading(true);
-        const res = await fetch(`/api/v2/workspaces/${workspaceId}/settings`, {
-          headers: {
-            'x-access-token': accessToken,
-          },
-        });
-        const payload = await res.json();
-        if (!res.ok || !payload?.data) {
-          throw new Error(payload?.error?.message || 'Failed to load settings from API.');
+        setMessage(null);
+
+        const [settingsRes, standardsRes] = await Promise.all([
+          fetch(`/api/v2/workspaces/${workspaceId}/settings`, {
+            headers: {
+              'x-access-token': accessToken,
+            },
+          }),
+          fetch(`/api/v2/activity/standards?workspaceId=${encodeURIComponent(workspaceId)}`, {
+            headers: {
+              'x-access-token': accessToken,
+            },
+          }),
+        ]);
+
+        const settingsPayload = await settingsRes.json();
+        if (!settingsRes.ok || !settingsPayload?.data) {
+          throw new Error(settingsPayload?.error?.message || 'Failed to load settings from API.');
         }
-        const data = payload.data as Partial<SettingsConfig>;
+
+        const settingsData = settingsPayload.data as Partial<SettingsConfig>;
         setConfig({
-          t4Weight: data.t4Weight ?? DEFAULTS.t4Weight,
-          t5Weight: data.t5Weight ?? DEFAULTS.t5Weight,
-          deadWeight: data.deadWeight ?? DEFAULTS.deadWeight,
-          kpPerPowerRatio: data.kpPerPowerRatio ?? DEFAULTS.kpPerPowerRatio,
-          deadPerPowerRatio: data.deadPerPowerRatio ?? DEFAULTS.deadPerPowerRatio,
-          discordWebhook: data.discordWebhook ?? DEFAULTS.discordWebhook,
+          t4Weight: settingsData.t4Weight ?? DEFAULTS.t4Weight,
+          t5Weight: settingsData.t5Weight ?? DEFAULTS.t5Weight,
+          deadWeight: settingsData.deadWeight ?? DEFAULTS.deadWeight,
+          kpPerPowerRatio: settingsData.kpPerPowerRatio ?? DEFAULTS.kpPerPowerRatio,
+          deadPerPowerRatio: settingsData.deadPerPowerRatio ?? DEFAULTS.deadPerPowerRatio,
+          discordWebhook: settingsData.discordWebhook ?? DEFAULTS.discordWebhook,
         });
+
+        if (standardsRes.ok) {
+          const standardsPayload = await standardsRes.json();
+          const rows = (Array.isArray(standardsPayload?.data)
+            ? standardsPayload.data
+            : []) as ActivityStandardApiRow[];
+
+          const merged = defaultStandards();
+          for (const row of rows) {
+            const idx = merged.findIndex((item) => item.allianceTag === row.allianceTag);
+            if (idx < 0) continue;
+            if (row.metricKey === 'contribution_points') {
+              merged[idx].contributionPoints = normalizeIntegerInput(String(row.minimumValue || '0'));
+            }
+            if (row.metricKey === 'power_growth') {
+              merged[idx].powerGrowth = normalizeIntegerInput(String(row.minimumValue || '0'));
+            }
+            merged[idx].isActive = row.isActive ?? true;
+            if (row.allianceLabel) {
+              merged[idx].allianceLabel = row.allianceLabel;
+            }
+          }
+          setStandards(merged);
+        } else {
+          setStandards(defaultStandards());
+        }
       } catch (cause) {
         setMessage({
           type: 'error',
@@ -77,7 +161,7 @@ export default function SettingsPage() {
     void run();
   }, [workspaceId, accessToken, workspaceReady, sessionLoading]);
 
-  const handleSave = async () => {
+  const saveAll = async () => {
     if (!workspaceReady) {
       setMessage({
         type: 'error',
@@ -90,38 +174,88 @@ export default function SettingsPage() {
     setMessage(null);
 
     try {
-      const res = await fetch(`/api/v2/workspaces/${workspaceId}/settings`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-access-token': accessToken,
+      const standardsPayload = standards.flatMap((row) => [
+        {
+          allianceTag: row.allianceTag,
+          metricKey: 'contribution_points',
+          minimumValue: normalizeIntegerInput(row.contributionPoints),
+          isActive: row.isActive,
         },
-        body: JSON.stringify(config),
-      });
+        {
+          allianceTag: row.allianceTag,
+          metricKey: 'power_growth',
+          minimumValue: normalizeIntegerInput(row.powerGrowth),
+          isActive: row.isActive,
+        },
+      ]);
 
-      const payload = await res.json();
-      if (!res.ok) {
-        setMessage({
-          type: 'error',
-          text: payload?.error?.message || 'Failed to save settings.',
-        });
-        return;
+      const [settingsRes, standardsRes] = await Promise.all([
+        fetch(`/api/v2/workspaces/${workspaceId}/settings`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-access-token': accessToken,
+          },
+          body: JSON.stringify(config),
+        }),
+        fetch('/api/v2/activity/standards', {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-access-token': accessToken,
+          },
+          body: JSON.stringify({
+            workspaceId,
+            standards: standardsPayload,
+          }),
+        }),
+      ]);
+
+      const settingsResult = await settingsRes.json();
+      const standardsResult = await standardsRes.json();
+
+      if (!settingsRes.ok) {
+        throw new Error(settingsResult?.error?.message || 'Failed to save combat settings.');
       }
-      setMessage({ type: 'success', text: 'Settings saved.' });
-    } catch {
-      setMessage({ type: 'error', text: 'Network error.' });
+      if (!standardsRes.ok) {
+        throw new Error(standardsResult?.error?.message || 'Failed to save weekly standards.');
+      }
+
+      setMessage({ type: 'success', text: 'Settings and weekly standards saved.' });
+    } catch (cause) {
+      setMessage({
+        type: 'error',
+        text: cause instanceof Error ? cause.message : 'Failed to save settings.',
+      });
     } finally {
       setSaving(false);
       setTimeout(() => setMessage(null), 4000);
     }
   };
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleConfigChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setConfig((prev) => ({
       ...prev,
       [name]: name === 'discordWebhook' ? value : Number(value),
     }));
+  };
+
+  const handleStandardChange = (
+    allianceTag: AllianceTag,
+    key: 'contributionPoints' | 'powerGrowth',
+    value: string
+  ) => {
+    setStandards((prev) =>
+      prev.map((row) =>
+        row.allianceTag === allianceTag
+          ? {
+              ...row,
+              [key]: normalizeIntegerInput(value),
+            }
+          : row
+      )
+    );
   };
 
   const formulaPreview = useMemo(() => {
@@ -133,23 +267,38 @@ export default function SettingsPage() {
     };
   }, [config]);
 
+  const weeklySummary = useMemo(() => {
+    const members = standards.filter((row) => row.isActive).length;
+    const totalContribution = standards.reduce(
+      (sum, row) => sum + BigInt(normalizeIntegerInput(row.contributionPoints)),
+      BigInt(0)
+    );
+    const totalGrowth = standards.reduce(
+      (sum, row) => sum + BigInt(normalizeIntegerInput(row.powerGrowth)),
+      BigInt(0)
+    );
+
+    return {
+      trackedAlliances: members,
+      totalContribution: totalContribution.toString(),
+      totalGrowth: totalGrowth.toString(),
+    };
+  }, [standards]);
+
   return (
     <div className="page-container">
       <PageHero
         title="Kingdom Settings"
-        subtitle="Configure score formulas and integration endpoints."
+        subtitle="One place for combat formula, weekly activity standards, and Discord delivery settings."
         actions={
-          <>
+          <FilterBar>
             <button className="btn btn-secondary" onClick={() => void refreshSession()} disabled={sessionLoading}>
               <RefreshCw size={14} /> {sessionLoading ? 'Connecting...' : 'Reconnect'}
             </button>
-            <button className="btn btn-secondary" onClick={() => setConfig(DEFAULTS)}>
-              <SlidersHorizontal size={14} /> Reset Defaults
+            <button className="btn btn-primary" onClick={saveAll} disabled={saving || loading}>
+              <Save size={14} /> {saving ? 'Saving...' : 'Save All'}
             </button>
-            <button className="btn btn-primary" onClick={handleSave} disabled={saving || loading}>
-              <Save size={14} /> {saving ? 'Saving...' : 'Save Settings'}
-            </button>
-          </>
+          </FilterBar>
         }
       />
 
@@ -168,8 +317,16 @@ export default function SettingsPage() {
         <KpiCard label="Formula Mix" value={formulaPreview.killWeight} hint="Combined kill weighting" tone="neutral" />
       </div>
 
-      <div className="grid-2">
-        <Panel title="Combat Weighting">
+      <div className="grid-2 mb-24">
+        <Panel
+          title="Combat Formula"
+          subtitle="Scoring multipliers used across compare and warrior analytics."
+          actions={
+            <button className="btn btn-secondary btn-sm" onClick={() => setConfig(DEFAULTS)}>
+              Reset Formula
+            </button>
+          }
+        >
           <div className="mb-16">
             <label className="form-label">
               <span>T4 Kill Weight</span>
@@ -183,7 +340,7 @@ export default function SettingsPage() {
               max="5"
               step="0.1"
               value={config.t4Weight}
-              onChange={handleChange}
+              onChange={handleConfigChange}
             />
           </div>
 
@@ -200,7 +357,7 @@ export default function SettingsPage() {
               max="10"
               step="0.5"
               value={config.t5Weight}
-              onChange={handleChange}
+              onChange={handleConfigChange}
             />
           </div>
 
@@ -217,17 +374,10 @@ export default function SettingsPage() {
               max="25"
               step="1"
               value={config.deadWeight}
-              onChange={handleChange}
+              onChange={handleConfigChange}
             />
           </div>
 
-          <FilterBar>
-            <Settings2 size={14} />
-            <span className="text-sm text-muted">These multipliers directly affect warrior score output.</span>
-          </FilterBar>
-        </Panel>
-
-        <Panel title="Power Expectation Ratios">
           <div className="mb-16">
             <label className="form-label">
               <span>Expected KP per 1M power</span>
@@ -241,14 +391,11 @@ export default function SettingsPage() {
               max="2"
               step="0.05"
               value={config.kpPerPowerRatio}
-              onChange={handleChange}
+              onChange={handleConfigChange}
             />
-            <div className="text-sm text-muted mt-4">
-              Example: 100M power expects {(config.kpPerPowerRatio * 100).toLocaleString()}M KP.
-            </div>
           </div>
 
-          <div className="mb-16">
+          <div>
             <label className="form-label">
               <span>Expected Deads per 1M power</span>
               <span>{(config.deadPerPowerRatio * 1000).toLocaleString()}k</span>
@@ -261,21 +408,77 @@ export default function SettingsPage() {
               max="0.5"
               step="0.01"
               value={config.deadPerPowerRatio}
-              onChange={handleChange}
+              onChange={handleConfigChange}
             />
-            <div className="text-sm text-muted mt-4">
-              Example: 100M power expects {(config.deadPerPowerRatio * 100000).toLocaleString()} deads.
-            </div>
           </div>
 
-          <FilterBar>
+          <FilterBar className="mt-12">
+            <Settings2 size={14} />
+            <span className="text-sm text-muted">
+              Engagement mix score: {formulaPreview.engagementWeight}
+            </span>
+          </FilterBar>
+        </Panel>
+
+        <Panel
+          title="Weekly Activity Standards"
+          subtitle="Minimum thresholds reset every Monday 00:00 UTC."
+        >
+          <div className="data-table-wrap">
+            <table className="data-table data-table-dense">
+              <thead>
+                <tr>
+                  <th>Alliance</th>
+                  <th>Contribution Min</th>
+                  <th>Power Growth Min</th>
+                </tr>
+              </thead>
+              <tbody>
+                {standards.map((row) => (
+                  <tr key={row.allianceTag}>
+                    <td>
+                      <strong>{row.allianceLabel}</strong>
+                    </td>
+                    <td>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        className="form-input"
+                        value={row.contributionPoints}
+                        onChange={(e) =>
+                          handleStandardChange(row.allianceTag, 'contributionPoints', e.target.value)
+                        }
+                        aria-label={`${row.allianceLabel} contribution minimum`}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        className="form-input"
+                        value={row.powerGrowth}
+                        onChange={(e) =>
+                          handleStandardChange(row.allianceTag, 'powerGrowth', e.target.value)
+                        }
+                        aria-label={`${row.allianceLabel} power growth minimum`}
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <FilterBar className="mt-12">
             <Shield size={14} />
-            <span className="text-sm text-muted">Use consistent ratios to reduce volatility across events.</span>
+            <span className="text-sm text-muted">
+              Weekly baseline totals: Contribution {formatInt(weeklySummary.totalContribution)} • Power Growth {formatInt(weeklySummary.totalGrowth)}
+            </span>
           </FilterBar>
         </Panel>
       </div>
 
-      <Panel title="Discord Integration" className="mt-24">
+      <Panel title="Discord Integration">
         <div className="form-group" style={{ marginBottom: 0 }}>
           <label className="form-label">Webhook URL</label>
           <input
@@ -283,7 +486,7 @@ export default function SettingsPage() {
             className="form-input"
             name="discordWebhook"
             value={config.discordWebhook}
-            onChange={handleChange}
+            onChange={handleConfigChange}
             placeholder="https://discord.com/api/webhooks/..."
           />
         </div>

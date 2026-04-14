@@ -25,6 +25,16 @@ describe('alliance detection helpers', () => {
     expect(detected?.canonicalLabel).toBe('[V57] Legacy of Velmora');
   });
 
+  it('uses weak Gd prefix hint for GODt when bracket tag is missing', () => {
+    const detected = detectTrackedAlliance({
+      governorNameRaw: 'GdMarshall',
+      allianceRaw: '',
+    });
+
+    expect(detected?.tag).toBe('GODt');
+    expect(detected?.canonicalLabel).toBe('[GODt] GOD of Thunder');
+  });
+
   it('splits alliance tag from governor name and keeps clean name', () => {
     const split = splitGovernorNameAndAlliance({
       governorNameRaw: '[P57R] xPortgas Ace',
@@ -49,4 +59,3 @@ describe('alliance detection helpers', () => {
     expect(PRIMARY_KINGDOM_NUMBER).toBe('4057');
   });
 });
-

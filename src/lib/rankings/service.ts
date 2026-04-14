@@ -12,6 +12,7 @@ import { withIdempotency } from '@/lib/idempotency';
 import { prisma } from '@/lib/prisma';
 import { hashRequestPayload } from '@/lib/security';
 import {
+  detectTrackedAlliance,
   formatAllianceLabel,
   PRIMARY_KINGDOM_NUMBER,
   resolveAllianceQueryFilters,
@@ -73,6 +74,7 @@ export interface CreateRankingRunInput {
   metadata?: Prisma.InputJsonValue;
   notes?: string | null;
   idempotencyKey?: string | null;
+  duplicateOverrideToken?: string | null;
   createdByLinkId?: string | null;
   captureFingerprint?: string | null;
   rows: RankingRowInput[];
@@ -125,6 +127,107 @@ function normalizeConfidence(value: number | null | undefined): number {
   const normalized = Number(value);
   if (normalized <= 1) return Math.max(0, Math.min(100, normalized * 100));
   return Math.max(0, Math.min(100, normalized));
+}
+
+function makeDuplicateOverrideToken(input: {
+  workspaceId: string;
+  eventId?: string | null;
+  rankingType: string;
+  metricKey: string;
+  dedupeHash: string;
+  duplicateLevel: 'exact' | 'near';
+  referenceRunId: string;
+}): string {
+  return `dup_allow_${hashRequestPayload({
+    workspaceId: input.workspaceId,
+    eventId: input.eventId || null,
+    rankingType: input.rankingType,
+    metricKey: input.metricKey,
+    dedupeHash: input.dedupeHash,
+    duplicateLevel: input.duplicateLevel,
+    referenceRunId: input.referenceRunId,
+  })}`;
+}
+
+function isDuplicateOverrideAccepted(args: {
+  overrideToken?: string | null;
+  workspaceId: string;
+  eventId?: string | null;
+  rankingType: string;
+  metricKey: string;
+  dedupeHash: string;
+  duplicateLevel: 'exact' | 'near';
+  referenceRunId: string;
+}): boolean {
+  if (!args.overrideToken) return false;
+  return (
+    args.overrideToken ===
+    makeDuplicateOverrideToken({
+      workspaceId: args.workspaceId,
+      eventId: args.eventId,
+      rankingType: args.rankingType,
+      metricKey: args.metricKey,
+      dedupeHash: args.dedupeHash,
+      duplicateLevel: args.duplicateLevel,
+      referenceRunId: args.referenceRunId,
+    })
+  );
+}
+
+function computeHashSimilarity(a: string[], b: string[]): number {
+  const setA = new Set(a);
+  const setB = new Set(b);
+  if (setA.size === 0 || setB.size === 0) return 0;
+  let intersection = 0;
+  for (const hash of setA) {
+    if (setB.has(hash)) intersection += 1;
+  }
+  const union = new Set([...setA, ...setB]).size;
+  if (union === 0) return 0;
+  return intersection / union;
+}
+
+async function canonicalizeAllianceForGovernorTx(
+  tx: Prisma.TransactionClient,
+  args: {
+    governorId?: string | null;
+    allianceRaw?: string | null;
+    governorNameRaw: string;
+  }
+) {
+  if (!args.governorId) {
+    return args.allianceRaw || null;
+  }
+
+  const governor = await tx.governor.findUnique({
+    where: {
+      id: args.governorId,
+    },
+    select: {
+      name: true,
+      alliance: true,
+    },
+  });
+
+  if (!governor) {
+    return args.allianceRaw || null;
+  }
+
+  const detected = detectTrackedAlliance({
+    governorNameRaw: governor.name,
+    allianceRaw: governor.alliance,
+    additionalText: [args.allianceRaw],
+  });
+
+  if (!detected?.tracked) {
+    return governor.alliance?.trim() || args.allianceRaw || null;
+  }
+
+  if (detected.tag === 'GODt' || detected.tag === 'V57' || detected.tag === 'P57R') {
+    return formatAllianceLabel({ tag: detected.tag, name: detected.name });
+  }
+
+  return governor.alliance?.trim() || args.allianceRaw || null;
 }
 
 function prepareRows(input: {
@@ -300,6 +403,20 @@ async function mergeRankingRowToCanonicalTx(
   }
 
   const nextStatus = mapIdentityToSnapshotStatus(args.row.identityStatus);
+
+  if (
+    existing &&
+    existing.status === RankingSnapshotStatus.ACTIVE &&
+    (nextStatus === RankingSnapshotStatus.UNRESOLVED ||
+      nextStatus === RankingSnapshotStatus.REJECTED)
+  ) {
+    return {
+      applied: false,
+      snapshotId: existing.id,
+      revisionId: null,
+      reason: 'non-active-row-cannot-overwrite-active',
+    };
+  }
 
   const nextData = {
     rankingType: args.run.rankingType,
@@ -539,6 +656,7 @@ export async function createRankingRunWithRows(input: CreateRankingRunInput) {
   }
 
   const dedupeHash = hashRequestPayload(preparedRows.map((row) => row.rowHash));
+  const rowHashes = preparedRows.map((row) => row.rowHash);
   const captureFingerprint =
     input.captureFingerprint ||
     computeCaptureFingerprint({
@@ -548,7 +666,7 @@ export async function createRankingRunWithRows(input: CreateRankingRunInput) {
       eventId: input.eventId,
       fileName: null,
       bytes: preparedRows.length,
-      checksum: dedupeHash,
+      checksum: null,
     });
 
   const idempotent = await withIdempotency({
@@ -562,6 +680,7 @@ export async function createRankingRunWithRows(input: CreateRankingRunInput) {
       metricKey,
       headerText: input.headerText || null,
       dedupeHash,
+      duplicateOverrideToken: input.duplicateOverrideToken || null,
       rows: preparedRows.map((row) => ({
         sourceRank: row.sourceRank,
         governorNameRaw: row.governorNameRaw,
@@ -590,6 +709,8 @@ export async function createRankingRunWithRows(input: CreateRankingRunInput) {
             id: true,
             status: true,
             createdAt: true,
+            captureFingerprint: true,
+            dedupeHash: true,
             _count: {
               select: {
                 rows: true,
@@ -599,14 +720,132 @@ export async function createRankingRunWithRows(input: CreateRankingRunInput) {
         });
 
         if (duplicate) {
-          return {
-            runId: duplicate.id,
-            deduped: true,
-            status: duplicate.status,
-            createdAt: duplicate.createdAt.toISOString(),
-            rowCount: duplicate._count.rows,
-            unresolvedCount: 0,
-          };
+          const allowToken = makeDuplicateOverrideToken({
+            workspaceId: input.workspaceId,
+            eventId: input.eventId || null,
+            rankingType,
+            metricKey,
+            dedupeHash,
+            duplicateLevel: 'exact',
+            referenceRunId: duplicate.id,
+          });
+          const overrideAccepted = isDuplicateOverrideAccepted({
+            overrideToken: input.duplicateOverrideToken,
+            workspaceId: input.workspaceId,
+            eventId: input.eventId || null,
+            rankingType,
+            metricKey,
+            dedupeHash,
+            duplicateLevel: 'exact',
+            referenceRunId: duplicate.id,
+          });
+
+          if (!overrideAccepted) {
+            return {
+              runId: duplicate.id,
+              deduped: true,
+              status: duplicate.status,
+              createdAt: duplicate.createdAt.toISOString(),
+              rowCount: duplicate._count.rows,
+              unresolvedCount: 0,
+              duplicate: {
+                level: 'exact' as const,
+                similarity: 1,
+                referenceRunId: duplicate.id,
+                overrideToken: allowToken,
+              },
+            };
+          }
+        }
+
+        const nearCandidates = await tx.rankingRun.findMany({
+          where: {
+            workspaceId: input.workspaceId,
+            eventId: input.eventId || null,
+            rankingType,
+            metricKey,
+            status: {
+              in: [RankingRunStatus.RAW, RankingRunStatus.REVIEW, RankingRunStatus.MERGED],
+            },
+          },
+          orderBy: {
+            createdAt: 'desc',
+          },
+          take: 8,
+          select: {
+            id: true,
+            createdAt: true,
+            rows: {
+              select: {
+                rowHash: true,
+              },
+            },
+            _count: {
+              select: {
+                rows: true,
+              },
+            },
+          },
+        });
+
+        let nearDuplicate: {
+          runId: string;
+          similarity: number;
+          rowCount: number;
+          createdAt: string;
+        } | null = null;
+
+        for (const candidate of nearCandidates) {
+          const candidateHashes = candidate.rows.map((row) => row.rowHash);
+          const similarity = computeHashSimilarity(rowHashes, candidateHashes);
+          if (similarity < 0.9) continue;
+          if (!nearDuplicate || similarity > nearDuplicate.similarity) {
+            nearDuplicate = {
+              runId: candidate.id,
+              similarity,
+              rowCount: candidate._count.rows,
+              createdAt: candidate.createdAt.toISOString(),
+            };
+          }
+        }
+
+        if (nearDuplicate) {
+          const allowToken = makeDuplicateOverrideToken({
+            workspaceId: input.workspaceId,
+            eventId: input.eventId || null,
+            rankingType,
+            metricKey,
+            dedupeHash,
+            duplicateLevel: 'near',
+            referenceRunId: nearDuplicate.runId,
+          });
+          const overrideAccepted = isDuplicateOverrideAccepted({
+            overrideToken: input.duplicateOverrideToken,
+            workspaceId: input.workspaceId,
+            eventId: input.eventId || null,
+            rankingType,
+            metricKey,
+            dedupeHash,
+            duplicateLevel: 'near',
+            referenceRunId: nearDuplicate.runId,
+          });
+
+          if (!overrideAccepted) {
+            return {
+              runId: nearDuplicate.runId,
+              deduped: true,
+              status: RankingRunStatus.REVIEW,
+              createdAt: nearDuplicate.createdAt,
+              rowCount: nearDuplicate.rowCount,
+              unresolvedCount: 0,
+              duplicate: {
+                level: 'near' as const,
+                similarity: nearDuplicate.similarity,
+                referenceRunId: nearDuplicate.runId,
+                overrideToken: allowToken,
+              },
+            };
+          }
         }
 
         const run = await tx.rankingRun.create({
@@ -642,6 +881,22 @@ export async function createRankingRunWithRows(input: CreateRankingRunInput) {
             governorNameRaw: row.governorNameRaw,
           });
 
+          const canonicalAlliance = await canonicalizeAllianceForGovernorTx(tx, {
+            governorId: identity.governorId,
+            allianceRaw: row.allianceRaw,
+            governorNameRaw: row.governorNameRaw,
+          });
+
+          const ocrTrace =
+            row.ocrTrace && typeof row.ocrTrace === 'object' && !Array.isArray(row.ocrTrace)
+              ? ({
+                  ...(row.ocrTrace as Record<string, unknown>),
+                  allianceRawOriginal: row.allianceRaw || null,
+                  allianceCanonicalized:
+                    (row.allianceRaw || null) !== (canonicalAlliance || null),
+                } as Prisma.InputJsonValue)
+              : row.ocrTrace;
+
           await tx.rankingRow.upsert({
             where: {
               runId_rowHash: {
@@ -653,14 +908,14 @@ export async function createRankingRunWithRows(input: CreateRankingRunInput) {
               sourceRank: row.sourceRank,
               governorNameRaw: row.governorNameRaw,
               governorNameNormalized: row.governorNameNormalized,
-              allianceRaw: row.allianceRaw,
+              allianceRaw: canonicalAlliance,
               titleRaw: row.titleRaw,
               metricRaw: row.metricRaw,
               metricValue: row.metricValue,
               confidence: row.confidence,
               governorId: identity.governorId,
               identityStatus: identity.status,
-              ocrTrace: row.ocrTrace,
+              ocrTrace,
               candidates: dedupeCandidatesJson(row.candidates, identity.suggestions),
             },
             create: {
@@ -669,7 +924,7 @@ export async function createRankingRunWithRows(input: CreateRankingRunInput) {
               sourceRank: row.sourceRank,
               governorNameRaw: row.governorNameRaw,
               governorNameNormalized: row.governorNameNormalized,
-              allianceRaw: row.allianceRaw,
+              allianceRaw: canonicalAlliance,
               titleRaw: row.titleRaw,
               metricRaw: row.metricRaw,
               metricValue: row.metricValue,
@@ -677,7 +932,7 @@ export async function createRankingRunWithRows(input: CreateRankingRunInput) {
               governorId: identity.governorId,
               identityStatus: identity.status,
               rowHash: row.rowHash,
-              ocrTrace: row.ocrTrace,
+              ocrTrace,
               candidates: dedupeCandidatesJson(row.candidates, identity.suggestions),
             },
           });
@@ -703,6 +958,7 @@ export async function createRankingRunWithRows(input: CreateRankingRunInput) {
           createdAt: run.createdAt.toISOString(),
           rowCount: preparedRows.length,
           unresolvedCount,
+          duplicate: null,
         };
       });
 
@@ -753,6 +1009,7 @@ export async function createRankingRunWithRows(input: CreateRankingRunInput) {
     source: withCounts.source,
     headerText: withCounts.headerText,
     deduped: idempotent.value.deduped,
+    duplicate: idempotent.value.duplicate || null,
     createdAt: withCounts.createdAt.toISOString(),
     updatedAt: withCounts.updatedAt.toISOString(),
     processedAt: withCounts.processedAt?.toISOString() || null,
@@ -1142,6 +1399,12 @@ export async function applyRankingReviewAction(args: {
       governorId = null;
       identityStatus = RankingIdentityStatus.REJECTED;
     }
+
+    allianceRaw = await canonicalizeAllianceForGovernorTx(tx, {
+      governorId,
+      allianceRaw,
+      governorNameRaw,
+    });
 
     const rowHash = computeRankingRowHash({
       sourceRank,

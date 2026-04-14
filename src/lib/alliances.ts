@@ -128,6 +128,15 @@ function detectByAlias(value: string): TrackedAlliance | null {
   return null;
 }
 
+function detectByWeakGovernorPrefix(value: string): TrackedAlliance | null {
+  const raw = String(value || '').trim();
+  if (!raw) return null;
+  if (/^gd[\s._-]/i.test(raw) || /^gd[a-z0-9]/i.test(raw)) {
+    return TRACKED_ALLIANCES.find((alliance) => alliance.tag === 'GODt') || null;
+  }
+  return null;
+}
+
 export function detectTrackedAlliance(args: {
   governorNameRaw?: string | null;
   allianceRaw?: string | null;
@@ -182,6 +191,18 @@ export function detectTrackedAlliance(args: {
         canonicalLabel: formatAllianceLabel(byAlias),
         source: source.source,
         confidence: source.confidence - 0.05,
+      };
+    }
+
+    const byPrefix = detectByWeakGovernorPrefix(raw);
+    if (byPrefix) {
+      return {
+        tracked: true,
+        tag: byPrefix.tag,
+        name: byPrefix.name,
+        canonicalLabel: formatAllianceLabel(byPrefix),
+        source: source.source,
+        confidence: Math.max(0.5, source.confidence - 0.38),
       };
     }
   }
@@ -263,4 +284,3 @@ export function resolveAllianceQueryFilters(values: string[]): string[] {
 export function getTrackedAllianceByTag(tag: string): TrackedAlliance | null {
   return TAG_LOOKUP.get(normalizeAllianceToken(tag)) || null;
 }
-

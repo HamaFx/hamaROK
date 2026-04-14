@@ -182,7 +182,13 @@ export async function POST(
     ]);
 
     return ok(
-      idempotent.value,
+      {
+        ...idempotent.value,
+        duplicate: {
+          level: 'none',
+          overrideToken: null,
+        },
+      },
       idempotent.replayed ? { idempotentReplay: true } : null,
       idempotent.replayed ? 200 : 201
     );

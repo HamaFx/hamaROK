@@ -3,7 +3,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  Camera,
   CheckCircle2,
   CircleAlert,
   Clock3,
@@ -15,16 +14,15 @@ import {
   Trash2,
 } from 'lucide-react';
 import { useWorkspaceSession } from '@/lib/workspace-session';
-import { EVENT_TYPE_LABELS } from '@/lib/utils';
 import { FilterBar, PageHero, Panel, StatusPill } from '@/components/ui/primitives';
 
-interface EventOption {
-  id: string;
-  name: string;
-  eventType: string;
-}
-
-type QueueRowStatus = 'uploading' | 'queued' | 'processing' | 'completed' | 'failed';
+type QueueRowStatus =
+  | 'uploading'
+  | 'queued'
+  | 'processing'
+  | 'completed'
+  | 'duplicate'
+  | 'failed';
 
 interface UploadQueueEntry {
   id: string;
@@ -48,6 +46,13 @@ interface TaskRow {
   lastError: string | null;
   updatedAt: string;
   metadata?: Record<string, unknown>;
+  duplicate?: {
+    warning?: boolean;
+    level?: string | null;
+    referenceRunId?: string | null;
+    similarity?: number | null;
+    overrideToken?: string | null;
+  } | null;
   artifact?: {
     id: string;
     type: string;
@@ -76,10 +81,21 @@ interface ScanJobResponse {
   status: string;
   totalFiles: number;
   processedFiles: number;
+  eventId?: string | null;
 }
 
-function mapTaskStatus(status: TaskRow['status']): QueueRowStatus {
+interface WeeklyEventInfo {
+  id: string;
+  name: string;
+  weekKey: string | null;
+  startsAt: string | null;
+  endsAt: string | null;
+  isClosed: boolean;
+}
+
+function mapTaskStatus(status: TaskRow['status'], duplicate: TaskRow['duplicate']): QueueRowStatus {
   if (status === 'PROCESSING') return 'processing';
+  if (status === 'COMPLETED' && duplicate?.warning) return 'duplicate';
   if (status === 'COMPLETED') return 'completed';
   if (status === 'FAILED') return 'failed';
   return 'queued';
@@ -94,6 +110,7 @@ function formatBytes(bytes: number): string {
 
 function statusToneForRow(status: QueueRowStatus): 'good' | 'warn' | 'bad' | 'neutral' {
   if (status === 'completed') return 'good';
+  if (status === 'duplicate') return 'warn';
   if (status === 'processing' || status === 'queued' || status === 'uploading') return 'warn';
   if (status === 'failed') return 'bad';
   return 'neutral';
@@ -111,11 +128,7 @@ export default function UploadPage() {
     refreshSession,
   } = useWorkspaceSession();
 
-  const [events, setEvents] = useState<EventOption[]>([]);
-  const [selectedEventId, setSelectedEventId] = useState('');
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [newEventName, setNewEventName] = useState('');
-  const [newEventType, setNewEventType] = useState('CUSTOM');
+  const [weeklyEvent, setWeeklyEvent] = useState<WeeklyEventInfo | null>(null);
 
   const [entries, setEntries] = useState<UploadQueueEntry[]>([]);
   const [scanJobId, setScanJobId] = useState<string | null>(null);
@@ -133,29 +146,7 @@ export default function UploadPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const completionNotifiedRef = useRef<string | null>(null);
 
-  const getPersistedJobKey = useCallback(
-    (id: string) => `upload:activeScanJob:${id}`,
-    []
-  );
-  const getPersistedEventKey = useCallback(
-    (id: string) => `upload:selectedEvent:${id}`,
-    []
-  );
-
-  useEffect(() => {
-    if (typeof window === 'undefined' || !workspaceId) return;
-    const persistedEvent = localStorage.getItem(getPersistedEventKey(workspaceId)) || '';
-    if (persistedEvent) {
-      setSelectedEventId(persistedEvent);
-    }
-  }, [workspaceId, getPersistedEventKey]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined' || !workspaceId) return;
-    if (selectedEventId) {
-      localStorage.setItem(getPersistedEventKey(workspaceId), selectedEventId);
-    }
-  }, [workspaceId, selectedEventId, getPersistedEventKey]);
+  const getPersistedJobKey = useCallback((id: string) => `upload:activeScanJob:${id}`, []);
 
   useEffect(() => {
     if (typeof window === 'undefined' || !workspaceId || !accessToken) return;
@@ -165,42 +156,44 @@ export default function UploadPage() {
     }
   }, [workspaceId, accessToken, getPersistedJobKey]);
 
-  const loadEvents = useCallback(async () => {
+  const loadWeeklyEvent = useCallback(async (): Promise<WeeklyEventInfo | null> => {
     if (!workspaceReady) {
-      setEvents([]);
-      return;
+      setWeeklyEvent(null);
+      return null;
     }
 
     try {
-      const params = new URLSearchParams({ workspaceId, limit: '200' });
-      const res = await fetch(`/api/v2/events?${params.toString()}`, {
-        headers: { 'x-access-token': accessToken },
-      });
+      const res = await fetch(
+        `/api/v2/events/weekly?workspaceId=${encodeURIComponent(workspaceId)}&autoCreate=true`,
+        {
+          headers: { 'x-access-token': accessToken },
+        }
+      );
       const payload = await res.json();
-      if (!res.ok) {
-        setEvents([]);
-        return;
+      if (!res.ok || !payload?.data?.id) {
+        setWeeklyEvent(null);
+        return null;
       }
 
-      const rows = Array.isArray(payload?.data) ? payload.data : [];
-      const mapped = rows.map((row: { id: string; name: string; eventType: string }) => ({
-        id: row.id,
-        name: row.name,
-        eventType: row.eventType,
-      }));
-      setEvents(mapped);
-
-      if (!selectedEventId && mapped[0]?.id) {
-        setSelectedEventId(mapped[0].id);
-      }
+      const nextEvent: WeeklyEventInfo = {
+        id: payload.data.id,
+        name: payload.data.name,
+        weekKey: payload.data.weekKey || null,
+        startsAt: payload.data.startsAt || null,
+        endsAt: payload.data.endsAt || null,
+        isClosed: Boolean(payload.data.isClosed),
+      };
+      setWeeklyEvent(nextEvent);
+      return nextEvent;
     } catch {
-      setEvents([]);
+      setWeeklyEvent(null);
+      return null;
     }
-  }, [workspaceId, accessToken, selectedEventId, workspaceReady]);
+  }, [workspaceId, accessToken, workspaceReady]);
 
   useEffect(() => {
-    void loadEvents();
-  }, [loadEvents]);
+    void loadWeeklyEvent();
+  }, [loadWeeklyEvent]);
 
   const loadAwsOcrControl = useCallback(async () => {
     if (!workspaceReady) {
@@ -226,7 +219,7 @@ export default function UploadPage() {
   }, [workspaceId, accessToken, workspaceReady]);
 
   useEffect(() => {
-    loadAwsOcrControl();
+    void loadAwsOcrControl();
   }, [loadAwsOcrControl]);
 
   useEffect(() => {
@@ -255,25 +248,37 @@ export default function UploadPage() {
 
         const rows = (Array.isArray(payload?.data) ? payload.data : []) as TaskRow[];
         const fromTasks: UploadQueueEntry[] = rows.map((task) => {
+          const artifactMetadata =
+            task.artifact?.metadata && typeof task.artifact.metadata === 'object' && !Array.isArray(task.artifact.metadata)
+              ? (task.artifact.metadata as Record<string, unknown>)
+              : {};
+          const taskMetadata =
+            task.metadata && typeof task.metadata === 'object' && !Array.isArray(task.metadata)
+              ? (task.metadata as Record<string, unknown>)
+              : {};
+          const mergedMetadata = {
+            ...artifactMetadata,
+            ...taskMetadata,
+          };
+
           const fileName =
-            (task.artifact?.metadata &&
-            typeof task.artifact.metadata === 'object' &&
-            !Array.isArray(task.artifact.metadata) &&
-            typeof (task.artifact.metadata as Record<string, unknown>).fileName === 'string'
-              ? String((task.artifact.metadata as Record<string, unknown>).fileName)
-              : null) || `artifact-${task.artifactId.slice(0, 8)}`;
+            (typeof mergedMetadata.fileName === 'string' ? String(mergedMetadata.fileName) : null) ||
+            `artifact-${task.artifactId.slice(0, 8)}`;
 
           return {
             id: task.id,
             fileName,
-            status: mapTaskStatus(task.status),
-            sizeBytes: 0,
+            status: mapTaskStatus(task.status, task.duplicate || null),
+            sizeBytes:
+              typeof mergedMetadata.bytes === 'number' && Number.isFinite(mergedMetadata.bytes)
+                ? Number(mergedMetadata.bytes)
+                : 0,
             taskId: task.id,
             artifactId: task.artifactId,
             updatedAt: task.updatedAt,
             error: task.lastError || undefined,
             archetypeHint: task.archetypeHint || undefined,
-            metadata: task.metadata || undefined,
+            metadata: mergedMetadata,
           };
         });
 
@@ -375,30 +380,33 @@ export default function UploadPage() {
     [workspaceId, accessToken, workspaceReady]
   );
 
-  const createScanJob = useCallback(async (totalFiles: number) => {
-    const res = await fetch('/api/v2/scan-jobs', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-access-token': accessToken,
-      },
-      body: JSON.stringify({
-        workspaceId,
-        eventId: selectedEventId,
-        source: 'MANUAL_UPLOAD',
-        totalFiles,
-        notes: `Queue-first upload batch at ${new Date().toISOString()}`,
-        idempotencyKey: `queue-first-${selectedEventId}-${Date.now()}`,
-      }),
-    });
+  const createScanJob = useCallback(
+    async (totalFiles: number, eventId?: string | null) => {
+      const res = await fetch('/api/v2/scan-jobs', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-access-token': accessToken,
+        },
+        body: JSON.stringify({
+          workspaceId,
+          eventId: eventId || undefined,
+          source: 'MANUAL_UPLOAD',
+          totalFiles,
+          notes: `Queue-first upload batch at ${new Date().toISOString()}`,
+          idempotencyKey: `queue-first-${eventId || weeklyEvent?.weekKey || 'weekly'}-${Date.now()}`,
+        }),
+      });
 
-    const payload = await res.json();
-    if (!res.ok) {
-      throw new Error(payload?.error?.message || 'Failed to create scan job.');
-    }
+      const payload = await res.json();
+      if (!res.ok) {
+        throw new Error(payload?.error?.message || 'Failed to create scan job.');
+      }
 
-    return payload?.data as ScanJobResponse;
-  }, [workspaceId, accessToken, selectedEventId]);
+      return payload?.data as ScanJobResponse;
+    },
+    [workspaceId, accessToken, weeklyEvent?.weekKey]
+  );
 
   const uploadScreenshotArtifact = useCallback(async (file: File): Promise<string> => {
     const formData = new FormData();
@@ -417,149 +425,162 @@ export default function UploadPage() {
     return payload.url as string;
   }, []);
 
-  const enqueueArtifactTask = useCallback(async (args: {
-    scanJobId: string;
-    file: File;
-    artifactUrl: string;
-  }) => {
-    const res = await fetch(`/api/v2/scan-jobs/${args.scanJobId}/artifacts`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-access-token': accessToken,
-      },
-      body: JSON.stringify({
-        workspaceId,
-        eventId: selectedEventId,
-        artifactUrl: args.artifactUrl,
-        artifactType: 'SCREENSHOT',
-        fileName: args.file.name,
-        bytes: args.file.size,
-        idempotencyKey: `task-${args.scanJobId}-${args.file.name}-${args.file.size}-${Date.now()}`,
-      }),
-    });
+  const enqueueArtifactTask = useCallback(
+    async (args: {
+      scanJobId: string;
+      eventId: string | null;
+      file: File;
+      artifactUrl: string;
+    }) => {
+      const res = await fetch(`/api/v2/scan-jobs/${args.scanJobId}/artifacts`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-access-token': accessToken,
+        },
+        body: JSON.stringify({
+          workspaceId,
+          eventId: args.eventId,
+          artifactUrl: args.artifactUrl,
+          artifactType: 'SCREENSHOT',
+          fileName: args.file.name,
+          bytes: args.file.size,
+          idempotencyKey: `task-${args.scanJobId}-${args.file.name}-${args.file.size}`,
+        }),
+      });
 
-    const payload = await res.json();
-    if (!res.ok) {
-      throw new Error(payload?.error?.message || `Failed to enqueue ${args.file.name}.`);
-    }
-
-    return payload?.data as {
-      artifact: { id: string };
-      task: { id: string; status: 'QUEUED' | 'PROCESSING' | 'COMPLETED' | 'FAILED'; archetypeHint?: string | null };
-    };
-  }, [accessToken, workspaceId, selectedEventId]);
-
-  const handleFiles = useCallback(async (files: File[]) => {
-    const imageFiles = files.filter((f) => f.type.startsWith('image/'));
-    if (imageFiles.length === 0) return;
-
-    if (!workspaceReady) {
-      if (!sessionLoading) {
-        void refreshSession();
-      }
-      setSubmitMessage({ type: 'error', text: 'Connecting workspace. Try upload again in a moment.' });
-      return;
-    }
-
-    if (!selectedEventId) {
-      setSubmitMessage({ type: 'error', text: 'Select an event before uploading screenshots.' });
-      return;
-    }
-
-    setIsUploading(true);
-    setSubmitMessage(null);
-
-    try {
-      const job = await createScanJob(imageFiles.length);
-      setScanJobId(job.id);
-      setScanJobState(job);
-      if (typeof window !== 'undefined') {
-        localStorage.setItem(getPersistedJobKey(workspaceId), job.id);
+      const payload = await res.json();
+      if (!res.ok) {
+        throw new Error(payload?.error?.message || `Failed to enqueue ${args.file.name}.`);
       }
 
-      const newRows: UploadQueueEntry[] = imageFiles.map((file, index) => ({
-        id: `${Date.now()}-${index}`,
-        fileName: file.name,
-        status: 'uploading',
-        sizeBytes: file.size,
-        updatedAt: new Date().toISOString(),
-      }));
+      return payload?.data as {
+        artifact: { id: string };
+        task: {
+          id: string;
+          status: 'QUEUED' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
+          archetypeHint?: string | null;
+        };
+      };
+    },
+    [accessToken, workspaceId]
+  );
 
-      setEntries((prev) => [...newRows, ...prev]);
+  const handleFiles = useCallback(
+    async (files: File[]) => {
+      const imageFiles = files.filter((f) => f.type.startsWith('image/'));
+      if (imageFiles.length === 0) return;
 
-      for (let i = 0; i < imageFiles.length; i += 1) {
-        const file = imageFiles[i];
-        const rowId = newRows[i].id;
-
-        try {
-          const artifactUrl = await uploadScreenshotArtifact(file);
-          const queued = await enqueueArtifactTask({
-            scanJobId: job.id,
-            file,
-            artifactUrl,
-          });
-
-          setEntries((prev) =>
-            prev.map((entry) =>
-              entry.id === rowId
-                ? {
-                    ...entry,
-                    status: mapTaskStatus(queued.task.status),
-                    taskId: queued.task.id,
-                    artifactId: queued.artifact.id,
-                    archetypeHint: queued.task.archetypeHint || undefined,
-                    updatedAt: new Date().toISOString(),
-                  }
-                : entry
-            )
-          );
-        } catch (error) {
-          setEntries((prev) =>
-            prev.map((entry) =>
-              entry.id === rowId
-                ? {
-                    ...entry,
-                    status: 'failed',
-                    error: error instanceof Error ? error.message : 'Failed to enqueue file.',
-                    updatedAt: new Date().toISOString(),
-                  }
-                : entry
-            )
-          );
+      if (!workspaceReady) {
+        if (!sessionLoading) {
+          void refreshSession();
         }
+        setSubmitMessage({ type: 'error', text: 'Connecting workspace. Try upload again in a moment.' });
+        return;
       }
 
-      if (awsOcrControl?.enabled && awsOcrControl.startLambdaConfigured) {
-        await triggerAwsOcrControl('START', 'auto', false);
-      }
+      setIsUploading(true);
+      setSubmitMessage(null);
 
-      setSubmitMessage({
-        type: 'success',
-        text: `Queued ${imageFiles.length} screenshot(s). OCR processing now runs in the EC2 worker queue.`,
-      });
-    } catch (error) {
-      setSubmitMessage({
-        type: 'error',
-        text: error instanceof Error ? error.message : 'Failed to start upload queue.',
-      });
-    } finally {
-      setIsUploading(false);
-    }
-  }, [
-    workspaceId,
-    workspaceReady,
-    sessionLoading,
-    refreshSession,
-    selectedEventId,
-    createScanJob,
-    uploadScreenshotArtifact,
-    enqueueArtifactTask,
-    awsOcrControl?.enabled,
-    awsOcrControl?.startLambdaConfigured,
-    triggerAwsOcrControl,
-    getPersistedJobKey,
-  ]);
+      try {
+        let activeWeekly = weeklyEvent;
+        if (!activeWeekly?.id) {
+          activeWeekly = await loadWeeklyEvent();
+        }
+
+        const job = await createScanJob(imageFiles.length, activeWeekly?.id || null);
+        setScanJobId(job.id);
+        setScanJobState(job);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem(getPersistedJobKey(workspaceId), job.id);
+        }
+
+        const newRows: UploadQueueEntry[] = imageFiles.map((file, index) => ({
+          id: `${Date.now()}-${index}`,
+          fileName: file.name,
+          status: 'uploading',
+          sizeBytes: file.size,
+          updatedAt: new Date().toISOString(),
+        }));
+
+        setEntries((prev) => [...newRows, ...prev]);
+
+        for (let i = 0; i < imageFiles.length; i += 1) {
+          const file = imageFiles[i];
+          const rowId = newRows[i].id;
+
+          try {
+            const artifactUrl = await uploadScreenshotArtifact(file);
+            const queued = await enqueueArtifactTask({
+              scanJobId: job.id,
+              eventId: job.eventId || activeWeekly?.id || null,
+              file,
+              artifactUrl,
+            });
+
+            setEntries((prev) =>
+              prev.map((entry) =>
+                entry.id === rowId
+                  ? {
+                      ...entry,
+                      status: mapTaskStatus(queued.task.status, null),
+                      taskId: queued.task.id,
+                      artifactId: queued.artifact.id,
+                      archetypeHint: queued.task.archetypeHint || undefined,
+                      updatedAt: new Date().toISOString(),
+                    }
+                  : entry
+              )
+            );
+          } catch (error) {
+            setEntries((prev) =>
+              prev.map((entry) =>
+                entry.id === rowId
+                  ? {
+                      ...entry,
+                      status: 'failed',
+                      error: error instanceof Error ? error.message : 'Failed to enqueue file.',
+                      updatedAt: new Date().toISOString(),
+                    }
+                  : entry
+              )
+            );
+          }
+        }
+
+        if (awsOcrControl?.enabled && awsOcrControl.startLambdaConfigured) {
+          await triggerAwsOcrControl('START', 'auto', false);
+        }
+
+        setSubmitMessage({
+          type: 'success',
+          text: `Queued ${imageFiles.length} screenshot(s). OCR processing now runs in the EC2 worker queue.`,
+        });
+      } catch (error) {
+        setSubmitMessage({
+          type: 'error',
+          text: error instanceof Error ? error.message : 'Failed to start upload queue.',
+        });
+      } finally {
+        setIsUploading(false);
+      }
+    },
+    [
+      workspaceId,
+      workspaceReady,
+      sessionLoading,
+      refreshSession,
+      weeklyEvent,
+      loadWeeklyEvent,
+      createScanJob,
+      uploadScreenshotArtifact,
+      enqueueArtifactTask,
+      awsOcrControl?.enabled,
+      awsOcrControl?.startLambdaConfigured,
+      triggerAwsOcrControl,
+      getPersistedJobKey,
+    ]
+  );
 
   const onDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -575,40 +596,6 @@ export default function UploadPage() {
     void handleFiles(files);
   };
 
-  const createEvent = async () => {
-    if (!newEventName.trim()) return;
-    if (!workspaceReady) {
-      setSubmitMessage({ type: 'error', text: 'Workspace is still connecting.' });
-      return;
-    }
-
-    try {
-      const res = await fetch('/api/v2/events', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-access-token': accessToken,
-        },
-        body: JSON.stringify({
-          workspaceId,
-          name: newEventName.trim(),
-          eventType: newEventType,
-        }),
-      });
-      const payload = await res.json();
-      if (!res.ok || !payload?.data?.id) {
-        throw new Error(payload?.error?.message || 'Failed to create event.');
-      }
-      const event = payload.data as EventOption;
-      setEvents((prev) => [event, ...prev]);
-      setSelectedEventId(event.id);
-      setNewEventName('');
-      setShowCreateModal(false);
-    } catch {
-      setSubmitMessage({ type: 'error', text: 'Failed to create event.' });
-    }
-  };
-
   const clearRows = () => {
     setEntries([]);
     setSubmitMessage(null);
@@ -622,6 +609,7 @@ export default function UploadPage() {
   const queuedCount = entries.filter((entry) => entry.status === 'queued').length;
   const processingCount = entries.filter((entry) => entry.status === 'processing' || entry.status === 'uploading').length;
   const completedCount = entries.filter((entry) => entry.status === 'completed').length;
+  const duplicateCount = entries.filter((entry) => entry.status === 'duplicate').length;
   const failedCount = entries.filter((entry) => entry.status === 'failed').length;
 
   const workerState = (awsOcrControl?.instanceState || '').toLowerCase();
@@ -631,24 +619,22 @@ export default function UploadPage() {
 
   const completedProfileRows = entries.filter(
     (entry) =>
-      entry.status === 'completed' &&
+      (entry.status === 'completed' || entry.status === 'duplicate') &&
       entry.metadata &&
-      String((entry.metadata as Record<string, unknown>).ingestionDomain || '') ===
-        'PROFILE_SNAPSHOT'
+      String((entry.metadata as Record<string, unknown>).ingestionDomain || '') === 'PROFILE_SNAPSHOT'
   ).length;
   const completedRankingRows = entries.filter(
     (entry) =>
-      entry.status === 'completed' &&
+      (entry.status === 'completed' || entry.status === 'duplicate') &&
       entry.metadata &&
-      String((entry.metadata as Record<string, unknown>).ingestionDomain || '') ===
-        'RANKING_CAPTURE'
+      String((entry.metadata as Record<string, unknown>).ingestionDomain || '') === 'RANKING_CAPTURE'
   ).length;
 
   return (
     <div className="page-container">
       <PageHero
         title="Upload Queue"
-        subtitle="Queue-first OCR ingestion. Files upload instantly and process in the background without freezing your browser."
+        subtitle="Register members once, then upload weekly screenshots. OCR runs in background and keeps weekly tracking clean."
         actions={
           <FilterBar>
             <button className="btn btn-secondary btn-sm" onClick={() => void refreshSession()} disabled={sessionLoading}>
@@ -662,10 +648,11 @@ export default function UploadPage() {
         <StatusPill label={`Queued ${queuedCount}`} tone="warn" />
         <StatusPill label={`Processing ${processingCount}`} tone="info" />
         <StatusPill label={`Completed ${completedCount}`} tone="good" />
+        {duplicateCount > 0 ? <StatusPill label={`Duplicate ${duplicateCount}`} tone="warn" /> : null}
         {failedCount > 0 ? <StatusPill label={`Failed ${failedCount}`} tone="bad" /> : null}
       </FilterBar>
 
-      <Panel title="Event + Worker" className="mb-24">
+      <Panel title="Weekly Window + Worker" className="mb-24">
         <div className="text-sm text-muted mb-12">
           {workspaceReady
             ? `Connected to ${workspaceName || 'your kingdom workspace'}.`
@@ -674,25 +661,23 @@ export default function UploadPage() {
               : sessionError || 'Workspace session is not ready yet.'}
         </div>
         <div className="grid-2" style={{ gap: 12 }}>
-          <div>
-            <div className="form-group" style={{ marginBottom: 0 }}>
-              <label className="form-label">Event</label>
-              <select
-                className="form-select"
-                value={selectedEventId}
-                onChange={(e) => setSelectedEventId(e.target.value)}
-              >
-                <option value="">Choose an event...</option>
-                {events.map((ev) => (
-                  <option key={ev.id} value={ev.id}>
-                    {ev.name}
-                  </option>
-                ))}
-              </select>
+          <div className="card" style={{ padding: 12 }}>
+            <strong>{weeklyEvent?.name || 'Preparing current weekly event...'}</strong>
+            <div className="text-sm text-muted mt-8">
+              {weeklyEvent?.weekKey || 'week key pending'}
+              {weeklyEvent?.startsAt
+                ? ` • ${new Date(weeklyEvent.startsAt).toLocaleDateString(undefined, {
+                    weekday: 'short',
+                    month: 'short',
+                    day: 'numeric',
+                  })}`
+                : ''}
             </div>
-            <button className="btn btn-secondary btn-sm mt-12" onClick={() => setShowCreateModal(true)}>
-              + New Event
-            </button>
+            {weeklyEvent?.isClosed ? (
+              <div className="text-sm delta-negative mt-8">
+                This week is marked closed. Re-open or switch week before official activity review.
+              </div>
+            ) : null}
           </div>
 
           <div className="card" style={{ padding: 12 }}>
@@ -701,7 +686,7 @@ export default function UploadPage() {
               <strong>AWS OCR Worker</strong>
               <StatusPill label={workerLabel} tone={workerTone} />
             </div>
-            <div className="text-sm text-muted">Use manual start only when you want OCR warm before uploading.</div>
+            <div className="text-sm text-muted">Auto-start is queue-driven. Use force-start when you want worker warm before upload.</div>
             <FilterBar className="mt-12" style={{ gap: 8 }}>
               <button
                 className="btn btn-primary btn-sm"
@@ -784,7 +769,8 @@ export default function UploadPage() {
           }
         >
           <div className="text-sm text-muted">
-            Completed: {entries.filter((entry) => entry.status === 'completed').length} • Failed:{' '}
+            Completed: {entries.filter((entry) => entry.status === 'completed').length} • Duplicate warnings:{' '}
+            {entries.filter((entry) => entry.status === 'duplicate').length} • Failed:{' '}
             {entries.filter((entry) => entry.status === 'failed').length}
           </div>
         </Panel>
@@ -795,7 +781,10 @@ export default function UploadPage() {
           title={`Upload Queue Rows (${entries.length})`}
           actions={
             <FilterBar>
-              <button className="btn btn-secondary btn-sm" onClick={loadAwsOcrControl}>
+              <button className="btn btn-secondary btn-sm" onClick={() => {
+                void loadAwsOcrControl();
+                void loadWeeklyEvent();
+              }}>
                 <RefreshCw size={14} /> Refresh
               </button>
               <button className="btn btn-danger btn-sm" onClick={clearRows}>
@@ -843,42 +832,6 @@ export default function UploadPage() {
               <CircleAlert size={15} color="#ff9cad" />
             )}
             <span className="text-sm">{submitMessage.text}</span>
-          </div>
-        </div>
-      ) : null}
-
-      {showCreateModal ? (
-        <div className="modal-overlay" onClick={() => setShowCreateModal(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h2>Create New Event</h2>
-            <div className="form-group">
-              <label className="form-label">Event Name</label>
-              <input
-                className="form-input"
-                value={newEventName}
-                onChange={(e) => setNewEventName(e.target.value)}
-                placeholder="e.g., KvK S3 - Start"
-                autoFocus
-              />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Event Type</label>
-              <select className="form-select" value={newEventType} onChange={(e) => setNewEventType(e.target.value)}>
-                {Object.entries(EVENT_TYPE_LABELS).map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="modal-actions">
-              <button className="btn btn-secondary" onClick={() => setShowCreateModal(false)}>
-                Cancel
-              </button>
-              <button className="btn btn-primary" onClick={createEvent}>
-                <Camera size={14} /> Create Event
-              </button>
-            </div>
           </div>
         </div>
       ) : null}

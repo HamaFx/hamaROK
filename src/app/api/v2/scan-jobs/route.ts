@@ -10,6 +10,7 @@ import { isAdbCaptureRndEnabled } from '@/lib/env';
 import { dispatchOcrWork } from '@/lib/aws/ocr-dispatch';
 import { makeServerCacheKey, withServerCache, invalidateServerCacheTags } from '@/lib/server-cache';
 import { workspaceCacheTags } from '@/lib/cache-scopes';
+import { ensureWeeklyEventForWorkspace } from '@/lib/weekly-events';
 
 const createScanJobSchema = z.object({
   workspaceId: z.string().min(1),
@@ -123,16 +124,25 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const resolvedEvent =
+      body.eventId || body.source !== ScanJobSource.MANUAL_UPLOAD
+        ? null
+        : await ensureWeeklyEventForWorkspace(body.workspaceId);
+    const eventId = body.eventId || resolvedEvent?.event.id || null;
+
     const idempotent = await withIdempotency({
       workspaceId: body.workspaceId,
       scope: 'scan-job',
       key: body.idempotencyKey,
-      request: body,
+      request: {
+        ...body,
+        eventId,
+      },
       execute: async () => {
         const job = await prisma.scanJob.create({
           data: {
             workspaceId: body.workspaceId,
-            eventId: body.eventId || null,
+            eventId,
             source: body.source,
             status: ScanJobStatus.QUEUED,
             idempotencyKey: body.idempotencyKey || null,

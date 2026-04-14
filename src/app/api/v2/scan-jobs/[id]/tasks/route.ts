@@ -101,6 +101,31 @@ export async function GET(
 
         return {
           rows: rows.map((task) => ({
+            duplicate:
+              task.metadata &&
+              typeof task.metadata === 'object' &&
+              !Array.isArray(task.metadata) &&
+              ((task.metadata as Record<string, unknown>).duplicateLevel ||
+                (task.metadata as Record<string, unknown>).duplicateWarning)
+                ? {
+                    warning: Boolean((task.metadata as Record<string, unknown>).duplicateWarning),
+                    level:
+                      ((task.metadata as Record<string, unknown>).duplicateLevel as string | null) ||
+                      null,
+                    referenceRunId:
+                      ((task.metadata as Record<string, unknown>).duplicateReferenceRunId as
+                        | string
+                        | null) || null,
+                    similarity:
+                      ((task.metadata as Record<string, unknown>).duplicateSimilarity as
+                        | number
+                        | null) || null,
+                    overrideToken:
+                      ((task.metadata as Record<string, unknown>).duplicateOverrideToken as
+                        | string
+                        | null) || null,
+                  }
+                : null,
             id: task.id,
             workspaceId: task.workspaceId,
             scanJobId: task.scanJobId,

@@ -53,6 +53,37 @@ interface DisplayRankingRow extends CanonicalRow {
   linkedGovernorId: string | null;
 }
 
+interface WeeklyEventInfo {
+  id: string;
+  name: string;
+  weekKey: string | null;
+  startsAt: string | null;
+}
+
+interface WeeklyActivitySummary {
+  membersTracked: number;
+  allianceSummary: Array<{
+    allianceTag: string;
+    allianceLabel: string;
+    members: number;
+    passCount: number;
+    failCount: number;
+    noStandardCount: number;
+    totalContribution: string;
+    totalPowerGrowth: string;
+  }>;
+}
+
+interface WeeklyActivityResponse {
+  event: {
+    id: string;
+    weekKey: string | null;
+    name: string;
+    startsAt: string | null;
+  };
+  summary: WeeklyActivitySummary;
+}
+
 function formatMetric(value: string) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed.toLocaleString() : value;
@@ -91,6 +122,8 @@ export default function RankingsPage() {
 
   const [search, setSearch] = useState('');
   const [rows, setRows] = useState<CanonicalRow[]>([]);
+  const [weeklyEvent, setWeeklyEvent] = useState<WeeklyEventInfo | null>(null);
+  const [weeklyActivity, setWeeklyActivity] = useState<WeeklyActivityResponse | null>(null);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [cursorStack, setCursorStack] = useState<Array<string | null>>([null]);
   const [loading, setLoading] = useState(false);
@@ -100,8 +133,60 @@ export default function RankingsPage() {
     'metricValue DESC, sourceRank ASC NULLS LAST, normalizedName ASC, rowId ASC'
   );
 
+  const loadWeeklyContext = useCallback(async () => {
+    if (!workspaceReady) {
+      setWeeklyEvent(null);
+      setWeeklyActivity(null);
+      return null;
+    }
+
+    try {
+      const weeklyRes = await fetch(
+        `/api/v2/events/weekly?workspaceId=${encodeURIComponent(workspaceId)}&autoCreate=true`,
+        {
+          headers: { 'x-access-token': accessToken },
+        }
+      );
+      const weeklyPayload = await weeklyRes.json();
+      if (!weeklyRes.ok || !weeklyPayload?.data?.id) {
+        setWeeklyEvent(null);
+        setWeeklyActivity(null);
+        return null;
+      }
+
+      const week: WeeklyEventInfo = {
+        id: weeklyPayload.data.id,
+        name: weeklyPayload.data.name,
+        weekKey: weeklyPayload.data.weekKey || null,
+        startsAt: weeklyPayload.data.startsAt || null,
+      };
+      setWeeklyEvent(week);
+
+      const activityRes = await fetch(
+        `/api/v2/activity/weekly?workspaceId=${encodeURIComponent(workspaceId)}${
+          week.weekKey ? `&weekKey=${encodeURIComponent(week.weekKey)}` : ''
+        }`,
+        {
+          headers: { 'x-access-token': accessToken },
+        }
+      );
+      const activityPayload = await activityRes.json();
+      if (activityRes.ok && activityPayload?.data) {
+        setWeeklyActivity(activityPayload.data as WeeklyActivityResponse);
+      } else {
+        setWeeklyActivity(null);
+      }
+
+      return week;
+    } catch {
+      setWeeklyEvent(null);
+      setWeeklyActivity(null);
+      return null;
+    }
+  }, [workspaceId, accessToken, workspaceReady]);
+
   const loadData = useCallback(
-    async (cursor: string | null = null) => {
+    async (cursor: string | null = null, weekKeyOverride?: string | null) => {
       if (!workspaceReady) return;
       setLoading(true);
       setError(null);
@@ -110,9 +195,12 @@ export default function RankingsPage() {
         const params = new URLSearchParams({
           workspaceId,
           limit: '50',
+          includeUnresolved: 'false',
         });
 
         if (search.trim()) params.set('q', search.trim());
+        const activeWeekKey = weekKeyOverride ?? weeklyEvent?.weekKey;
+        if (activeWeekKey) params.set('weekKey', activeWeekKey);
         if (cursor) params.set('cursor', cursor);
 
         const rowsRes = await fetch(`/api/v2/rankings?${params.toString()}`, {
@@ -135,14 +223,18 @@ export default function RankingsPage() {
         setLoading(false);
       }
     },
-    [workspaceId, accessToken, search, workspaceReady]
+    [workspaceId, accessToken, search, workspaceReady, weeklyEvent?.weekKey]
   );
 
   const refresh = useCallback(() => {
-    setCursorStack([null]);
-    setNextCursor(null);
-    loadData(null);
-  }, [loadData]);
+    const run = async () => {
+      setCursorStack([null]);
+      setNextCursor(null);
+      const weekly = await loadWeeklyContext();
+      await loadData(null, weekly?.weekKey || null);
+    };
+    void run();
+  }, [loadData, loadWeeklyContext]);
 
   useEffect(() => {
     if (workspaceReady) {
@@ -301,6 +393,40 @@ export default function RankingsPage() {
         <div className="card mb-24">
           <div className="text-sm text-muted">{sessionLoading ? 'Connecting workspace...' : sessionError || 'Workspace session is not ready yet.'}</div>
         </div>
+      ) : null}
+
+      {weeklyEvent ? (
+        <section className="ranking-controls-card mb-16">
+          <FilterBar className="ranking-controls-top">
+            <div>
+              <strong>{weeklyEvent.name}</strong>
+              <div className="text-sm text-muted">
+                {weeklyEvent.weekKey || 'week key pending'}
+                {weeklyEvent.startsAt
+                  ? ` • ${new Date(weeklyEvent.startsAt).toLocaleDateString(undefined, {
+                      weekday: 'short',
+                      month: 'short',
+                      day: 'numeric',
+                    })}`
+                  : ''}
+              </div>
+            </div>
+            {weeklyActivity ? (
+              <div className="text-sm text-muted">
+                Tracked Members: <strong>{weeklyActivity.summary.membersTracked}</strong>
+              </div>
+            ) : null}
+          </FilterBar>
+          {weeklyActivity?.summary?.allianceSummary?.length ? (
+            <div className="ranking-mobile-meta-line" style={{ marginTop: 10, flexWrap: 'wrap' }}>
+              {weeklyActivity.summary.allianceSummary.map((alliance) => (
+                <span key={alliance.allianceTag}>
+                  {alliance.allianceLabel}: {alliance.passCount}/{alliance.members} pass
+                </span>
+              ))}
+            </div>
+          ) : null}
+        </section>
       ) : null}
 
       <section className="ranking-controls-card mb-16">

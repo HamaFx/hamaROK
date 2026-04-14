@@ -338,6 +338,19 @@ export async function POST(
     });
 
     const result = await prisma.$transaction(async (tx) => {
+      const duplicateMetadata =
+        rankingRun.duplicate && typeof rankingRun.duplicate === 'object'
+          ? {
+              duplicateLevel: (rankingRun.duplicate as Record<string, unknown>).level || null,
+              duplicateReferenceRunId:
+                (rankingRun.duplicate as Record<string, unknown>).referenceRunId || null,
+              duplicateSimilarity:
+                (rankingRun.duplicate as Record<string, unknown>).similarity || null,
+              duplicateOverrideToken:
+                (rankingRun.duplicate as Record<string, unknown>).overrideToken || null,
+            }
+          : null;
+
       const updatedTask = await tx.ingestionTask.update({
         where: { id: taskId },
         data: {
@@ -350,14 +363,16 @@ export async function POST(
             ...(body.metadata || {}),
             workerId: body.workerId || undefined,
             screenArchetype: body.screenArchetype || undefined,
-            ingestionDomain: inferredDomain,
-            rankingRunId: rankingRun.id,
-            rankingType: rankingRun.rankingType,
-            metricKey: rankingRun.metricKey,
-          }),
-        },
-        include: {
-          artifact: {
+              ingestionDomain: inferredDomain,
+              rankingRunId: rankingRun.id,
+              rankingType: rankingRun.rankingType,
+              metricKey: rankingRun.metricKey,
+              duplicateWarning: rankingRun.deduped ? true : undefined,
+              ...(duplicateMetadata || {}),
+            }),
+          },
+          include: {
+            artifact: {
             select: {
               id: true,
               type: true,
@@ -387,6 +402,7 @@ export async function POST(
       task: toIngestionTaskResponse(result.task),
       ingestionDomain: inferredDomain,
       rankingRun,
+      duplicate: rankingRun.duplicate || null,
       scanJob: {
         id: result.scanJob.id,
         status: result.scanJob.status,
