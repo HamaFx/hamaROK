@@ -79,8 +79,6 @@ function allianceClass(tag: string | null) {
   return `alliance-${tag.toLowerCase()}`;
 }
 
-const ALL_STATUSES: RankingStatus[] = ['ACTIVE', 'UNRESOLVED', 'REJECTED'];
-
 export default function RankingsPage() {
   const {
     workspaceId,
@@ -92,7 +90,6 @@ export default function RankingsPage() {
   } = useWorkspaceSession();
 
   const [search, setSearch] = useState('');
-  const [statuses, setStatuses] = useState<RankingStatus[]>(['ACTIVE', 'UNRESOLVED']);
   const [rows, setRows] = useState<CanonicalRow[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [cursorStack, setCursorStack] = useState<Array<string | null>>([null]);
@@ -102,8 +99,6 @@ export default function RankingsPage() {
   const [sortHint, setSortHint] = useState(
     'metricValue DESC, sourceRank ASC NULLS LAST, normalizedName ASC, rowId ASC'
   );
-
-  const statusQuery = useMemo(() => statuses.join(','), [statuses]);
 
   const loadData = useCallback(
     async (cursor: string | null = null) => {
@@ -115,7 +110,6 @@ export default function RankingsPage() {
         const params = new URLSearchParams({
           workspaceId,
           limit: '50',
-          status: statusQuery,
         });
 
         if (search.trim()) params.set('q', search.trim());
@@ -141,7 +135,7 @@ export default function RankingsPage() {
         setLoading(false);
       }
     },
-    [workspaceId, accessToken, search, statusQuery, workspaceReady]
+    [workspaceId, accessToken, search, workspaceReady]
   );
 
   const refresh = useCallback(() => {
@@ -169,12 +163,6 @@ export default function RankingsPage() {
     const previousCursor = next[next.length - 1] || null;
     setCursorStack(next);
     loadData(previousCursor);
-  };
-
-  const toggleStatus = (status: RankingStatus) => {
-    setStatuses((prev) =>
-      prev.includes(status) ? prev.filter((entry) => entry !== status) : [...prev, status]
-    );
   };
 
   const displayRows = useMemo<DisplayRankingRow[]>(() => {
@@ -292,15 +280,11 @@ export default function RankingsPage() {
     return base;
   }, []);
 
-  const activeCount = displayRows.filter((row) => row.status === 'ACTIVE').length;
-  const unresolvedCount = displayRows.filter((row) => row.status === 'UNRESOLVED').length;
-  const rejectedCount = displayRows.filter((row) => row.status === 'REJECTED').length;
-
   return (
     <div className="page-container">
       <PageHero
         title="Rankings Board"
-        subtitle="Alive player cards, tie-aware ordering, and review-driven canonical ranking state."
+        subtitle="Clean leaderboard view with tie-aware ordering and stable ranking history."
         actions={
           <FilterBar>
             <button className="btn btn-secondary" onClick={refresh} disabled={loading || !workspaceReady}>
@@ -328,27 +312,6 @@ export default function RankingsPage() {
           <button className="btn btn-secondary" onClick={refresh} disabled={loading || !workspaceReady} style={{ padding: '0 16px' }}>
             <Filter size={14} /> Search
           </button>
-        </FilterBar>
-
-        <FilterBar className="ranking-controls-bottom">
-          <div className="ranking-status-group">
-            {ALL_STATUSES.map((status) => (
-              <button
-                key={status}
-                className={`btn btn-sm ${statuses.includes(status) ? 'btn-primary' : 'btn-secondary'}`}
-                onClick={() => toggleStatus(status)}
-                type="button"
-              >
-                {status}
-              </button>
-            ))}
-          </div>
-          <div className="ranking-count-group">
-            <StatusPill label={`Rows ${rows.length}`} tone="info" />
-            <StatusPill label={`Active ${activeCount}`} tone="good" />
-            <StatusPill label={`Unresolved ${unresolvedCount}`} tone={unresolvedCount > 0 ? 'warn' : 'good'} />
-            {rejectedCount > 0 ? <StatusPill label={`Rejected ${rejectedCount}`} tone="bad" /> : null}
-          </div>
         </FilterBar>
       </section>
 
@@ -384,7 +347,7 @@ export default function RankingsPage() {
       ) : null}
 
       <Panel
-        title="Ranking Rows"
+        title="Leaderboard"
         subtitle={`Sort: ${sortHint}`}
         actions={
           <ActionToolbar>
@@ -474,7 +437,7 @@ export default function RankingsPage() {
         ) : (
           <EmptyState
             title="No players found"
-            description="Try broadening search or status filters."
+            description="Try adjusting your search term."
           />
         )}
       </Panel>
