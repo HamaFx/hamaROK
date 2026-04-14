@@ -1493,6 +1493,91 @@ h6 {
   font-variant-numeric: tabular-nums lining-nums;
 }
 
+.ranking-desktop-table {
+  display: block;
+}
+
+.ranking-mobile-list {
+  display: none;
+}
+
+.ranking-mobile-card {
+  border: 1px solid rgba(113, 138, 165, 0.24);
+  border-radius: 14px;
+  background: linear-gradient(160deg, rgba(14, 26, 41, 0.94), rgba(10, 20, 32, 0.95));
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.ranking-mobile-card.is-top {
+  border-color: rgba(245, 181, 74, 0.38);
+  box-shadow: 0 12px 20px rgba(0, 0, 0, 0.24);
+}
+
+.ranking-mobile-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ranking-mobile-main {
+  display: grid;
+  gap: 6px;
+}
+
+.ranking-mobile-name-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ranking-mobile-name {
+  font-family: var(--font-heading);
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: var(--text-1);
+}
+
+.ranking-mobile-kpis {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.ranking-mobile-kpi {
+  border: 1px solid rgba(113, 138, 165, 0.2);
+  border-radius: 10px;
+  background: rgba(17, 30, 47, 0.82);
+  padding: 8px;
+  display: grid;
+  gap: 3px;
+}
+
+.ranking-mobile-kpi span {
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-3);
+  font-weight: 700;
+}
+
+.ranking-mobile-kpi strong {
+  font-size: 0.84rem;
+  color: var(--text-1);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.ranking-mobile-foot {
+  color: var(--text-3);
+  font-size: 0.68rem;
+  letter-spacing: 0.03em;
+}
+
 .ranking-player-row:hover .ranking-rank-chip {
   transform: translateY(-1px);
 }
@@ -2207,59 +2292,21 @@ h6 {
     width: 100%;
   }
 
+  .ranking-desktop-table {
+    display: none;
+  }
+
+  .ranking-mobile-list {
+    display: grid;
+    gap: 10px;
+  }
+
   .ranking-spotlight-grid {
     grid-template-columns: 1fr;
   }
 
   .mobile-hidden-col {
     display: none !important;
-  }
-
-  .data-table-mobile-cards thead {
-    display: none;
-  }
-
-  .data-table-mobile-cards tbody,
-  .data-table-mobile-cards tr {
-    display: block;
-  }
-
-  .data-table-mobile-cards tbody tr {
-    border-bottom: 1px solid rgba(113, 138, 165, 0.16);
-    padding: 10px 0;
-  }
-
-  .data-table-mobile-cards tbody tr:last-child {
-    border-bottom: 0;
-  }
-
-  .data-table-mobile-cards tbody td {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: 10px;
-    white-space: normal;
-    padding: 7px 10px;
-    border-bottom: 0;
-  }
-
-  .data-table-mobile-cards tbody td::before {
-    content: attr(data-label);
-    color: var(--text-3);
-    text-transform: uppercase;
-    letter-spacing: 0.07em;
-    font-size: 0.64rem;
-    font-weight: 700;
-    min-width: 92px;
-  }
-
-  .data-table-mobile-cards .ranking-player-head,
-  .data-table-mobile-cards .ranking-player-meta {
-    justify-content: flex-start;
-  }
-
-  .data-table-mobile-cards .ranking-metric-cell {
-    align-items: flex-start;
   }
 
   .sticky-first-col .sticky-col {

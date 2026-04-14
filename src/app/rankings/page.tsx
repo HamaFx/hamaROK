@@ -397,27 +397,83 @@ export default function RankingsPage() {
         {error ? <div className="delta-negative mb-12">{error}</div> : null}
 
         {displayRows.length > 0 ? (
-          <DataTableLite
-            stickyFirst
-            dense={denseRows}
-            columns={columns}
-            rows={displayRows}
-            rowKey={(row) => row.id}
-            rowClassName={(row) =>
-              [
-                'ranking-player-row',
-                row.status === 'ACTIVE'
-                  ? 'is-active'
-                  : row.status === 'UNRESOLVED'
-                    ? 'is-unresolved'
-                    : 'is-rejected',
-                row.stableRank <= 3 ? 'is-top' : '',
-              ]
-                .filter(Boolean)
-                .join(' ')
-            }
-            emptyLabel="No canonical ranking rows found for these filters."
-          />
+          <>
+            <div className="ranking-desktop-table">
+              <DataTableLite
+                stickyFirst
+                dense={denseRows}
+                mobileCards={false}
+                columns={columns}
+                rows={displayRows}
+                rowKey={(row) => row.id}
+                rowClassName={(row) =>
+                  [
+                    'ranking-player-row',
+                    row.status === 'ACTIVE'
+                      ? 'is-active'
+                      : row.status === 'UNRESOLVED'
+                        ? 'is-unresolved'
+                        : 'is-rejected',
+                    row.stableRank <= 3 ? 'is-top' : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')
+                }
+                emptyLabel="No canonical ranking rows found for these filters."
+              />
+            </div>
+
+            <div className="ranking-mobile-list" aria-label="Ranking rows mobile cards">
+              {displayRows.map((row) => (
+                <article key={row.id} className={`ranking-mobile-card ${row.stableRank <= 3 ? 'is-top' : ''}`}>
+                  <header className="ranking-mobile-head">
+                    <span className={`ranking-rank-chip ${row.stableRank <= 3 ? 'top' : ''}`}>#{row.stableRank}</span>
+                    <StatusPill label={row.status} tone={statusTone(row.status)} />
+                  </header>
+
+                  <div className="ranking-mobile-main">
+                    <div className="ranking-mobile-name-wrap">
+                      <strong className="ranking-mobile-name">{row.displayName}</strong>
+                      {row.titleRaw ? <span className="ranking-title-pill">{row.titleRaw}</span> : null}
+                    </div>
+                    <div className="ranking-player-meta">
+                      {row.allianceLabel ? (
+                        <span className={`ranking-alliance-pill ${allianceClass(row.allianceTag)}`}>
+                          {row.allianceLabel}
+                        </span>
+                      ) : (
+                        <span className="ranking-alliance-pill neutral">No alliance</span>
+                      )}
+                      <span className="ranking-id-pill">
+                        {row.linkedGovernorId ? `ID ${row.linkedGovernorId}` : 'Unlinked profile'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="ranking-mobile-kpis">
+                    <div className="ranking-mobile-kpi">
+                      <span>Metric</span>
+                      <strong>{formatMetric(row.metricValue)}</strong>
+                    </div>
+                    <div className="ranking-mobile-kpi">
+                      <span>Source Rank</span>
+                      <strong>{row.sourceRank ? `#${row.sourceRank}` : '—'}</strong>
+                    </div>
+                    <div className="ranking-mobile-kpi">
+                      <span>Board</span>
+                      <strong>{row.metricLabel}</strong>
+                    </div>
+                    <div className="ranking-mobile-kpi">
+                      <span>Updated</span>
+                      <strong>{new Date(row.updatedAt).toLocaleDateString()}</strong>
+                    </div>
+                  </div>
+
+                  {row.conflictFlags?.tie ? <div className="ranking-mobile-foot">Tie Group {row.tieGroup} • Shared score</div> : null}
+                </article>
+              ))}
+            </div>
+          </>
         ) : (
           <EmptyState
             title="No players found"
