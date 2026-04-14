@@ -181,7 +181,7 @@ export async function toComparisonPackZip(
   const reportJson = JSON.stringify(payload, null, 2);
 
   const readme = [
-    '# RoK Command Center Report Pack',
+    '# HamaROK Report Pack',
     '',
     `Comparison: ${payload.eventA.name} -> ${payload.eventB.name}`,
     `Total Governors: ${payload.summary.totalGovernors}`,

@@ -3,11 +3,11 @@ import './globals.css';
 import AppShell from '@/components/AppShell';
 
 export const metadata: Metadata = {
-  title: 'RoK Command Center v2 — Tactical Operations Dashboard',
+  title: 'HamaROK — Alliance & Player Analytics',
   description:
-    'Track Rise of Kingdoms alliance performance with ranking analytics, OCR-assisted ingestion, and deterministic comparison workflows.',
+    'Track Rise of Kingdoms alliance and player performance with weekly analytics, OCR-assisted ingestion, and ranking workflows.',
   keywords:
-    'Rise of Kingdoms, RoK, alliance analytics, ranking review, OCR command center, KvK intelligence',
+    'Rise of Kingdoms, RoK, alliance analytics, player analytics, OCR ranking review, weekly tracking',
 };
 
 export default function RootLayout({

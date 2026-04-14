@@ -108,12 +108,12 @@ export async function POST(request: NextRequest) {
                   .join('\n') || 'None.',
             },
           ],
-          footer: { text: 'RoK Command Center v2' },
+          footer: { text: 'HamaROK Analytics' },
           timestamp: new Date().toISOString(),
         };
 
         const webhookBody = {
-          username: 'RoK Command Center',
+          username: 'HamaROK Analytics',
           avatar_url: 'https://cdn-icons-png.flaticon.com/512/2855/2855663.png',
           embeds: [embed],
         };

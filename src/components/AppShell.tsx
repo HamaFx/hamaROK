@@ -124,7 +124,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
           <Link href="/" className="app-brand">
             <Image src="/hama-logo.svg" alt="Hama logo" className="app-brand-logo" width={176} height={44} priority />
           </Link>
-          <span className="app-badge">HAMA OPS</span>
+          <span className="app-badge">HAMA ROK</span>
         </div>
 
         <div className="app-sidebar-scroll">
