@@ -899,6 +899,38 @@ h6 {
   gap: 12px;
 }
 
+@keyframes rankingSpotlightRise {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes rankingRowReveal {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes rankingMetricPulse {
+  0%,
+  100% {
+    text-shadow: 0 0 0 rgba(141, 216, 255, 0);
+  }
+  50% {
+    text-shadow: 0 0 10px rgba(141, 216, 255, 0.28);
+  }
+}
+
 .ranking-spotlight-card {
   border: 1px solid rgba(113, 138, 165, 0.22);
   border-radius: 16px;
@@ -907,6 +939,12 @@ h6 {
   box-shadow: 0 16px 26px rgba(0, 0, 0, 0.26);
   overflow: hidden;
   position: relative;
+  transform-origin: center;
+  animation: rankingSpotlightRise 260ms ease-out both;
+  transition:
+    transform var(--transition-fast),
+    border-color var(--transition-fast),
+    box-shadow var(--transition-fast);
 }
 
 .ranking-spotlight-card::before {
@@ -920,16 +958,37 @@ h6 {
   background: radial-gradient(circle, rgba(141, 216, 255, 0.24), transparent 70%);
 }
 
+.ranking-spotlight-card::after {
+  content: '';
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  top: 0;
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, rgba(141, 216, 255, 0.46), transparent);
+  opacity: 0.42;
+}
+
 .ranking-spotlight-card.spotlight-1 {
   border-color: rgba(245, 181, 74, 0.38);
+  animation-delay: 30ms;
 }
 
 .ranking-spotlight-card.spotlight-2 {
   border-color: rgba(141, 216, 255, 0.38);
+  animation-delay: 75ms;
 }
 
 .ranking-spotlight-card.spotlight-3 {
   border-color: rgba(103, 232, 249, 0.32);
+  animation-delay: 120ms;
+}
+
+.ranking-spotlight-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(141, 216, 255, 0.5);
+  box-shadow: 0 20px 30px rgba(0, 0, 0, 0.34);
 }
 
 .ranking-spotlight-head {
@@ -960,7 +1019,10 @@ h6 {
   color: var(--text-1);
   font-size: 1rem;
   font-family: var(--font-heading);
+  font-weight: 700;
   line-height: 1.15;
+  letter-spacing: 0.01em;
+  text-wrap: balance;
 }
 
 .ranking-spotlight-meta {
@@ -976,13 +1038,16 @@ h6 {
   font-size: 1.16rem;
   font-weight: 700;
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums lining-nums;
   letter-spacing: 0.02em;
+  animation: rankingMetricPulse 2.8s ease-in-out infinite;
 }
 
 .ranking-spotlight-foot {
   margin-top: 5px;
   color: var(--text-3);
   font-size: 0.72rem;
+  letter-spacing: 0.03em;
 }
 
 .btn {
@@ -1168,6 +1233,34 @@ h6 {
   transition: background var(--transition-fast), border-color var(--transition-fast);
 }
 
+.data-table tbody tr.ranking-player-row {
+  animation: rankingRowReveal 180ms ease-out both;
+}
+
+.data-table tbody tr.ranking-player-row:nth-child(1) {
+  animation-delay: 20ms;
+}
+
+.data-table tbody tr.ranking-player-row:nth-child(2) {
+  animation-delay: 35ms;
+}
+
+.data-table tbody tr.ranking-player-row:nth-child(3) {
+  animation-delay: 50ms;
+}
+
+.data-table tbody tr.ranking-player-row:nth-child(4) {
+  animation-delay: 65ms;
+}
+
+.data-table tbody tr.ranking-player-row:nth-child(5) {
+  animation-delay: 80ms;
+}
+
+.data-table tbody tr.ranking-player-row:hover td {
+  background: linear-gradient(90deg, rgba(74, 187, 255, 0.16), rgba(17, 31, 48, 0.08));
+}
+
 .data-table tbody tr.ranking-player-row.is-top td {
   background-image: linear-gradient(90deg, rgba(245, 181, 74, 0.08), transparent 34%);
 }
@@ -1236,12 +1329,18 @@ h6 {
   color: var(--text-1);
   font-weight: 700;
   letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums lining-nums;
+  transition:
+    transform var(--transition-fast),
+    border-color var(--transition-fast),
+    box-shadow var(--transition-fast);
 }
 
 .ranking-rank-chip.top {
   border-color: rgba(245, 181, 74, 0.44);
   background: linear-gradient(130deg, rgba(245, 181, 74, 0.24), rgba(14, 28, 44, 0.92));
   color: #ffe0a5;
+  box-shadow: 0 4px 14px rgba(245, 181, 74, 0.18);
 }
 
 .ranking-rank-sub {
@@ -1272,7 +1371,9 @@ h6 {
 .ranking-player-name {
   font-size: 0.93rem;
   font-family: var(--font-heading);
+  font-weight: 700;
   line-height: 1.1;
+  letter-spacing: 0.01em;
   color: var(--text-1);
 }
 
@@ -1298,6 +1399,10 @@ h6 {
   padding: 3px 9px;
   font-size: 0.67rem;
   line-height: 1.1;
+  transition:
+    transform var(--transition-fast),
+    border-color var(--transition-fast),
+    background var(--transition-fast);
 }
 
 .ranking-alliance-pill {
@@ -1332,6 +1437,7 @@ h6 {
   color: var(--text-2);
   background: rgba(20, 34, 52, 0.88);
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums lining-nums;
 }
 
 .ranking-metric-cell {
@@ -1344,6 +1450,9 @@ h6 {
 .ranking-metric-cell strong {
   color: var(--teal-2);
   font-size: 0.95rem;
+  font-variant-numeric: tabular-nums lining-nums;
+  letter-spacing: 0.02em;
+  font-feature-settings: 'tnum' 1;
 }
 
 .ranking-metric-cell span {
@@ -1356,11 +1465,14 @@ h6 {
 .ranking-board-label {
   color: var(--text-2);
   font-size: 0.76rem;
+  letter-spacing: 0.02em;
+  font-weight: 500;
 }
 
 .ranking-source-value {
   color: var(--text-2);
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums lining-nums;
 }
 
 .ranking-status-cell {
@@ -1378,6 +1490,31 @@ h6 {
 .ranking-updated {
   color: var(--text-2);
   font-size: 0.75rem;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.ranking-player-row:hover .ranking-rank-chip {
+  transform: translateY(-1px);
+}
+
+.ranking-player-row:hover .ranking-alliance-pill,
+.ranking-player-row:hover .ranking-id-pill {
+  transform: translateY(-1px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ranking-spotlight-card,
+  .ranking-spotlight-metric,
+  .ranking-player-row {
+    animation: none !important;
+  }
+
+  .ranking-spotlight-card,
+  .ranking-rank-chip,
+  .ranking-alliance-pill,
+  .ranking-id-pill {
+    transition: none !important;
+  }
 }
 
 .tier-badge,
