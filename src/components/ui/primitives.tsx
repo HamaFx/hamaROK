@@ -215,6 +215,7 @@ export function DataTableLite<T>({
   columns,
   rows,
   rowKey,
+  rowClassName,
   onSort,
   sortKey,
   sortDir,
@@ -226,6 +227,7 @@ export function DataTableLite<T>({
   columns: DataTableLiteColumn<T>[];
   rows: T[];
   rowKey: (row: T, index: number) => string;
+  rowClassName?: (row: T, index: number) => string | undefined;
   onSort?: (key: string) => void;
   sortKey?: string;
   sortDir?: 'asc' | 'desc';
@@ -281,7 +283,7 @@ export function DataTableLite<T>({
         </thead>
         <tbody>
           {rows.map((row, idx) => (
-            <tr key={rowKey(row, idx)}>
+            <tr key={rowKey(row, idx)} className={rowClassName?.(row, idx)}>
               {columns.map((column, colIdx) => (
                 <td
                   key={`${rowKey(row, idx)}-${column.key}`}

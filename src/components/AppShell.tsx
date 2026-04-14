@@ -24,22 +24,23 @@ import {
 interface NavItem {
   href: string;
   label: string;
+  hint: string;
   icon: React.ComponentType<{ size?: number; strokeWidth?: number; className?: string }>;
   group: 'core' | 'analysis' | 'ops';
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { href: '/', label: 'Dashboard', icon: Home, group: 'core' },
-  { href: '/upload', label: 'Upload', icon: ImageUp, group: 'core' },
-  { href: '/events', label: 'Events', icon: CalendarDays, group: 'core' },
-  { href: '/governors', label: 'Governors', icon: Users, group: 'core' },
-  { href: '/compare', label: 'Compare', icon: Workflow, group: 'analysis' },
-  { href: '/insights', label: 'Insights', icon: Radar, group: 'analysis' },
-  { href: '/rankings', label: 'Rankings', icon: Trophy, group: 'analysis' },
-  { href: '/review', label: 'OCR Review', icon: FlaskConical, group: 'ops' },
-  { href: '/rankings/review', label: 'Rank Review', icon: ShieldCheck, group: 'ops' },
-  { href: '/calibration', label: 'Calibration', icon: Crosshair, group: 'ops' },
-  { href: '/settings', label: 'Settings', icon: Cog, group: 'ops' },
+  { href: '/', label: 'Dashboard', hint: 'Command center and recent activity', icon: Home, group: 'core' },
+  { href: '/upload', label: 'Upload', hint: 'Queue screenshots for OCR processing', icon: ImageUp, group: 'core' },
+  { href: '/events', label: 'Events', hint: 'Manage scan windows and timelines', icon: CalendarDays, group: 'core' },
+  { href: '/governors', label: 'Governors', hint: 'Search member records and history', icon: Users, group: 'core' },
+  { href: '/compare', label: 'Compare', hint: 'Compare two events side by side', icon: Workflow, group: 'analysis' },
+  { href: '/insights', label: 'Insights', hint: 'Charts and contribution trends', icon: Radar, group: 'analysis' },
+  { href: '/rankings', label: 'Rankings', hint: 'Canonical leaderboards and ties', icon: Trophy, group: 'analysis' },
+  { href: '/review', label: 'OCR Review', hint: 'Validate profile extractions', icon: FlaskConical, group: 'ops' },
+  { href: '/rankings/review', label: 'Rank Review', hint: 'Resolve ranking identity matches', icon: ShieldCheck, group: 'ops' },
+  { href: '/calibration', label: 'Calibration', hint: 'Tune OCR capture profiles', icon: Crosshair, group: 'ops' },
+  { href: '/settings', label: 'Settings', hint: 'Workspace and automation controls', icon: Cog, group: 'ops' },
 ];
 
 const MOBILE_PRIMARY = ['/', '/upload', '/rankings', '/insights'];
@@ -111,6 +112,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
   const mobilePrimaryItems = NAV_ITEMS.filter((item) => MOBILE_PRIMARY.includes(item.href));
   const mobileMoreItems = NAV_ITEMS.filter((item) => !MOBILE_PRIMARY.includes(item.href));
+  const mobileQuickItems = mobileMoreItems.filter((item) => ['/events', '/review', '/settings'].includes(item.href));
+  const mobileMoreGroups: Array<NavItem['group']> = ['core', 'analysis', 'ops'];
 
   return (
     <div className="app-shell">
@@ -185,7 +188,10 @@ export default function AppShell({ children }: { children: ReactNode }) {
       <aside className={`app-mobile-sheet ${mobileMoreOpen ? 'open' : ''}`} id="mobile-more-sheet">
         <div className="app-mobile-sheet-inner">
           <div className="app-mobile-sheet-head">
-            <h3>More Sections</h3>
+            <div>
+              <h3>More</h3>
+              <p className="app-mobile-sheet-sub">Secondary tools and workflows</p>
+            </div>
             <button
               type="button"
               className="btn btn-ghost btn-sm"
@@ -195,20 +201,56 @@ export default function AppShell({ children }: { children: ReactNode }) {
               <X size={14} /> Close
             </button>
           </div>
-          <div className="app-mobile-sheet-list">
-            {mobileMoreItems.map((item) => {
+
+          <div className="app-mobile-quick-strip">
+            {mobileQuickItems.map((item) => {
               const Icon = item.icon;
               const active = matchPath(pathname, item.href);
               return (
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`app-mobile-sheet-link ${active ? 'active' : ''}`}
+                  className={`app-mobile-quick-link ${active ? 'active' : ''}`}
                   onClick={() => setMobileMoreOpen(false)}
                 >
-                  <Icon size={16} strokeWidth={2.1} />
+                  <Icon size={14} strokeWidth={2.2} />
                   <span>{item.label}</span>
                 </Link>
+              );
+            })}
+          </div>
+
+          <div className="app-mobile-sheet-sections">
+            {mobileMoreGroups.map((group) => {
+              const groupItems = mobileMoreItems.filter((item) => item.group === group);
+              if (!groupItems.length) return null;
+              return (
+                <section key={group} className="app-mobile-sheet-section">
+                  <p className="app-mobile-sheet-section-title">{groupLabel(group)}</p>
+                  <div className="app-mobile-sheet-list">
+                    {groupItems.map((item) => {
+                      const Icon = item.icon;
+                      const active = matchPath(pathname, item.href);
+                      return (
+                        <Link
+                          key={item.href}
+                          href={item.href}
+                          className={`app-mobile-sheet-link ${active ? 'active' : ''}`}
+                          onClick={() => setMobileMoreOpen(false)}
+                        >
+                          <span className="app-mobile-sheet-link-icon">
+                            <Icon size={16} strokeWidth={2.1} />
+                          </span>
+                          <span className="app-mobile-sheet-link-copy">
+                            <strong>{item.label}</strong>
+                            <small>{item.hint}</small>
+                          </span>
+                          <ChevronRight size={14} className="app-mobile-sheet-link-chevron" />
+                        </Link>
+                      );
+                    })}
+                  </div>
+                </section>
               );
             })}
           </div>
