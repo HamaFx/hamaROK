@@ -21,6 +21,17 @@ const createScanJobSchema = z.object({
   idempotencyKey: z.string().min(8).max(120).optional(),
 });
 
+function isWeeklyAutoCreateSafeError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const maybeCode = (error as { code?: unknown }).code;
+  if (typeof maybeCode === 'string' && maybeCode === 'P2022') return true; // Missing DB column
+  const message =
+    typeof (error as { message?: unknown }).message === 'string'
+      ? String((error as { message?: string }).message)
+      : '';
+  return /column .* does not exist/i.test(message);
+}
+
 export async function GET(request: NextRequest) {
   try {
     const workspaceId = getQueryParam(request, 'workspaceId');
@@ -124,10 +135,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const resolvedEvent =
-      body.eventId || body.source !== ScanJobSource.MANUAL_UPLOAD
-        ? null
-        : await ensureWeeklyEventForWorkspace(body.workspaceId);
+    let resolvedEvent: Awaited<ReturnType<typeof ensureWeeklyEventForWorkspace>> | null = null;
+    if (!body.eventId && body.source === ScanJobSource.MANUAL_UPLOAD) {
+      try {
+        resolvedEvent = await ensureWeeklyEventForWorkspace(body.workspaceId);
+      } catch (error) {
+        if (!isWeeklyAutoCreateSafeError(error)) {
+          throw error;
+        }
+        // Backward-compat fallback: allow uploads even if weekly-event DB fields
+        // are not yet migrated in the target environment.
+        resolvedEvent = null;
+      }
+    }
     const eventId = body.eventId || resolvedEvent?.event.id || null;
 
     const idempotent = await withIdempotency({
