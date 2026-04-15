@@ -35,7 +35,6 @@ import {
 import { invalidateServerCacheTags } from '@/lib/server-cache';
 import { scanJobCacheTag, workspaceCacheTags } from '@/lib/cache-scopes';
 import { splitGovernorNameAndAlliance } from '@/lib/alliances';
-import { ensureWeeklyEventForWorkspace } from '@/lib/weekly-events';
 
 const PROFILE_POWER_RANKING_TYPE = normalizeRankingType('governor_profile_power');
 const PROFILE_POWER_METRIC_KEY = normalizeMetricKey('power');
@@ -79,17 +78,6 @@ const reviewSchema = z.object({
     })
   ).optional(),
 });
-
-function isWeeklyAutoCreateSafeError(error: unknown): boolean {
-  if (!error || typeof error !== 'object') return false;
-  const maybeCode = (error as { code?: unknown }).code;
-  if (typeof maybeCode === 'string' && maybeCode === 'P2022') return true;
-  const message =
-    typeof (error as { message?: unknown }).message === 'string'
-      ? String((error as { message?: string }).message)
-      : '';
-  return /column .* does not exist/i.test(message);
-}
 
 function inferCorrectionReasonCode(
   field: keyof ReturnType<typeof parseExtractionValues>,
@@ -267,24 +255,9 @@ export async function PATCH(
     const rerunValues = applyRerunNormalized(parsedValues, body.rerun);
     const mergedValues = applyCorrections(rerunValues, body.corrected);
     let approvedPayload = toApprovedSnapshotPayload(mergedValues);
-    let targetEventId = extraction.scanJob.eventId;
-    let eventLinkWarning: string | null = null;
+    const targetEventId = extraction.scanJob.eventId;
 
     if (body.status === OcrExtractionStatus.APPROVED) {
-      if (!targetEventId) {
-        try {
-          const ensured = await ensureWeeklyEventForWorkspace(extraction.scanJob.workspaceId);
-          targetEventId = ensured.event.id;
-        } catch (error) {
-          if (isWeeklyAutoCreateSafeError(error)) {
-            eventLinkWarning =
-              'Approved, but weekly event linking is deferred because the database schema is behind. Run latest migrations, then reprocess if needed.';
-          } else {
-            eventLinkWarning =
-              'Approved, but this scan could not be linked to the active weekly event yet. You can continue review now and relink after weekly events are available.';
-          }
-        }
-      }
       if (!/^\d{6,12}$/.test(approvedPayload.governorId)) {
         const matchedGovernor = await prisma.governor.findFirst({
           where: {
@@ -419,15 +392,7 @@ export async function PATCH(
       }
 
       let snapshotId: string | null = null;
-
-      if (body.status === OcrExtractionStatus.APPROVED && targetEventId) {
-        if (extraction.scanJob.eventId !== targetEventId) {
-          await tx.scanJob.update({
-            where: { id: extraction.scanJobId },
-            data: { eventId: targetEventId },
-          });
-        }
-
+      if (body.status === OcrExtractionStatus.APPROVED) {
         const allianceDetection = splitGovernorNameAndAlliance({
           governorNameRaw: approvedPayload.governorName,
           allianceRaw: extractAllianceFromExtraction(extraction),
@@ -454,180 +419,163 @@ export async function PATCH(
           },
         });
 
-        const previous = await tx.snapshot.findUnique({
-          where: {
-            eventId_governorId: {
-              eventId: targetEventId,
-              governorId: governor.id,
-            },
-          },
-          select: {
-            id: true,
-            power: true,
-            killPoints: true,
-            t4Kills: true,
-            t5Kills: true,
-            deads: true,
-            verified: true,
-            ocrConfidence: true,
-          },
-        });
+        if (targetEventId) {
+          if (extraction.scanJob.eventId !== targetEventId) {
+            await tx.scanJob.update({
+              where: { id: extraction.scanJobId },
+              data: { eventId: targetEventId },
+            });
+          }
 
-        const snapshot = await tx.snapshot.upsert({
-          where: {
-            eventId_governorId: {
+          const previous = await tx.snapshot.findUnique({
+            where: {
+              eventId_governorId: {
+                eventId: targetEventId,
+                governorId: governor.id,
+              },
+            },
+            select: {
+              id: true,
+              power: true,
+              killPoints: true,
+              t4Kills: true,
+              t5Kills: true,
+              deads: true,
+              verified: true,
+              ocrConfidence: true,
+            },
+          });
+
+          const snapshot = await tx.snapshot.upsert({
+            where: {
+              eventId_governorId: {
+                eventId: targetEventId,
+                governorId: governor.id,
+              },
+            },
+            update: {
+              power: approvedPayload.power,
+              killPoints: approvedPayload.killPoints,
+              t4Kills: approvedPayload.t4Kills,
+              t5Kills: approvedPayload.t5Kills,
+              deads: approvedPayload.deads,
+              workspaceId: extraction.scanJob.workspaceId,
+              verified: true,
+              ocrConfidence:
+                extraction.confidence <= 1 ? extraction.confidence * 100 : extraction.confidence,
+            },
+            create: {
               eventId: targetEventId,
               governorId: governor.id,
+              workspaceId: extraction.scanJob.workspaceId,
+              power: approvedPayload.power,
+              killPoints: approvedPayload.killPoints,
+              t4Kills: approvedPayload.t4Kills,
+              t5Kills: approvedPayload.t5Kills,
+              deads: approvedPayload.deads,
+              verified: true,
+              ocrConfidence:
+                extraction.confidence <= 1 ? extraction.confidence * 100 : extraction.confidence,
             },
-          },
-          update: {
-            power: approvedPayload.power,
-            killPoints: approvedPayload.killPoints,
-            t4Kills: approvedPayload.t4Kills,
-            t5Kills: approvedPayload.t5Kills,
-            deads: approvedPayload.deads,
-            workspaceId: extraction.scanJob.workspaceId,
-            verified: true,
-            ocrConfidence:
-              extraction.confidence <= 1 ? extraction.confidence * 100 : extraction.confidence,
-          },
-          create: {
-            eventId: targetEventId,
+            select: {
+              id: true,
+              power: true,
+              killPoints: true,
+              t4Kills: true,
+              t5Kills: true,
+              deads: true,
+            },
+          });
+
+          snapshotId = snapshot.id;
+
+          if (previous) {
+            await tx.snapshotRevision.create({
+              data: {
+                workspaceId: extraction.scanJob.workspaceId,
+                snapshotId: previous.id,
+                changedByLinkId: auth.link.id,
+                reason: body.reason || 'Manual OCR review approval',
+                previousData: {
+                  power: previous.power.toString(),
+                  killPoints: previous.killPoints.toString(),
+                  t4Kills: previous.t4Kills.toString(),
+                  t5Kills: previous.t5Kills.toString(),
+                  deads: previous.deads.toString(),
+                  verified: previous.verified,
+                  ocrConfidence: previous.ocrConfidence,
+                },
+                nextData: {
+                  power: snapshot.power.toString(),
+                  killPoints: snapshot.killPoints.toString(),
+                  t4Kills: snapshot.t4Kills.toString(),
+                  t5Kills: snapshot.t5Kills.toString(),
+                  deads: snapshot.deads.toString(),
+                  verified: true,
+                  ocrConfidence:
+                    extraction.confidence <= 1
+                      ? extraction.confidence * 100
+                      : extraction.confidence,
+                },
+              },
+            });
+          }
+
+          if (anomalies.length > 0) {
+            await tx.anomaly.createMany({
+              data: anomalies.map((anomaly) => ({
+                workspaceId: extraction.scanJob.workspaceId,
+                snapshotId: snapshot.id,
+                governorId: governor.id,
+                eventAId: targetEventId,
+                code: anomaly.code,
+                type: anomaly.type,
+                message: anomaly.message,
+                severity:
+                  anomaly.severity === 'ERROR'
+                    ? AnomalySeverity.ERROR
+                    : anomaly.severity === 'INFO'
+                      ? AnomalySeverity.INFO
+                      : AnomalySeverity.WARNING,
+                context: (anomaly.context || {}) as Prisma.InputJsonValue,
+              })),
+            });
+          }
+
+          // Keep ranking board in sync with approved profile reviews so players
+          // appear in canonical rankings immediately after approval.
+          const governorNameNormalized = normalizeGovernorAlias(approvedGovernorName);
+          const identityKey = computeCanonicalIdentityKey({
             governorId: governor.id,
-            workspaceId: extraction.scanJob.workspaceId,
-            power: approvedPayload.power,
-            killPoints: approvedPayload.killPoints,
-            t4Kills: approvedPayload.t4Kills,
-            t5Kills: approvedPayload.t5Kills,
-            deads: approvedPayload.deads,
-            verified: true,
-            ocrConfidence:
-              extraction.confidence <= 1 ? extraction.confidence * 100 : extraction.confidence,
-          },
-          select: {
-            id: true,
-            power: true,
-            killPoints: true,
-            t4Kills: true,
-            t5Kills: true,
-            deads: true,
-          },
-        });
+            governorNameNormalized,
+          });
 
-        snapshotId = snapshot.id;
-
-        if (previous) {
-          await tx.snapshotRevision.create({
-            data: {
-              workspaceId: extraction.scanJob.workspaceId,
-              snapshotId: previous.id,
-              changedByLinkId: auth.link.id,
-              reason: body.reason || 'Manual OCR review approval',
-              previousData: {
-                power: previous.power.toString(),
-                killPoints: previous.killPoints.toString(),
-                t4Kills: previous.t4Kills.toString(),
-                t5Kills: previous.t5Kills.toString(),
-                deads: previous.deads.toString(),
-                verified: previous.verified,
-                ocrConfidence: previous.ocrConfidence,
-              },
-              nextData: {
-                power: snapshot.power.toString(),
-                killPoints: snapshot.killPoints.toString(),
-                t4Kills: snapshot.t4Kills.toString(),
-                t5Kills: snapshot.t5Kills.toString(),
-                deads: snapshot.deads.toString(),
-                verified: true,
-                ocrConfidence:
-                  extraction.confidence <= 1
-                    ? extraction.confidence * 100
-                    : extraction.confidence,
+          const previousRankingSnapshot = await tx.rankingSnapshot.findUnique({
+            where: {
+              workspaceId_eventId_rankingType_identityKey: {
+                workspaceId: extraction.scanJob.workspaceId,
+                eventId: targetEventId,
+                rankingType: PROFILE_POWER_RANKING_TYPE,
+                identityKey,
               },
             },
-          });
-        }
-
-        if (anomalies.length > 0) {
-          await tx.anomaly.createMany({
-            data: anomalies.map((anomaly) => ({
-              workspaceId: extraction.scanJob.workspaceId,
-              snapshotId: snapshot.id,
-              governorId: governor.id,
-              eventAId: targetEventId,
-              code: anomaly.code,
-              type: anomaly.type,
-              message: anomaly.message,
-              severity:
-                anomaly.severity === 'ERROR'
-                  ? AnomalySeverity.ERROR
-                  : anomaly.severity === 'INFO'
-                    ? AnomalySeverity.INFO
-                    : AnomalySeverity.WARNING,
-              context: (anomaly.context || {}) as Prisma.InputJsonValue,
-            })),
-          });
-        }
-
-        // Keep ranking board in sync with approved profile reviews so players
-        // appear in canonical rankings immediately after approval.
-        const governorNameNormalized = normalizeGovernorAlias(approvedGovernorName);
-        const identityKey = computeCanonicalIdentityKey({
-          governorId: governor.id,
-          governorNameNormalized,
-        });
-
-        const previousRankingSnapshot = await tx.rankingSnapshot.findUnique({
-          where: {
-            workspaceId_eventId_rankingType_identityKey: {
-              workspaceId: extraction.scanJob.workspaceId,
-              eventId: targetEventId,
-              rankingType: PROFILE_POWER_RANKING_TYPE,
-              identityKey,
+            select: {
+              id: true,
+              rankingType: true,
+              metricKey: true,
+              identityKey: true,
+              governorId: true,
+              governorNameRaw: true,
+              governorNameNormalized: true,
+              sourceRank: true,
+              metricValue: true,
+              status: true,
+              lastRunId: true,
+              lastRowId: true,
             },
-          },
-          select: {
-            id: true,
-            rankingType: true,
-            metricKey: true,
-            identityKey: true,
-            governorId: true,
-            governorNameRaw: true,
-            governorNameNormalized: true,
-            sourceRank: true,
-            metricValue: true,
-            status: true,
-            lastRunId: true,
-            lastRowId: true,
-          },
-        });
+          });
 
-        const nextRankingData = {
-          rankingType: PROFILE_POWER_RANKING_TYPE,
-          metricKey: PROFILE_POWER_METRIC_KEY,
-          identityKey,
-          governorId: governor.id,
-          governorNameRaw: approvedGovernorName,
-          governorNameNormalized,
-          sourceRank: null,
-          metricValue: approvedPayload.power.toString(),
-          status: RankingSnapshotStatus.ACTIVE,
-          lastRunId: null,
-          lastRowId: null,
-        };
-
-        const rankingSnapshot = await tx.rankingSnapshot.upsert({
-          where: {
-            workspaceId_eventId_rankingType_identityKey: {
-              workspaceId: extraction.scanJob.workspaceId,
-              eventId: targetEventId,
-              rankingType: PROFILE_POWER_RANKING_TYPE,
-              identityKey,
-            },
-          },
-          create: {
-            workspaceId: extraction.scanJob.workspaceId,
-            eventId: targetEventId,
+          const nextRankingData = {
             rankingType: PROFILE_POWER_RANKING_TYPE,
             metricKey: PROFILE_POWER_METRIC_KEY,
             identityKey,
@@ -635,52 +583,78 @@ export async function PATCH(
             governorNameRaw: approvedGovernorName,
             governorNameNormalized,
             sourceRank: null,
-            metricValue: approvedPayload.power,
+            metricValue: approvedPayload.power.toString(),
             status: RankingSnapshotStatus.ACTIVE,
             lastRunId: null,
             lastRowId: null,
-          },
-          update: {
-            metricKey: PROFILE_POWER_METRIC_KEY,
-            governorId: governor.id,
-            governorNameRaw: approvedGovernorName,
-            governorNameNormalized,
-            sourceRank: null,
-            metricValue: approvedPayload.power,
-            status: RankingSnapshotStatus.ACTIVE,
-            lastRunId: null,
-            lastRowId: null,
-          },
-          select: {
-            id: true,
-          },
-        });
+          };
 
-        await tx.rankingRevision.create({
-          data: {
-            workspaceId: extraction.scanJob.workspaceId,
-            snapshotId: rankingSnapshot.id,
-            changedByLinkId: auth.link.id,
-            action: RankingRowReviewAction.SYSTEM_MERGE,
-            reason: body.reason || 'Profile review approval sync',
-            previousData: previousRankingSnapshot
-              ? {
-                  rankingType: previousRankingSnapshot.rankingType,
-                  metricKey: previousRankingSnapshot.metricKey,
-                  identityKey: previousRankingSnapshot.identityKey,
-                  governorId: previousRankingSnapshot.governorId,
-                  governorNameRaw: previousRankingSnapshot.governorNameRaw,
-                  governorNameNormalized: previousRankingSnapshot.governorNameNormalized,
-                  sourceRank: previousRankingSnapshot.sourceRank,
-                  metricValue: previousRankingSnapshot.metricValue.toString(),
-                  status: previousRankingSnapshot.status,
-                  lastRunId: previousRankingSnapshot.lastRunId,
-                  lastRowId: previousRankingSnapshot.lastRowId,
-                }
-              : undefined,
-            nextData: nextRankingData,
-          },
-        });
+          const rankingSnapshot = await tx.rankingSnapshot.upsert({
+            where: {
+              workspaceId_eventId_rankingType_identityKey: {
+                workspaceId: extraction.scanJob.workspaceId,
+                eventId: targetEventId,
+                rankingType: PROFILE_POWER_RANKING_TYPE,
+                identityKey,
+              },
+            },
+            create: {
+              workspaceId: extraction.scanJob.workspaceId,
+              eventId: targetEventId,
+              rankingType: PROFILE_POWER_RANKING_TYPE,
+              metricKey: PROFILE_POWER_METRIC_KEY,
+              identityKey,
+              governorId: governor.id,
+              governorNameRaw: approvedGovernorName,
+              governorNameNormalized,
+              sourceRank: null,
+              metricValue: approvedPayload.power,
+              status: RankingSnapshotStatus.ACTIVE,
+              lastRunId: null,
+              lastRowId: null,
+            },
+            update: {
+              metricKey: PROFILE_POWER_METRIC_KEY,
+              governorId: governor.id,
+              governorNameRaw: approvedGovernorName,
+              governorNameNormalized,
+              sourceRank: null,
+              metricValue: approvedPayload.power,
+              status: RankingSnapshotStatus.ACTIVE,
+              lastRunId: null,
+              lastRowId: null,
+            },
+            select: {
+              id: true,
+            },
+          });
+
+          await tx.rankingRevision.create({
+            data: {
+              workspaceId: extraction.scanJob.workspaceId,
+              snapshotId: rankingSnapshot.id,
+              changedByLinkId: auth.link.id,
+              action: RankingRowReviewAction.SYSTEM_MERGE,
+              reason: body.reason || 'Profile review approval sync',
+              previousData: previousRankingSnapshot
+                ? {
+                    rankingType: previousRankingSnapshot.rankingType,
+                    metricKey: previousRankingSnapshot.metricKey,
+                    identityKey: previousRankingSnapshot.identityKey,
+                    governorId: previousRankingSnapshot.governorId,
+                    governorNameRaw: previousRankingSnapshot.governorNameRaw,
+                    governorNameNormalized: previousRankingSnapshot.governorNameNormalized,
+                    sourceRank: previousRankingSnapshot.sourceRank,
+                    metricValue: previousRankingSnapshot.metricValue.toString(),
+                    status: previousRankingSnapshot.status,
+                    lastRunId: previousRankingSnapshot.lastRunId,
+                    lastRowId: previousRankingSnapshot.lastRowId,
+                  }
+                : undefined,
+              nextData: nextRankingData,
+            },
+          });
+        }
       }
 
       const pendingCount = await tx.ocrExtraction.count({
@@ -723,7 +697,7 @@ export async function PATCH(
       anomalyCount: result.anomalyCount,
       correctionCount: result.correctionCount,
       eventLinked: Boolean(targetEventId),
-      warning: eventLinkWarning,
+      warning: null,
       updatedAt: new Date().toISOString(),
     });
   } catch (error) {
