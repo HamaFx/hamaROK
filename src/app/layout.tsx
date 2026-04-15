@@ -1,28 +1,47 @@
 import type { Metadata } from 'next';
+import localFont from 'next/font/local';
+import { Manrope, Sora } from 'next/font/google';
 import './globals.css';
 import AppShell from '@/components/AppShell';
-import { Geist } from "next/font/google";
-import { cn } from "@/lib/utils";
+import { TooltipProvider } from '@/components/ui/tooltip';
 
-const geist = Geist({subsets:['latin'],variable:'--font-sans'});
+const sora = Sora({
+  subsets: ['latin'],
+  variable: '--font-sora',
+  display: 'swap',
+});
+
+const manrope = Manrope({
+  subsets: ['latin'],
+  variable: '--font-manrope',
+  display: 'swap',
+});
+
+const geistMono = localFont({
+  src: './fonts/GeistMonoVF.woff',
+  variable: '--font-geist-mono',
+  display: 'swap',
+});
 
 export const metadata: Metadata = {
-  title: 'HamaROK — Alliance & Player Analytics',
+  title: 'HamaROK — Player Rankings and Weekly Statboards',
   description:
-    'Track Rise of Kingdoms alliance and player performance with weekly analytics, OCR-assisted ingestion, and ranking workflows.',
+    'Explore Rise of Kingdoms player rankings, weekly statboards, event comparisons, and spotlight drilldowns from OCR-powered alliance data.',
   keywords:
-    'Rise of Kingdoms, RoK, alliance analytics, player analytics, OCR ranking review, weekly tracking',
+    'Rise of Kingdoms, RoK rankings, player leaderboards, weekly statboards, OCR analytics, event comparison',
 };
 
 export default function RootLayout({
   children,
-}: {
+}: Readonly<{
   children: React.ReactNode;
-}) {
+}>) {
   return (
-    <html lang="en" className={cn("font-sans", geist.variable)}>
-      <body>
-        <AppShell>{children}</AppShell>
+    <html lang="en" className="dark">
+      <body className={`${sora.variable} ${manrope.variable} ${geistMono.variable} antialiased`}>
+        <TooltipProvider delayDuration={120}>
+          <AppShell>{children}</AppShell>
+        </TooltipProvider>
       </body>
     </html>
   );

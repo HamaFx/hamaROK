@@ -1,30 +1,54 @@
 'use client';
 
 import { type CSSProperties, type ReactNode, useEffect, useState } from 'react';
+import { motion } from 'framer-motion';
+import { ArrowUpDown, ChevronDown, ChevronUp } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 
-function cn(...values: Array<string | false | null | undefined>) {
-  return values.filter(Boolean).join(' ');
+function toneClasses(tone: 'neutral' | 'good' | 'warn' | 'bad' | 'info') {
+  return {
+    neutral: 'border-white/10 bg-white/6 text-white/70',
+    good: 'border-emerald-400/18 bg-emerald-400/10 text-emerald-100',
+    warn: 'border-sky-300/18 bg-sky-300/10 text-sky-100',
+    bad: 'border-rose-300/18 bg-rose-400/10 text-rose-100',
+    info: 'border-indigo-300/18 bg-indigo-300/10 text-indigo-100',
+  }[tone];
 }
 
-export function AnimatedCounter({ value, duration = 1000 }: { value: string | number; duration?: number }) {
+export function AnimatedCounter({ value, duration = 900 }: { value: string | number; duration?: number }) {
   const [count, setCount] = useState(0);
 
   useEffect(() => {
-    if (typeof value === 'string') return;
-    let startTimestamp: number | null = null;
-    const step = (timestamp: number) => {
-      if (!startTimestamp) startTimestamp = timestamp;
-      const progress = Math.min((timestamp - startTimestamp) / duration, 1);
-      const easeProgress = progress === 1 ? 1 : 1 - Math.pow(2, -10 * progress);
-      setCount(Math.floor(easeProgress * value));
+    if (typeof value !== 'number') return;
+    let frame = 0;
+    let start: number | null = null;
+
+    const tick = (time: number) => {
+      if (start == null) start = time;
+      const progress = Math.min((time - start) / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setCount(Math.floor(value * eased));
       if (progress < 1) {
-        window.requestAnimationFrame(step);
+        frame = window.requestAnimationFrame(tick);
       }
     };
-    window.requestAnimationFrame(step);
+
+    frame = window.requestAnimationFrame(tick);
+    return () => window.cancelAnimationFrame(frame);
   }, [value, duration]);
 
-  if (typeof value === 'string') return <span>{value}</span>;
+  if (typeof value !== 'number') return <span>{value}</span>;
   return <span>{count.toLocaleString()}</span>;
 }
 
@@ -40,22 +64,34 @@ export function PageHero({
   badges?: string[];
 }) {
   return (
-    <div className="page-hero">
-      <div>
-        <h1>{title}</h1>
-        {subtitle ? <p>{subtitle}</p> : null}
-        {badges && badges.length > 0 ? (
-          <div className="page-hero-badges">
-            {badges.map((badge) => (
-              <span className="status-pill neutral" key={badge}>
-                {badge}
-              </span>
-            ))}
-          </div>
-        ) : null}
+    <motion.section
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35, ease: 'easeOut' }}
+      className="relative mb-6 overflow-hidden rounded-[32px] border border-white/10 bg-[linear-gradient(145deg,rgba(16,21,34,0.96),rgba(8,11,19,0.96))] p-5 shadow-[0_20px_70px_rgba(0,0,0,0.4)] sm:p-6 lg:p-8"
+    >
+      <div className="absolute inset-x-0 top-0 h-px bg-[linear-gradient(90deg,transparent,rgba(133,187,255,0.48),transparent)]" />
+      <div className="absolute right-0 top-0 h-52 w-52 rounded-full bg-[radial-gradient(circle,rgba(91,155,255,0.2),transparent_60%)] blur-2xl" />
+      <div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+        <div className="max-w-3xl">
+          <p className="mb-3 text-[11px] font-medium uppercase tracking-[0.28em] text-white/42">Player-Facing Surface</p>
+          <h1 className="font-[family-name:var(--font-sora)] text-3xl font-semibold tracking-tight text-white sm:text-4xl lg:text-5xl">
+            {title}
+          </h1>
+          {subtitle ? (
+            <p className="mt-4 max-w-2xl text-sm leading-7 text-white/62 sm:text-base">{subtitle}</p>
+          ) : null}
+          {badges?.length ? (
+            <div className="mt-5 flex flex-wrap gap-2">
+              {badges.map((badge) => (
+                <StatusPill key={badge} label={badge} tone="neutral" />
+              ))}
+            </div>
+          ) : null}
+        </div>
+        {actions ? <div className="flex w-full flex-wrap gap-2 [&>*]:w-full sm:[&>*]:w-auto lg:w-auto">{actions}</div> : null}
       </div>
-      {actions ? <div className="page-hero-actions">{actions}</div> : null}
-    </div>
+    </motion.section>
   );
 }
 
@@ -73,18 +109,18 @@ export function Panel({
   className?: string;
 }) {
   return (
-    <section className={cn('panel', className)}>
+    <Card className={cn('overflow-hidden border-white/10 bg-[rgba(12,16,27,0.92)] shadow-[0_18px_50px_rgba(0,0,0,0.32)]', className)}>
       {title || subtitle || actions ? (
-        <header className="panel-head">
-          <div>
-            {title ? <h3>{title}</h3> : null}
-            {subtitle ? <p>{subtitle}</p> : null}
+        <CardHeader className="flex flex-col gap-4 border-b border-white/6 pb-5 sm:flex-row sm:items-end sm:justify-between">
+          <div className="space-y-1.5">
+            {title ? <CardTitle className="font-[family-name:var(--font-sora)] text-lg text-white">{title}</CardTitle> : null}
+            {subtitle ? <CardDescription className="text-sm text-white/56">{subtitle}</CardDescription> : null}
           </div>
-          {actions ? <div className="panel-actions">{actions}</div> : null}
-        </header>
+          {actions ? <div className="flex flex-wrap gap-2">{actions}</div> : null}
+        </CardHeader>
       ) : null}
-      <div className="panel-body">{children}</div>
-    </section>
+      <CardContent className="p-4 sm:p-6">{children}</CardContent>
+    </Card>
   );
 }
 
@@ -104,12 +140,22 @@ export function KpiCard({
   animated?: boolean;
 }) {
   return (
-    <article className={cn('kpi-card', `tone-${tone}`)} style={{ position: 'relative' }}>
-      <p className="kpi-label">{label}</p>
-      <p className="kpi-value">{animated && typeof value === 'number' ? <AnimatedCounter value={value} /> : value}</p>
-      {hint ? <p className="kpi-hint">{hint}</p> : null}
-      {icon ? <div style={{ position: 'absolute', top: '18px', right: '18px', color: 'var(--teal-2)', opacity: 0.8, filter: 'drop-shadow(0 0 6px rgba(96,165,250,0.5))' }}>{icon}</div> : null}
-    </article>
+    <Card className={cn('overflow-hidden border-white/10 bg-[rgba(11,15,24,0.92)] shadow-[0_18px_40px_rgba(0,0,0,0.28)]', toneClasses(tone))}>
+      <CardContent className="p-5">
+        <div className="flex items-start justify-between gap-4">
+          <div className="space-y-3">
+            <p className="text-[11px] font-medium uppercase tracking-[0.22em] text-white/45">{label}</p>
+            <p className="font-[family-name:var(--font-sora)] text-3xl font-semibold tracking-tight text-white">
+              {animated && typeof value === 'number' ? <AnimatedCounter value={value} /> : value}
+            </p>
+            {hint ? <p className="text-sm leading-6 text-white/58">{hint}</p> : null}
+          </div>
+          {icon ? (
+            <div className="rounded-2xl border border-white/10 bg-white/6 p-3 text-white/72">{icon}</div>
+          ) : null}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -118,12 +164,19 @@ export function MetricStrip({
 }: {
   items: Array<{ label: string; value: string | number; accent?: 'gold' | 'teal' | 'rose' | 'slate' }>;
 }) {
+  const accentMap = {
+    gold: 'text-[#ffd47a]',
+    teal: 'text-sky-200',
+    rose: 'text-rose-200',
+    slate: 'text-white/70',
+  } as const;
+
   return (
-    <div className="metric-strip">
+    <div className="grid gap-2 sm:flex sm:flex-wrap">
       {items.map((item) => (
-        <div className="metric-item" key={item.label}>
-          <span>{item.label}</span>
-          <strong className={cn(item.accent ? `accent-${item.accent}` : '')}>{item.value}</strong>
+        <div key={item.label} className="flex w-full min-w-0 items-center justify-between gap-3 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/58 sm:inline-flex sm:w-auto sm:justify-start">
+          <span className="shrink-0">{item.label}</span>
+          <strong className={cn('min-w-0 truncate font-medium text-white', item.accent ? accentMap[item.accent] : null)}>{item.value}</strong>
         </div>
       ))}
     </div>
@@ -140,7 +193,13 @@ export function FilterBar({
   style?: CSSProperties;
 }) {
   return (
-    <div className={cn('filter-bar', className)} style={style}>
+    <div
+      className={cn(
+        'flex flex-wrap items-center gap-2 rounded-[24px] border border-white/8 bg-white/4 p-3 [&>*]:min-w-0',
+        className
+      )}
+      style={style}
+    >
       {children}
     </div>
   );
@@ -156,7 +215,7 @@ export function ActionToolbar({
   style?: CSSProperties;
 }) {
   return (
-    <div className={cn('action-toolbar', className)} style={style}>
+    <div className={cn('flex flex-wrap items-center gap-2', className)} style={style}>
       {children}
     </div>
   );
@@ -172,20 +231,20 @@ export function EmptyState({
   action?: ReactNode;
 }) {
   return (
-    <div className="empty-state v2-empty-state">
-      <div className="empty-state-mark" />
-      <h3>{title}</h3>
-      {description ? <p>{description}</p> : null}
-      {action ? <div className="mt-16">{action}</div> : null}
+    <div className="flex flex-col items-center justify-center rounded-[28px] border border-dashed border-white/10 bg-white/3 px-6 py-12 text-center">
+      <div className="mb-4 size-12 rounded-full border border-white/10 bg-white/6" />
+      <h3 className="font-[family-name:var(--font-sora)] text-lg text-white">{title}</h3>
+      {description ? <p className="mt-3 max-w-lg text-sm leading-6 text-white/56">{description}</p> : null}
+      {action ? <div className="mt-5 flex flex-wrap justify-center gap-2">{action}</div> : null}
     </div>
   );
 }
 
 export function SkeletonSet({ rows = 4 }: { rows?: number }) {
   return (
-    <div className="skeleton-set">
+    <div className="flex flex-col gap-3">
       {Array.from({ length: rows }).map((_, idx) => (
-        <div key={idx} className="skeleton-line" />
+        <Skeleton key={idx} className="h-14 rounded-2xl bg-white/8" />
       ))}
     </div>
   );
@@ -198,7 +257,11 @@ export function StatusPill({
   label: string;
   tone?: 'neutral' | 'good' | 'warn' | 'bad' | 'info';
 }) {
-  return <span className={cn('status-pill', tone)}>{label}</span>;
+  return (
+    <Badge className={cn('rounded-full border px-3 py-1 text-[11px] font-medium tracking-[0.12em] uppercase', toneClasses(tone))}>
+      {label}
+    </Badge>
+  );
 }
 
 export interface DataTableLiteColumn<T> {
@@ -236,78 +299,118 @@ export function DataTableLite<T>({
   mobileCards?: boolean;
   emptyLabel?: string;
 }) {
-  return (
-    <div className={cn('data-table-wrap', stickyFirst ? 'sticky-first-col' : '')}>
-      <table
-        className={cn(
-          'data-table',
-          dense ? 'data-table-dense' : '',
-          mobileCards ? 'data-table-mobile-cards' : ''
-        )}
-      >
-        <thead>
-          <tr>
+  const renderSortIcon = (columnKey: string) => {
+    if (sortKey !== columnKey) return <ArrowUpDown className="size-3.5 text-white/28" />;
+    return sortDir === 'desc' ? <ChevronDown className="size-3.5 text-white/58" /> : <ChevronUp className="size-3.5 text-white/58" />;
+  };
+
+  const tableContent = (
+    <div className="overflow-hidden rounded-[28px] border border-white/10 bg-[rgba(11,15,24,0.9)]">
+      <Table>
+        <TableHeader>
+          <TableRow className="border-white/8 hover:bg-transparent">
             {columns.map((column, index) => {
               const sortable = column.sortable && onSort;
-              const activeSort = sortKey === column.key;
               return (
-                <th
+                <TableHead
                   key={column.key}
                   className={cn(
+                    'h-12 border-b border-white/8 bg-white/[0.03] text-[11px] font-medium uppercase tracking-[0.18em] text-white/45',
                     column.thClassName,
-                    index === 0 && stickyFirst ? 'sticky-col' : '',
-                    column.mobileHidden ? 'mobile-hidden-col' : ''
+                    index === 0 && stickyFirst && 'sticky left-0 z-10 bg-[rgba(11,15,24,0.96)]'
                   )}
-                  onClick={sortable ? () => onSort?.(column.key) : undefined}
-                  role={sortable ? 'button' : undefined}
-                  tabIndex={sortable ? 0 : undefined}
-                  onKeyDown={
-                    sortable
-                      ? (event) => {
-                          if (event.key === 'Enter' || event.key === ' ') {
-                            event.preventDefault();
-                            onSort?.(column.key);
-                          }
-                        }
-                      : undefined
-                  }
                 >
-                  <span className="th-label">
-                    {column.label}
-                    {activeSort ? <span>{sortDir === 'desc' ? ' ↓' : ' ↑'}</span> : null}
-                  </span>
-                </th>
+                  {sortable ? (
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1.5 text-left text-inherit"
+                      onClick={() => onSort?.(column.key)}
+                    >
+                      <span>{column.label}</span>
+                      {renderSortIcon(column.key)}
+                    </button>
+                  ) : (
+                    column.label
+                  )}
+                </TableHead>
               );
             })}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, idx) => (
-            <tr key={rowKey(row, idx)} className={rowClassName?.(row, idx)}>
-              {columns.map((column, colIdx) => (
-                <td
-                  key={`${rowKey(row, idx)}-${column.key}`}
-                  className={cn(
-                    column.className,
-                    colIdx === 0 && stickyFirst ? 'sticky-col' : '',
-                    column.mobileHidden ? 'mobile-hidden-col' : ''
-                  )}
-                  data-label={column.label}
-                >
-                  {column.render(row, idx)}
-                </td>
-              ))}
-            </tr>
-          ))}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {rows.length === 0 ? (
-            <tr>
-              <td colSpan={columns.length} className="table-empty">
+            <TableRow className="border-white/6 hover:bg-transparent">
+              <TableCell colSpan={columns.length} className="py-10 text-center text-sm text-white/48">
                 {emptyLabel}
-              </td>
-            </tr>
-          ) : null}
-        </tbody>
-      </table>
+              </TableCell>
+            </TableRow>
+          ) : (
+            rows.map((row, idx) => (
+              <TableRow
+                key={rowKey(row, idx)}
+                className={cn(
+                  'border-white/6 text-white/78 transition-colors hover:bg-white/[0.04]',
+                  rowClassName?.(row, idx)
+                )}
+              >
+                {columns.map((column, colIdx) => (
+                  <TableCell
+                    key={`${rowKey(row, idx)}-${column.key}`}
+                    className={cn(
+                      dense ? 'py-2.5' : 'py-4',
+                      'align-middle',
+                      column.className,
+                      colIdx === 0 && stickyFirst && 'sticky left-0 bg-[rgba(11,15,24,0.96)]'
+                    )}
+                  >
+                    {column.render(row, idx)}
+                  </TableCell>
+                ))}
+              </TableRow>
+            ))
+          )}
+        </TableBody>
+      </Table>
     </div>
+  );
+
+  const mobileCardList = (
+    <div className="grid gap-3 md:hidden">
+      {rows.length === 0 ? (
+        <div className="rounded-[24px] border border-white/10 bg-white/4 px-5 py-8 text-center text-sm text-white/48">{emptyLabel}</div>
+      ) : (
+        rows.map((row, idx) => (
+          <article
+            key={rowKey(row, idx)}
+            className={cn(
+              'rounded-[24px] border border-white/10 bg-[rgba(11,15,24,0.92)] p-4 shadow-[0_10px_26px_rgba(0,0,0,0.22)]',
+              rowClassName?.(row, idx)
+            )}
+          >
+            <div className="grid gap-3">
+              {columns
+                .filter((column) => !column.mobileHidden)
+                .map((column) => (
+                  <div key={`${rowKey(row, idx)}-${column.key}-mobile`} className="grid gap-1.5">
+                    <span className="text-[11px] font-medium uppercase tracking-[0.18em] text-white/38">{column.label}</span>
+                    <div className="text-sm text-white/80">{column.render(row, idx)}</div>
+                  </div>
+                ))}
+            </div>
+          </article>
+        ))
+      )}
+    </div>
+  );
+
+  if (!mobileCards) {
+    return <div className="overflow-x-auto">{tableContent}</div>;
+  }
+
+  return (
+    <>
+      <div className="hidden md:block">{tableContent}</div>
+      {mobileCardList}
+    </>
   );
 }

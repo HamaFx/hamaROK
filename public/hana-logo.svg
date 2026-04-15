@@ -1,4 +1,4 @@
-<svg width="176" height="44" viewBox="0 0 176 44" fill="none" xmlns="http://www.w3.org/2000/svg">
+<svg width="188" height="44" viewBox="0 0 188 44" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <linearGradient id="hamaGlow" x1="4" y1="4" x2="40" y2="40" gradientUnits="userSpaceOnUse">
       <stop stop-color="#78D4FF"/>
@@ -7,6 +7,6 @@
   </defs>
   <rect x="2" y="2" width="40" height="40" rx="12" fill="#081A2F" stroke="url(#hamaGlow)" stroke-width="2"/>
   <path d="M14 30V14H18V20H26V14H30V30H26V24H18V30H14Z" fill="url(#hamaGlow)"/>
-  <text x="52" y="20" fill="#D9F2FF" font-family="Sora, Manrope, sans-serif" font-size="15" font-weight="700" letter-spacing="0.2">Hama</text>
-  <text x="52" y="34" fill="#8FB6CF" font-family="Manrope, sans-serif" font-size="10" font-weight="600" letter-spacing="0.8">COMMAND CENTER</text>
+  <text x="52" y="20" fill="#D9F2FF" font-family="Sora, Manrope, sans-serif" font-size="15" font-weight="700" letter-spacing="0.2">HamaROK</text>
+  <text x="52" y="34" fill="#8FB6CF" font-family="Manrope, sans-serif" font-size="10" font-weight="600" letter-spacing="0.8">PLAYER RANKINGS</text>
 </svg>

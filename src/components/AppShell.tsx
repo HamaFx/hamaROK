@@ -1,296 +1,294 @@
 'use client';
 
-import Link from 'next/link';
 import Image from 'next/image';
+import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
+import { Menu, Sparkles } from 'lucide-react';
+import { motion } from 'framer-motion';
 import {
-  Activity,
-  BarChart3,
-  CalendarDays,
-  ChevronRight,
-  Cog,
-  Crosshair,
-  FlaskConical,
-  Home,
-  ImageUp,
-  Radar,
-  ShieldCheck,
-  Trophy,
-  Users,
-  Workflow,
-  X,
-} from 'lucide-react';
+  getActiveNav,
+  isActivePath,
+  MOBILE_MORE_NAV,
+  MOBILE_PRIMARY_NAV,
+  PRIMARY_NAV_ITEMS,
+  TOOL_NAV_ITEMS,
+} from '@/features/shared/navigation';
+import { cn } from '@/lib/utils';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import {
+  Drawer,
+  DrawerClose,
+  DrawerContent,
+  DrawerDescription,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerTrigger,
+} from '@/components/ui/drawer';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
-interface NavItem {
-  href: string;
-  label: string;
-  hint: string;
-  icon: React.ComponentType<{ size?: number; strokeWidth?: number; className?: string }>;
-  group: 'core' | 'analysis' | 'ops';
-}
-
-const NAV_ITEMS: NavItem[] = [
-  { href: '/', label: 'Dashboard', hint: 'Alliance and player weekly overview', icon: Home, group: 'core' },
-  { href: '/upload', label: 'Upload', hint: 'Queue screenshots for OCR processing', icon: ImageUp, group: 'core' },
-  { href: '/activity', label: 'Activity', hint: 'Weekly compliance and player tracking', icon: Activity, group: 'core' },
-  { href: '/events', label: 'Events', hint: 'Manage scan windows and timelines', icon: CalendarDays, group: 'core' },
-  { href: '/governors', label: 'Governors', hint: 'Search member records and history', icon: Users, group: 'core' },
-  { href: '/compare', label: 'Compare', hint: 'Compare two events side by side', icon: Workflow, group: 'analysis' },
-  { href: '/insights', label: 'Insights', hint: 'Charts and contribution trends', icon: Radar, group: 'analysis' },
-  { href: '/rankings', label: 'Rankings', hint: 'Canonical leaderboards and ties', icon: Trophy, group: 'analysis' },
-  { href: '/review', label: 'OCR Review', hint: 'Validate profile extractions', icon: FlaskConical, group: 'ops' },
-  { href: '/rankings/review', label: 'Rank Review', hint: 'Resolve ranking identity matches', icon: ShieldCheck, group: 'ops' },
-  { href: '/calibration', label: 'Calibration', hint: 'Tune OCR capture profiles', icon: Crosshair, group: 'ops' },
-  { href: '/settings', label: 'Settings', hint: 'Workspace and automation controls', icon: Cog, group: 'ops' },
-];
-
-const MOBILE_PRIMARY = ['/', '/upload', '/activity', '/rankings'];
-
-function matchPath(pathname: string, href: string) {
-  if (href === '/') return pathname === '/';
-  return pathname === href || pathname.startsWith(`${href}/`);
-}
-
-function groupLabel(group: NavItem['group']) {
-  if (group === 'core') return 'Core';
-  if (group === 'analysis') return 'Analytics';
-  return 'Operations';
-}
-
-function NavSection({
-  title,
-  items,
-  pathname,
-  onNavigate,
-}: {
-  title: string;
-  items: NavItem[];
-  pathname: string;
-  onNavigate?: () => void;
-}) {
+function BrandLockup() {
   return (
-    <section className="app-nav-section">
-      <p className="app-nav-title">{title}</p>
-      <ul className="app-nav-list">
-        {items.map((item) => {
-          const active = matchPath(pathname, item.href);
+    <Link href="/" className="group flex items-center gap-3">
+      <div className="relative overflow-hidden rounded-2xl border border-white/12 bg-white/5 p-2 shadow-[0_0_0_1px_rgba(255,255,255,0.02)] transition-colors group-hover:border-white/20 group-hover:bg-white/8">
+        <Image
+          src="/hama-logo.svg"
+          alt="HamaROK"
+          width={112}
+          height={28}
+          priority
+          className="h-7 w-auto"
+          style={{ width: 'auto', height: 'auto' }}
+        />
+      </div>
+      <div className="hidden min-w-0 sm:block">
+        <p className="font-[family-name:var(--font-sora)] text-sm font-semibold tracking-wide text-white">
+          HamaROK
+        </p>
+        <p className="text-xs text-white/55">Player rankings and weekly statboards</p>
+      </div>
+    </Link>
+  );
+}
+
+function DesktopNav() {
+  const pathname = usePathname();
+
+  return (
+    <nav className="hidden items-center gap-1 lg:flex" aria-label="Primary">
+      {PRIMARY_NAV_ITEMS.map((item) => {
+        const active = isActivePath(pathname, item.href);
+        const Icon = item.icon;
+        return (
+          <Button
+            key={item.href}
+            asChild
+            variant="ghost"
+            className={cn(
+              'h-11 rounded-full px-4 text-sm text-white/68 hover:bg-white/8 hover:text-white',
+              active && 'bg-[linear-gradient(135deg,rgba(98,164,255,0.24),rgba(255,255,255,0.05))] text-white shadow-[inset_0_0_0_1px_rgba(141,193,255,0.28)]'
+            )}
+          >
+            <Link href={item.href}>
+              <Icon data-icon="inline-start" />
+              {item.label}
+            </Link>
+          </Button>
+        );
+      })}
+    </nav>
+  );
+}
+
+function ToolsMenu() {
+  const pathname = usePathname();
+  const activeTool = TOOL_NAV_ITEMS.find((item) => isActivePath(pathname, item.href));
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          className={cn(
+            'hidden h-11 rounded-full border border-white/10 bg-white/4 px-4 text-white/72 hover:bg-white/8 hover:text-white lg:inline-flex',
+            activeTool && 'border-[rgba(141,193,255,0.3)] bg-[rgba(98,164,255,0.16)] text-white'
+          )}
+        >
+          <Menu data-icon="inline-start" />
+          Tools
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-80 border-white/10 bg-[rgba(9,12,20,0.96)] text-white backdrop-blur-xl">
+        <DropdownMenuLabel className="text-white/65">Operational Pages</DropdownMenuLabel>
+        <DropdownMenuSeparator className="bg-white/8" />
+        {TOOL_NAV_ITEMS.map((item) => {
           const Icon = item.icon;
           return (
-            <li key={item.href}>
-              <Link
-                href={item.href}
-                className={`app-nav-link ${active ? 'active' : ''}`}
-                onClick={onNavigate}
-              >
-                <Icon size={16} strokeWidth={2} />
-                <span>{item.label}</span>
-                <ChevronRight size={14} className="app-nav-chevron" />
+            <DropdownMenuItem key={item.href} asChild className="rounded-xl px-3 py-3 text-white/80 focus:bg-white/8 focus:text-white">
+              <Link href={item.href} className="flex items-start gap-3">
+                <span className="mt-0.5 rounded-xl border border-white/10 bg-white/6 p-2 text-white/80">
+                  <Icon className="size-4" />
+                </span>
+                <span className="flex min-w-0 flex-col gap-1">
+                  <span className="text-sm font-medium text-white">{item.label}</span>
+                  <span className="text-xs leading-relaxed text-white/55">{item.description}</span>
+                </span>
               </Link>
-            </li>
+            </DropdownMenuItem>
           );
         })}
-      </ul>
-    </section>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function MobileMoreNav() {
+  const pathname = usePathname();
+
+  return (
+    <Drawer>
+      <nav className="fixed inset-x-4 bottom-[calc(env(safe-area-inset-bottom)+12px)] z-40 grid h-[74px] grid-cols-5 rounded-[28px] border border-white/10 bg-[rgba(8,10,16,0.92)] px-2 text-white/68 shadow-[0_16px_50px_rgba(0,0,0,0.55)] backdrop-blur-xl lg:hidden">
+        {MOBILE_PRIMARY_NAV.map((item) => {
+          const Icon = item.icon;
+          const active = isActivePath(pathname, item.href);
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={cn(
+                'flex h-full flex-col items-center justify-center gap-1 rounded-[20px] px-1 text-[11px] font-medium tracking-wide transition-colors',
+                active ? 'bg-[rgba(98,164,255,0.18)] text-white' : 'text-white/58'
+              )}
+            >
+              <Icon className="size-4" />
+              <span>{item.mobileLabel ?? item.label}</span>
+            </Link>
+          );
+        })}
+        <DrawerTrigger asChild>
+          <Button
+            variant="ghost"
+            className="flex h-full flex-col items-center justify-center gap-1 rounded-[20px] px-1 text-[11px] font-medium tracking-wide text-white/68 hover:bg-white/6 hover:text-white"
+          >
+            <Menu className="size-4" />
+            <span>More</span>
+          </Button>
+        </DrawerTrigger>
+      </nav>
+      <DrawerContent className="border-white/10 bg-[rgba(8,10,16,0.98)] text-white">
+        <DrawerHeader>
+          <DrawerTitle className="font-[family-name:var(--font-sora)] text-xl text-white">More</DrawerTitle>
+          <DrawerDescription className="text-white/55">
+            Compare boards first, then jump into operational tools.
+          </DrawerDescription>
+        </DrawerHeader>
+        <ScrollArea className="max-h-[60svh] px-4">
+          <div className="grid gap-3 pb-4">
+            {MOBILE_MORE_NAV.map((item, index) => {
+              const Icon = item.icon;
+              const active = isActivePath(pathname, item.href);
+              const isCompare = index === 0;
+              return (
+                <DrawerClose asChild key={item.href}>
+                  <Link
+                    href={item.href}
+                    className={cn(
+                      'group flex items-start gap-3 rounded-2xl border border-white/10 bg-white/4 p-4 transition-colors hover:bg-white/7',
+                      active && 'border-[rgba(141,193,255,0.28)] bg-[rgba(98,164,255,0.12)]'
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        'rounded-2xl border border-white/10 bg-white/6 p-2.5 text-white/78',
+                        isCompare && 'border-[rgba(255,215,132,0.28)] bg-[rgba(255,200,91,0.12)] text-[#ffd67b]'
+                      )}
+                    >
+                      <Icon className="size-4" />
+                    </span>
+                    <span className="flex min-w-0 flex-1 flex-col gap-1">
+                      <span className="text-sm font-medium text-white">{item.label}</span>
+                      <span className="text-xs leading-relaxed text-white/55">{item.description}</span>
+                    </span>
+                  </Link>
+                </DrawerClose>
+              );
+            })}
+          </div>
+        </ScrollArea>
+        <DrawerFooter>
+          <DrawerClose asChild>
+            <Button variant="outline" className="border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white">
+              Close
+            </Button>
+          </DrawerClose>
+        </DrawerFooter>
+      </DrawerContent>
+    </Drawer>
   );
 }
 
 export default function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
+  const activeNav = getActiveNav(pathname);
   const [weeklySchemaWarning, setWeeklySchemaWarning] = useState<string | null>(null);
-
-  const grouped = useMemo(() => {
-    return {
-      core: NAV_ITEMS.filter((item) => item.group === 'core'),
-      analysis: NAV_ITEMS.filter((item) => item.group === 'analysis'),
-      ops: NAV_ITEMS.filter((item) => item.group === 'ops'),
-    };
-  }, []);
-
-  const activeNav = useMemo(
-    () => NAV_ITEMS.find((item) => matchPath(pathname, item.href)) || NAV_ITEMS[0],
-    [pathname]
-  );
-
-  const mobilePrimaryItems = NAV_ITEMS.filter((item) => MOBILE_PRIMARY.includes(item.href));
-  const mobileMoreItems = NAV_ITEMS.filter((item) => !MOBILE_PRIMARY.includes(item.href));
-  const mobileQuickItems = mobileMoreItems.filter((item) => ['/events', '/review', '/settings'].includes(item.href));
-  const mobileMoreGroups: Array<NavItem['group']> = ['core', 'analysis', 'ops'];
 
   useEffect(() => {
     let cancelled = false;
+
     const run = async () => {
       try {
         const res = await fetch('/api/healthz', { cache: 'no-store' });
         const payload = await res.json();
         const warnings: unknown[] = Array.isArray(payload?.warnings) ? payload.warnings : [];
-        const weeklyWarning = warnings.find((entry: unknown) =>
+        const warning = warnings.find((entry) =>
           String(entry).toLowerCase().includes('weekly schema migration required')
         );
         if (!cancelled) {
-          setWeeklySchemaWarning(weeklyWarning ? String(weeklyWarning) : null);
+          setWeeklySchemaWarning(warning ? String(warning) : null);
         }
       } catch {
         if (!cancelled) setWeeklySchemaWarning(null);
       }
     };
 
-    run();
+    void run();
     return () => {
       cancelled = true;
     };
   }, []);
 
   return (
-    <div className="app-shell">
-      <aside className="app-sidebar" aria-label="Primary">
-        <div className="app-brand-wrap">
-          <Link href="/" className="app-brand">
-            <Image src="/hama-logo.svg" alt="Hama logo" className="app-brand-logo" width={176} height={44} priority />
-          </Link>
-          <span className="app-badge">HAMA ROK</span>
-        </div>
-
-        <div className="app-sidebar-scroll">
-          <NavSection title="Core" items={grouped.core} pathname={pathname} />
-          <NavSection title="Analytics" items={grouped.analysis} pathname={pathname} />
-          <NavSection title="Operations" items={grouped.ops} pathname={pathname} />
-        </div>
-      </aside>
-
-      <div className="app-main">
-        <header className="app-topbar">
-          <div className="app-topbar-main">
-            <Link href="/" className="app-header-brand">
-              <Image src="/hama-logo.svg" alt="Hama logo" className="app-header-logo" width={176} height={44} priority />
-            </Link>
-            <div className="app-topbar-heading">
-              <strong>{activeNav.label}</strong>
-              <span>{groupLabel(activeNav.group)}</span>
+    <div className="relative min-h-screen overflow-x-hidden bg-background text-foreground">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(84,137,255,0.18),_transparent_32%),radial-gradient(circle_at_bottom_right,_rgba(108,214,255,0.12),_transparent_24%)]" />
+      <motion.header
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.35, ease: 'easeOut' }}
+        className="sticky top-0 z-30 border-b border-white/8 bg-[rgba(7,9,15,0.76)] backdrop-blur-xl"
+      >
+        <div className="mx-auto flex w-full max-w-[1600px] items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
+          <div className="flex min-w-0 items-center gap-4">
+            <BrandLockup />
+            <div className="hidden h-10 w-px bg-white/8 lg:block" />
+            <div className="hidden min-w-0 lg:block">
+              <p className="text-[11px] font-medium uppercase tracking-[0.24em] text-white/38">Now Viewing</p>
+              <p className="mt-1 truncate font-[family-name:var(--font-sora)] text-sm text-white">{activeNav.label}</p>
             </div>
           </div>
-          <div className="app-topbar-context">
-            <Link href="/settings" className="app-context-chip app-settings-chip">
-              <Cog size={14} />
-              <span className="value">Settings</span>
-            </Link>
-          </div>
-        </header>
 
+          <DesktopNav />
+
+          <div className="flex items-center gap-2">
+            <Badge className="hidden rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] text-white/60 sm:inline-flex">
+              <Sparkles className="mr-1 size-3" /> Rankings-first
+            </Badge>
+            <ToolsMenu />
+          </div>
+        </div>
+      </motion.header>
+
+      <main className="relative z-10 mx-auto flex w-full max-w-[1600px] flex-col px-4 pb-28 pt-6 sm:px-6 lg:px-8 lg:pb-12 lg:pt-8">
         {weeklySchemaWarning ? (
-          <div className="card" style={{ marginBottom: 12, borderColor: 'var(--clr-warn)' }}>
-            <div className="text-sm" style={{ color: 'var(--clr-warn)' }}>
-              {weeklySchemaWarning}
-            </div>
-          </div>
+          <Alert className="mb-6 border-amber-300/16 bg-[rgba(120,78,9,0.18)] text-amber-50">
+            <AlertTitle className="font-[family-name:var(--font-sora)] text-sm">Schema Attention Needed</AlertTitle>
+            <AlertDescription className="text-amber-100/80">{weeklySchemaWarning}</AlertDescription>
+          </Alert>
         ) : null}
+        {children}
+      </main>
 
-        <main className="app-content">{children}</main>
-      </div>
-
-      <nav className="app-mobile-nav" aria-label="Mobile">
-        {mobilePrimaryItems.map((item) => {
-          const Icon = item.icon;
-          const active = matchPath(pathname, item.href);
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`app-mobile-link ${active ? 'active' : ''}`}
-              onClick={() => setMobileMoreOpen(false)}
-            >
-              <Icon size={16} strokeWidth={2.2} />
-              <span>{item.label}</span>
-            </Link>
-          );
-        })}
-
-        <button
-          type="button"
-          className={`app-mobile-link ${mobileMoreOpen ? 'active' : ''}`}
-          onClick={() => setMobileMoreOpen((prev) => !prev)}
-          aria-expanded={mobileMoreOpen}
-          aria-controls="mobile-more-sheet"
-        >
-          <BarChart3 size={16} strokeWidth={2.2} />
-          <span>More</span>
-        </button>
-      </nav>
-
-      {mobileMoreOpen ? <button className="app-mobile-backdrop" onClick={() => setMobileMoreOpen(false)} aria-label="Close menu" /> : null}
-
-      <aside className={`app-mobile-sheet ${mobileMoreOpen ? 'open' : ''}`} id="mobile-more-sheet">
-        <div className="app-mobile-sheet-inner">
-          <div className="app-mobile-sheet-head">
-            <div>
-              <h3>More</h3>
-              <p className="app-mobile-sheet-sub">Secondary tools and workflows</p>
-            </div>
-            <button
-              type="button"
-              className="btn btn-ghost btn-sm"
-              onClick={() => setMobileMoreOpen(false)}
-              aria-label="Close"
-            >
-              <X size={14} /> Close
-            </button>
-          </div>
-
-          <div className="app-mobile-quick-strip">
-            {mobileQuickItems.map((item) => {
-              const Icon = item.icon;
-              const active = matchPath(pathname, item.href);
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={`app-mobile-quick-link ${active ? 'active' : ''}`}
-                  onClick={() => setMobileMoreOpen(false)}
-                >
-                  <Icon size={14} strokeWidth={2.2} />
-                  <span>{item.label}</span>
-                </Link>
-              );
-            })}
-          </div>
-
-          <div className="app-mobile-sheet-sections">
-            {mobileMoreGroups.map((group) => {
-              const groupItems = mobileMoreItems.filter((item) => item.group === group);
-              if (!groupItems.length) return null;
-              return (
-                <section key={group} className="app-mobile-sheet-section">
-                  <p className="app-mobile-sheet-section-title">{groupLabel(group)}</p>
-                  <div className="app-mobile-sheet-list">
-                    {groupItems.map((item) => {
-                      const Icon = item.icon;
-                      const active = matchPath(pathname, item.href);
-                      return (
-                        <Link
-                          key={item.href}
-                          href={item.href}
-                          className={`app-mobile-sheet-link ${active ? 'active' : ''}`}
-                          onClick={() => setMobileMoreOpen(false)}
-                        >
-                          <span className="app-mobile-sheet-link-icon">
-                            <Icon size={16} strokeWidth={2.1} />
-                          </span>
-                          <span className="app-mobile-sheet-link-copy">
-                            <strong>{item.label}</strong>
-                            <small>{item.hint}</small>
-                          </span>
-                          <ChevronRight size={14} className="app-mobile-sheet-link-chevron" />
-                        </Link>
-                      );
-                    })}
-                  </div>
-                </section>
-              );
-            })}
-          </div>
-        </div>
-      </aside>
+      <MobileMoreNav />
     </div>
   );
 }

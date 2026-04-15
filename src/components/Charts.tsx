@@ -61,7 +61,7 @@ export function KillsBarChart({ data }: { data: { name: string; killDelta: numbe
   return (
     <section className="chart-container" aria-label="Kill points delta chart">
       <h3>Kill Points Delta Top 15</h3>
-      <div style={{ width: '100%', height: 340 }}>
+      <div style={{ width: '100%', minWidth: 0, height: 340 }}>
         <ResponsiveContainer>
           <BarChart data={sorted} layout="vertical" margin={{ left: 70, right: 20, top: 8, bottom: 8 }}>
             <CartesianGrid stroke="rgba(113, 138, 165, 0.16)" strokeDasharray="2 4" horizontal={false} />
@@ -92,7 +92,7 @@ export function TierPieChart({ distribution }: { distribution: Record<string, nu
   return (
     <section className="chart-container" aria-label="Tier distribution chart">
       <h3>Warrior Tier Distribution</h3>
-      <div style={{ width: '100%', height: 300 }}>
+      <div style={{ width: '100%', minWidth: 0, height: 300 }}>
         <ResponsiveContainer>
           <PieChart>
             <Pie
@@ -132,7 +132,7 @@ export function GrowthLineChart({
   return (
     <section className="chart-container" aria-label="Growth timeline chart">
       <h3>Growth Timeline</h3>
-      <div style={{ width: '100%', height: 320 }}>
+      <div style={{ width: '100%', minWidth: 0, height: 320 }}>
         <ResponsiveContainer>
           <LineChart data={timeline}>
             <CartesianGrid strokeDasharray="2 4" stroke="rgba(113, 138, 165, 0.16)" />
@@ -179,7 +179,7 @@ export function WeeklyActivityLineChart({
   return (
     <section className="chart-container" aria-label="Weekly activity timeline chart">
       <h3>Weekly Activity Trends</h3>
-      <div style={{ width: '100%', height: 320 }}>
+      <div style={{ width: '100%', minWidth: 0, height: 320 }}>
         <ResponsiveContainer>
           <LineChart data={timeline}>
             <CartesianGrid strokeDasharray="2 4" stroke="rgba(113, 138, 165, 0.16)" />
