@@ -20,6 +20,7 @@ import { useWorkspaceSession } from '@/lib/workspace-session';
 import { InlineError, SessionGate } from '@/components/app/session-gate';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import {
   Select,
   SelectContent,
@@ -31,6 +32,7 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import {
   DataTableLite,
   EmptyState,
+  FilterBar,
   KpiCard,
   MetricStrip,
   PageHero,
@@ -531,63 +533,57 @@ export default function ActivityScreen() {
 
         <Panel title="Weekly Filters" subtitle="Switch weeks, scope to one alliance, and preserve favorite views.">
           <div className="space-y-4">
-            <div className="grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
-              <div className="rounded-[22px] border border-white/10 bg-black/20 p-4">
-                <div className="grid gap-3 md:grid-cols-[auto_minmax(0,1fr)_auto]">
-                  <Button variant="outline" className="w-full rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white md:w-auto" onClick={goPreviousWeek} disabled={currentWeekIndex >= weeks.length - 1 || loading}>
-                    <ArrowLeft data-icon="inline-start" /> Older
-                  </Button>
-                  <Select value={selectedWeekKey || (weeks[0]?.weekKey ?? ALL_VALUE)} onValueChange={setSelectedWeekKey}>
-                    <SelectTrigger className="w-full min-w-0 rounded-full border-white/10 bg-white/4 text-white"><SelectValue placeholder="Select week" /></SelectTrigger>
-                    <SelectContent className="border-white/10 bg-[rgba(8,10,16,0.98)] text-white">
-                      {weeks.length ? weeks.map((week) => (
-                        <SelectItem key={week.id} value={week.weekKey}>{week.name}</SelectItem>
-                      )) : <SelectItem value={ALL_VALUE}>No weeks available</SelectItem>}
-                    </SelectContent>
-                  </Select>
-                  <Button variant="outline" className="w-full rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white md:w-auto" onClick={goNextWeek} disabled={currentWeekIndex <= 0 || loading}>
-                    Newer <ArrowRight data-icon="inline-end" />
-                  </Button>
-                </div>
+            <div className="sticky top-[78px] z-20 -mx-1 rounded-[24px] border border-white/10 bg-[rgba(8,11,19,0.94)] p-3.5 shadow-[0_14px_36px_rgba(0,0,0,0.32)] backdrop-blur xl:static xl:mx-0 xl:border-white/8 xl:bg-black/20 xl:shadow-none xl:backdrop-blur-none">
+              <div className="grid gap-2.5 sm:grid-cols-[auto_minmax(0,1fr)_auto]">
+                <Button variant="outline" className="w-full rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white sm:w-auto" onClick={goPreviousWeek} disabled={currentWeekIndex >= weeks.length - 1 || loading}>
+                  <ArrowLeft data-icon="inline-start" /> Older
+                </Button>
+                <Select value={selectedWeekKey || (weeks[0]?.weekKey ?? ALL_VALUE)} onValueChange={setSelectedWeekKey}>
+                  <SelectTrigger className="w-full min-w-0 rounded-full border-white/10 bg-white/4 text-white"><SelectValue placeholder="Select week" /></SelectTrigger>
+                  <SelectContent className="border-white/10 bg-[rgba(8,10,16,0.98)] text-white">
+                    {weeks.length ? weeks.map((week) => (
+                      <SelectItem key={week.id} value={week.weekKey}>{week.name}</SelectItem>
+                    )) : <SelectItem value={ALL_VALUE}>No weeks available</SelectItem>}
+                  </SelectContent>
+                </Select>
+                <Button variant="outline" className="w-full rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white sm:w-auto" onClick={goNextWeek} disabled={currentWeekIndex <= 0 || loading}>
+                  Newer <ArrowRight data-icon="inline-end" />
+                </Button>
               </div>
-
-              <div className="rounded-[22px] border border-white/10 bg-black/20 p-4">
-                <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-                  <Select value={allianceFilter || ALL_VALUE} onValueChange={(value) => setAllianceFilter(value === ALL_VALUE ? '' : value)}>
-                    <SelectTrigger className="w-full min-w-0 rounded-full border-white/10 bg-white/4 text-white"><SelectValue placeholder="Alliance" /></SelectTrigger>
-                    <SelectContent className="border-white/10 bg-[rgba(8,10,16,0.98)] text-white">
-                      {ALLIANCE_FILTER_OPTIONS.map((option) => (
-                        <SelectItem key={option.label} value={option.value || ALL_VALUE}>{option.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Select value={viewMode} onValueChange={(value) => setViewMode(value as ActivityViewMode)}>
-                    <SelectTrigger className="w-full min-w-0 rounded-full border-white/10 bg-white/4 text-white"><SelectValue placeholder="View" /></SelectTrigger>
-                    <SelectContent className="border-white/10 bg-[rgba(8,10,16,0.98)] text-white">
-                      <SelectItem value="cards">Cards</SelectItem>
-                      <SelectItem value="table">Table</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="mt-3.5 flex flex-wrap gap-2.5">
-                  <Button variant="outline" className="w-full rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white sm:w-auto" onClick={() => setDenseRows((prev) => !prev)}>
-                    {denseRows ? 'Comfort spacing' : 'Compact rows'}
-                  </Button>
-                </div>
+              <div className="mt-2.5 grid gap-2.5 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+                <Select value={allianceFilter || ALL_VALUE} onValueChange={(value) => setAllianceFilter(value === ALL_VALUE ? '' : value)}>
+                  <SelectTrigger className="w-full min-w-0 rounded-full border-white/10 bg-white/4 text-white"><SelectValue placeholder="Alliance" /></SelectTrigger>
+                  <SelectContent className="border-white/10 bg-[rgba(8,10,16,0.98)] text-white">
+                    {ALLIANCE_FILTER_OPTIONS.map((option) => (
+                      <SelectItem key={option.label} value={option.value || ALL_VALUE}>{option.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={viewMode} onValueChange={(value) => setViewMode(value as ActivityViewMode)}>
+                  <SelectTrigger className="w-full min-w-0 rounded-full border-white/10 bg-white/4 text-white"><SelectValue placeholder="View" /></SelectTrigger>
+                  <SelectContent className="border-white/10 bg-[rgba(8,10,16,0.98)] text-white">
+                    <SelectItem value="cards">Cards</SelectItem>
+                    <SelectItem value="table">Table</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button variant="outline" className="w-full rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white sm:w-auto" onClick={() => setDenseRows((prev) => !prev)}>
+                  {denseRows ? 'Comfort spacing' : 'Compact rows'}
+                </Button>
               </div>
             </div>
 
-            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto]">
-              <div className="rounded-[22px] border border-white/10 bg-black/20 p-4">
-                <div className="flex flex-wrap gap-2">
-                  {isHistoricalWeek ? <StatusPill label="Historical week" tone="neutral" /> : null}
-                  {data?.event?.startsAt ? <StatusPill label={`Starts ${new Date(data.event.startsAt).toLocaleDateString()}`} tone="neutral" /> : null}
-                  <StatusPill label={`No power baseline ${kpis.noPowerBaseline}`} tone={kpis.noPowerBaseline ? 'warn' : 'good'} />
-                  <StatusPill label={`No KP baseline ${kpis.noKillPointsBaseline}`} tone={kpis.noKillPointsBaseline ? 'warn' : 'good'} />
-                </div>
-              </div>
+            <FilterBar className="rounded-[22px] bg-black/20 p-3.5">
+              {isHistoricalWeek ? <StatusPill label="Historical week" tone="neutral" /> : null}
+              {data?.event?.startsAt ? <StatusPill label={`Starts ${new Date(data.event.startsAt).toLocaleDateString()}`} tone="neutral" /> : null}
+              <StatusPill label={`No power baseline ${kpis.noPowerBaseline}`} tone={kpis.noPowerBaseline ? 'warn' : 'good'} />
+              <StatusPill label={`No KP baseline ${kpis.noKillPointsBaseline}`} tone={kpis.noKillPointsBaseline ? 'warn' : 'good'} />
+            </FilterBar>
 
-              <div className="rounded-[22px] border border-white/10 bg-black/20 p-4 lg:min-w-[24rem]">
+            <details className="rounded-[22px] border border-white/10 bg-black/20 p-4">
+              <summary className="cursor-pointer list-none text-sm font-medium text-white">
+                Advanced presets
+              </summary>
+              <div className="mt-4 space-y-4">
                 <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_11rem]">
                   <Select value={selectedPresetId || PRESET_NONE} onValueChange={(value) => applyPreset(value === PRESET_NONE ? '' : value)}>
                     <SelectTrigger className="w-full min-w-0 rounded-full border-white/10 bg-white/4 text-white"><SelectValue placeholder="Saved presets" /></SelectTrigger>
@@ -596,15 +592,15 @@ export default function ActivityScreen() {
                       {presets.map((preset) => <SelectItem key={preset.id} value={preset.id}>{preset.name}</SelectItem>)}
                     </SelectContent>
                   </Select>
-                  <input value={presetName} onChange={(event) => setPresetName(event.target.value)} placeholder="Preset name" className="h-10 w-full rounded-full border border-white/10 bg-white/4 px-4 text-sm text-white placeholder:text-white/28" />
+                  <Input value={presetName} onChange={(event) => setPresetName(event.target.value)} placeholder="Preset name" className="w-full rounded-full border-white/10 bg-white/4 text-white placeholder:text-white/28" />
                 </div>
-                <div className="mt-3.5 grid gap-2.5 sm:grid-cols-3">
-                  <Button variant="outline" className="w-full rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white sm:w-auto" onClick={savePreset}>Save Preset</Button>
-                  <Button variant="outline" className="w-full rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white sm:w-auto" onClick={deleteSelectedPreset} disabled={!selectedPresetId}>Delete</Button>
-                  <Button variant="outline" className="w-full rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white sm:w-auto" onClick={resetFilters}>Reset</Button>
+                <div className="grid gap-2.5 sm:grid-cols-3">
+                  <Button variant="outline" className="w-full rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white" onClick={savePreset}>Save Preset</Button>
+                  <Button variant="outline" className="w-full rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white" onClick={deleteSelectedPreset} disabled={!selectedPresetId}>Delete</Button>
+                  <Button variant="outline" className="w-full rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white" onClick={resetFilters}>Reset</Button>
                 </div>
               </div>
-            </div>
+            </details>
 
             {uiNotice ? <p className="text-sm text-white/56">{uiNotice}</p> : null}
           </div>
@@ -706,7 +702,7 @@ export default function ActivityScreen() {
                   <DataTableLite
                     stickyFirst
                     dense={denseRows}
-                    mobileCards={false}
+                    mobileCards
                     rows={sortedRows}
                     rowKey={(row) => row.governorDbId}
                     columns={columns}

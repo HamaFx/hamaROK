@@ -462,12 +462,12 @@ export default function PlayersScreen() {
 
         <div className="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
           <Panel
-            className="order-1"
+            className="order-2 xl:order-1"
             title="Player Directory"
             subtitle="Search the roster, filter by alliance, and open a profile spotlight."
             actions={
-              <FilterBar>
-                <div className="relative min-w-0 flex-1 md:min-w-[220px]">
+              <FilterBar className="w-full items-stretch gap-2.5 rounded-[20px] p-2.5 sm:items-center">
+                <div className="relative min-w-0 flex-1 sm:min-w-[220px]">
                   <Search className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-white/34" />
                   <Input
                     value={search}
@@ -477,7 +477,7 @@ export default function PlayersScreen() {
                   />
                 </div>
                 <Select value={allianceFilter || ALL_VALUE} onValueChange={(value) => setAllianceFilter(value === ALL_VALUE ? '' : value)}>
-                  <SelectTrigger className="min-w-40 rounded-full border-white/10 bg-white/4 text-white"><SelectValue placeholder="Alliance" /></SelectTrigger>
+                  <SelectTrigger className="w-full min-w-0 rounded-full border-white/10 bg-white/4 text-white sm:min-w-40"><SelectValue placeholder="Alliance" /></SelectTrigger>
                   <SelectContent className="border-white/10 bg-[rgba(8,10,16,0.98)] text-white">
                     <SelectItem value={ALL_VALUE}>All Alliances</SelectItem>
                     <SelectItem value="GODt">[GODt]</SelectItem>
@@ -486,7 +486,7 @@ export default function PlayersScreen() {
                   </SelectContent>
                 </Select>
                 <Select value={sortKey} onValueChange={(value) => setSortKey(value as DirectorySortKey)}>
-                  <SelectTrigger className="min-w-40 rounded-full border-white/10 bg-white/4 text-white"><SelectValue placeholder="Sort" /></SelectTrigger>
+                  <SelectTrigger className="w-full min-w-0 rounded-full border-white/10 bg-white/4 text-white sm:min-w-40"><SelectValue placeholder="Sort" /></SelectTrigger>
                   <SelectContent className="border-white/10 bg-[rgba(8,10,16,0.98)] text-white">
                     <SelectItem value="power">Latest Power</SelectItem>
                     <SelectItem value="contribution">Contribution</SelectItem>
@@ -507,11 +507,11 @@ export default function PlayersScreen() {
                     type="button"
                     onClick={() => setSelectedGovernorId(row.id)}
                     className={cn(
-                      'rounded-[24px] border border-white/10 bg-[linear-gradient(160deg,rgba(16,22,36,0.74),rgba(11,15,24,0.9))] p-5 text-left transition-all hover:bg-white/8',
+                      'rounded-[24px] border border-white/10 bg-[linear-gradient(160deg,rgba(16,22,36,0.74),rgba(11,15,24,0.9))] p-4 text-left transition-all hover:bg-white/8 sm:p-5',
                       row.id === selectedGovernorId && 'border-sky-300/22 bg-sky-300/10 shadow-[0_14px_40px_rgba(0,0,0,0.26)]'
                     )}
                   >
-                    <div className="flex items-start justify-between gap-4">
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                       <div className="min-w-0 flex-1 space-y-3">
                         <div className="flex flex-wrap items-center gap-2">
                           <StatusPill label={`#${index + 1}`} tone="neutral" />
@@ -523,7 +523,7 @@ export default function PlayersScreen() {
                           <p className="mt-1 text-sm text-white/48">ID {row.governorId}</p>
                         </div>
                       </div>
-                      <div className="text-right">
+                      <div className="text-left sm:text-right">
                         <p className="font-heading text-2xl text-white">{formatCompactNumber(row.latestPower)}</p>
                         <p className="mt-1 text-xs text-white/40">power</p>
                       </div>
@@ -547,7 +547,7 @@ export default function PlayersScreen() {
           </Panel>
 
           <Panel
-            className="order-2 xl:sticky xl:top-[96px] xl:self-start"
+            className="order-1 xl:order-2 xl:sticky xl:top-[96px] xl:self-start"
             title="Spotlight Profile"
             subtitle={profile ? `${profile.name} • live weekly context plus progression history` : 'Select a player to inspect profile detail'}
           >
@@ -562,13 +562,13 @@ export default function PlayersScreen() {
                         <StatusPill label={`ID ${profile.governorId || 'unknown'}`} tone="neutral" />
                       </div>
                       <div>
-                        <h2 className="font-heading text-3xl text-white">{profile.name}</h2>
+                        <h2 className="font-heading text-2xl text-white sm:text-3xl">{profile.name}</h2>
                         <p className="mt-2 text-sm text-white/56">{profile.allianceLabel}</p>
                       </div>
                     </div>
-                    <div className="rounded-[24px] border border-white/10 bg-white/4 px-5 py-4 text-right">
+                    <div className="rounded-[24px] border border-white/10 bg-white/4 px-4 py-3 text-left sm:px-5 sm:py-4 sm:text-right">
                       <p className="text-[11px] uppercase tracking-[0.22em] text-white/36">Latest Power</p>
-                      <p className="mt-2 font-heading text-3xl text-white">{formatCompactNumber(profile.latestPower)}</p>
+                      <p className="mt-2 font-heading text-2xl text-white sm:text-3xl">{formatCompactNumber(profile.latestPower)}</p>
                       <p className="mt-2 text-sm text-white/48">{profile.snapshotCount} snapshots tracked</p>
                     </div>
                   </div>

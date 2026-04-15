@@ -407,7 +407,7 @@ export default function HomeScreen() {
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5 sm:space-y-6">
       <PageHero
         title="Live Weekly Boards"
         subtitle="A rankings-first home that surfaces current leaders, rising players, and the statboards worth checking next."
@@ -443,12 +443,12 @@ export default function HomeScreen() {
               title="Podium Spotlight"
               subtitle="Switch the board story to see who owns the current week."
               actions={
-                <ToggleGroup type="single" value={spotlightMetric} onValueChange={(value) => value && setSpotlightMetric(value as SpotlightMetric)}>
+                <ToggleGroup type="single" value={spotlightMetric} onValueChange={(value) => value && setSpotlightMetric(value as SpotlightMetric)} className="w-full justify-start gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible">
                   {METRIC_OPTIONS.map((option) => (
                     <ToggleGroupItem
                       key={option.key}
                       value={option.key}
-                      className="rounded-full border border-white/10 bg-white/4 px-3 text-xs text-white/64 data-[state=on]:border-sky-300/22 data-[state=on]:bg-sky-300/12 data-[state=on]:text-white"
+                      className="shrink-0 rounded-full border border-white/10 bg-white/4 px-3 text-xs text-white/64 data-[state=on]:border-sky-300/22 data-[state=on]:bg-sky-300/12 data-[state=on]:text-white"
                     >
                       {option.short}
                     </ToggleGroupItem>
@@ -457,7 +457,7 @@ export default function HomeScreen() {
               }
             >
               <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
-                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3">
                   {podiumRows.map((row, index) => {
                     if (!row) {
                       return (
@@ -537,7 +537,7 @@ export default function HomeScreen() {
                           ]}
                         />
                         <p className="text-sm leading-6 text-white/58">{featuredPlayer.note}</p>
-                        <div className="grid gap-2.5 sm:grid-cols-2">
+                        <div className="grid gap-2.5 md:grid-cols-2">
                           {quickActions.map((action) => {
                             const Icon = action.icon;
                             return (

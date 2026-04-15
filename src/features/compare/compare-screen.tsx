@@ -450,41 +450,43 @@ export default function CompareScreen() {
         {publishMessage ? <div className="rounded-2xl border border-emerald-300/18 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-100">{publishMessage}</div> : null}
 
         <Panel title="Matchup Setup" subtitle="Pick baseline and current event snapshots, then rerun the comparison with one tap.">
-          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_80px_minmax(0,1fr)_auto] lg:items-end">
-            <div className="space-y-2">
-              <p className="text-[11px] uppercase tracking-[0.18em] text-white/36">Baseline Event</p>
-              <Select value={eventAId || EMPTY_VALUE} onValueChange={(value) => setEventAId(value === EMPTY_VALUE ? '' : value)}>
-                <SelectTrigger className="rounded-[22px] border-white/10 bg-white/4 text-white"><SelectValue placeholder="Select baseline event" /></SelectTrigger>
-                <SelectContent className="border-white/10 bg-[rgba(8,10,16,0.98)] text-white">
-                  <SelectItem value={EMPTY_VALUE}>Select baseline event</SelectItem>
-                  {events.map((event) => (
-                    <SelectItem key={event.id} value={event.id}>{event.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+          <div className="space-y-4">
+            <div className="sticky top-[78px] z-20 -mx-1 rounded-[24px] border border-white/10 bg-[rgba(8,11,19,0.94)] p-3.5 shadow-[0_14px_36px_rgba(0,0,0,0.32)] backdrop-blur xl:static xl:mx-0 xl:border-white/8 xl:bg-black/20 xl:shadow-none xl:backdrop-blur-none">
+              <div className="grid gap-2.5 lg:grid-cols-[minmax(0,1fr)_84px_minmax(0,1fr)_auto] lg:items-end">
+                <div className="space-y-2">
+                  <p className="text-[11px] uppercase tracking-[0.18em] text-white/36">Baseline Event</p>
+                  <Select value={eventAId || EMPTY_VALUE} onValueChange={(value) => setEventAId(value === EMPTY_VALUE ? '' : value)}>
+                    <SelectTrigger className="rounded-[22px] border-white/10 bg-white/4 text-white"><SelectValue placeholder="Select baseline event" /></SelectTrigger>
+                    <SelectContent className="border-white/10 bg-[rgba(8,10,16,0.98)] text-white">
+                      <SelectItem value={EMPTY_VALUE}>Select baseline event</SelectItem>
+                      {events.map((event) => (
+                        <SelectItem key={event.id} value={event.id}>{event.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex h-11 items-center justify-center rounded-full border border-white/10 bg-white/4 text-xs font-medium uppercase tracking-[0.22em] text-white/46">
+                  VS
+                </div>
+                <div className="space-y-2">
+                  <p className="text-[11px] uppercase tracking-[0.18em] text-white/36">Current Event</p>
+                  <Select value={eventBId || EMPTY_VALUE} onValueChange={(value) => setEventBId(value === EMPTY_VALUE ? '' : value)}>
+                    <SelectTrigger className="rounded-[22px] border-white/10 bg-white/4 text-white"><SelectValue placeholder="Select current event" /></SelectTrigger>
+                    <SelectContent className="border-white/10 bg-[rgba(8,10,16,0.98)] text-white">
+                      <SelectItem value={EMPTY_VALUE}>Select current event</SelectItem>
+                      {events.map((event) => (
+                        <SelectItem key={event.id} value={event.id}>{event.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button onClick={() => void loadComparison()} className="w-full rounded-full bg-[linear-gradient(135deg,#5a7fff,#7ce6ff)] text-black hover:opacity-95 lg:w-auto" disabled={!ready || loading || !eventAId || !eventBId}>
+                  <Swords data-icon="inline-start" /> {loading ? 'Running...' : 'Run Compare'}
+                </Button>
+              </div>
             </div>
-            <div className="flex h-11 items-center justify-center rounded-full border border-white/10 bg-white/4 text-xs font-medium uppercase tracking-[0.22em] text-white/46">
-              VS
-            </div>
-            <div className="space-y-2">
-              <p className="text-[11px] uppercase tracking-[0.18em] text-white/36">Current Event</p>
-              <Select value={eventBId || EMPTY_VALUE} onValueChange={(value) => setEventBId(value === EMPTY_VALUE ? '' : value)}>
-                <SelectTrigger className="rounded-[22px] border-white/10 bg-white/4 text-white"><SelectValue placeholder="Select current event" /></SelectTrigger>
-                <SelectContent className="border-white/10 bg-[rgba(8,10,16,0.98)] text-white">
-                  <SelectItem value={EMPTY_VALUE}>Select current event</SelectItem>
-                  {events.map((event) => (
-                    <SelectItem key={event.id} value={event.id}>{event.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <Button onClick={() => void loadComparison()} className="w-full rounded-full bg-[linear-gradient(135deg,#5a7fff,#7ce6ff)] text-black hover:opacity-95 lg:w-auto" disabled={!ready || loading || !eventAId || !eventBId}>
-              <Swords data-icon="inline-start" /> {loading ? 'Running...' : 'Run Compare'}
-            </Button>
-          </div>
 
-          {(activeEventA || activeEventB) ? (
-            <div className="mt-5">
+            {(activeEventA || activeEventB) ? (
               <MetricStrip
                 items={[
                   {
@@ -504,8 +506,8 @@ export default function CompareScreen() {
                   },
                 ]}
               />
-            </div>
-          ) : null}
+            ) : null}
+          </div>
         </Panel>
 
         {loading ? (

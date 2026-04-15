@@ -30,6 +30,7 @@ import {
   ActionToolbar,
   DataTableLite,
   EmptyState,
+  FilterBar,
   PageHero,
   Panel,
   StatusPill,
@@ -704,83 +705,80 @@ export default function RankingsScreen() {
         <motion.section initial={false} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }} className="relative z-10">
           <Panel title="Board Controls" subtitle="Week-aware filters and saved leaderboard presets.">
             <div className="space-y-4">
-              <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
-                <div className="rounded-[22px] border border-white/10 bg-black/20 p-4">
-                  <div className="grid gap-3.5 md:grid-cols-[auto_minmax(0,1fr)_auto]">
-                    <Button type="button" variant="outline" className="w-full rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white md:w-auto" onClick={goPreviousWeek} disabled={loading || currentWeekIndex >= weeks.length - 1}>
-                      <ArrowLeft data-icon="inline-start" /> Older
-                    </Button>
-                    <Select value={selectedWeekKey || ALL_VALUE} onValueChange={(value) => setSelectedWeekKey(value === ALL_VALUE ? '' : value)}>
-                      <SelectTrigger className="w-full min-w-0 rounded-full border-white/10 bg-white/4 text-white">
-                        <SelectValue placeholder="Select week" />
-                      </SelectTrigger>
-                      <SelectContent className="border-white/10 bg-[rgba(8,10,16,0.98)] text-white">
-                        {weeks.map((week) => (
-                          <SelectItem key={week.id} value={week.weekKey || ALL_VALUE}>
-                            {week.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Button type="button" variant="outline" className="w-full rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white md:w-auto" onClick={goNextWeek} disabled={loading || currentWeekIndex <= 0}>
-                      Newer <ArrowRight data-icon="inline-end" />
-                    </Button>
-                    <div className="relative md:col-span-3">
-                      <Search className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-white/34" />
-                      <Input
-                        value={search}
-                        onChange={(event) => setSearch(event.target.value)}
-                        onKeyDown={(event) => {
-                          if (event.key === 'Enter') {
-                            event.preventDefault();
-                            setCursorStack([null]);
-                            setNextCursor(null);
-                            void loadData(null, selectedWeekKey || null);
-                          }
-                        }}
-                        placeholder="Search player name or governor ID"
-                        className="rounded-full border-white/10 bg-white/4 pl-11 text-white placeholder:text-white/28"
-                      />
-                    </div>
-                  </div>
+              <div className="sticky top-[78px] z-20 -mx-1 rounded-[24px] border border-white/10 bg-[rgba(8,11,19,0.94)] p-3.5 shadow-[0_14px_36px_rgba(0,0,0,0.32)] backdrop-blur xl:static xl:mx-0 xl:border-white/8 xl:bg-black/20 xl:shadow-none xl:backdrop-blur-none">
+                <div className="grid gap-2.5 sm:grid-cols-[auto_minmax(0,1fr)_auto]">
+                  <Button type="button" variant="outline" className="w-full rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white sm:w-auto" onClick={goPreviousWeek} disabled={loading || currentWeekIndex >= weeks.length - 1}>
+                    <ArrowLeft data-icon="inline-start" /> Older
+                  </Button>
+                  <Select value={selectedWeekKey || ALL_VALUE} onValueChange={(value) => setSelectedWeekKey(value === ALL_VALUE ? '' : value)}>
+                    <SelectTrigger className="w-full min-w-0 rounded-full border-white/10 bg-white/4 text-white">
+                      <SelectValue placeholder="Select week" />
+                    </SelectTrigger>
+                    <SelectContent className="border-white/10 bg-[rgba(8,10,16,0.98)] text-white">
+                      {weeks.map((week) => (
+                        <SelectItem key={week.id} value={week.weekKey || ALL_VALUE}>
+                          {week.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button type="button" variant="outline" className="w-full rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white sm:w-auto" onClick={goNextWeek} disabled={loading || currentWeekIndex <= 0}>
+                    Newer <ArrowRight data-icon="inline-end" />
+                  </Button>
                 </div>
-
-                <div className="rounded-[22px] border border-white/10 bg-black/20 p-4">
-                  <div className="grid gap-3.5 sm:grid-cols-3">
-                    <Select value={rankingTypeFilter || ALL_VALUE} onValueChange={(value) => setRankingTypeFilter(value === ALL_VALUE ? '' : value)}>
-                      <SelectTrigger className="w-full min-w-0 rounded-full border-white/10 bg-white/4 text-white"><SelectValue placeholder="Board" /></SelectTrigger>
-                      <SelectContent className="border-white/10 bg-[rgba(8,10,16,0.98)] text-white">
-                        {RANKING_TYPE_FILTERS.map((item) => <SelectItem key={item.label} value={item.value || ALL_VALUE}>{item.label}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                    <Select value={metricFilter || ALL_VALUE} onValueChange={(value) => setMetricFilter(value === ALL_VALUE ? '' : value)}>
-                      <SelectTrigger className="w-full min-w-0 rounded-full border-white/10 bg-white/4 text-white"><SelectValue placeholder="Metric" /></SelectTrigger>
-                      <SelectContent className="border-white/10 bg-[rgba(8,10,16,0.98)] text-white">
-                        {METRIC_FILTERS.map((item) => <SelectItem key={item.label} value={item.value || ALL_VALUE}>{item.label}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                    <Select value={allianceFilter || ALL_VALUE} onValueChange={(value) => setAllianceFilter(value === ALL_VALUE ? '' : value)}>
-                      <SelectTrigger className="w-full min-w-0 rounded-full border-white/10 bg-white/4 text-white"><SelectValue placeholder="Alliance" /></SelectTrigger>
-                      <SelectContent className="border-white/10 bg-[rgba(8,10,16,0.98)] text-white">
-                        {ALLIANCE_FILTERS.map((item) => <SelectItem key={item.label} value={item.value || ALL_VALUE}>{item.label}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                <div className="relative mt-2.5">
+                  <Search className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-white/34" />
+                  <Input
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault();
+                        setCursorStack([null]);
+                        setNextCursor(null);
+                        void loadData(null, selectedWeekKey || null);
+                      }
+                    }}
+                    placeholder="Search player name or governor ID"
+                    className="rounded-full border-white/10 bg-white/4 pl-11 text-white placeholder:text-white/28"
+                  />
+                </div>
+                <div className="mt-2.5 grid gap-2.5 sm:grid-cols-3">
+                  <Select value={rankingTypeFilter || ALL_VALUE} onValueChange={(value) => setRankingTypeFilter(value === ALL_VALUE ? '' : value)}>
+                    <SelectTrigger className="w-full min-w-0 rounded-full border-white/10 bg-white/4 text-white"><SelectValue placeholder="Board" /></SelectTrigger>
+                    <SelectContent className="border-white/10 bg-[rgba(8,10,16,0.98)] text-white">
+                      {RANKING_TYPE_FILTERS.map((item) => <SelectItem key={item.label} value={item.value || ALL_VALUE}>{item.label}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <Select value={metricFilter || ALL_VALUE} onValueChange={(value) => setMetricFilter(value === ALL_VALUE ? '' : value)}>
+                    <SelectTrigger className="w-full min-w-0 rounded-full border-white/10 bg-white/4 text-white"><SelectValue placeholder="Metric" /></SelectTrigger>
+                    <SelectContent className="border-white/10 bg-[rgba(8,10,16,0.98)] text-white">
+                      {METRIC_FILTERS.map((item) => <SelectItem key={item.label} value={item.value || ALL_VALUE}>{item.label}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <Select value={allianceFilter || ALL_VALUE} onValueChange={(value) => setAllianceFilter(value === ALL_VALUE ? '' : value)}>
+                    <SelectTrigger className="w-full min-w-0 rounded-full border-white/10 bg-white/4 text-white"><SelectValue placeholder="Alliance" /></SelectTrigger>
+                    <SelectContent className="border-white/10 bg-[rgba(8,10,16,0.98)] text-white">
+                      {ALLIANCE_FILTERS.map((item) => <SelectItem key={item.label} value={item.value || ALL_VALUE}>{item.label}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
 
-              <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto]">
-                <div className="rounded-[22px] border border-white/10 bg-black/20 p-4">
-                  <div className="flex flex-wrap gap-2">
-                    {weeklyActivity ? <StatusPill label={`${weeklyActivity.summary.membersTracked} tracked`} tone="info" /> : null}
-                    <StatusPill label={`Pending sync ${pendingSyncCount}`} tone={pendingSyncCount > 0 ? 'warn' : 'good'} />
-                    {isHistoricalWeek ? <StatusPill label="Historical week" tone="neutral" /> : null}
-                    {freshness ? <StatusPill label={freshness.label} tone={freshness.tone} /> : null}
-                    {sourceCoverage ? <StatusPill label={`Power P${sourceCoverage.power.profile}/R${sourceCoverage.power.rankboard}`} tone="neutral" /> : null}
-                    {sourceCoverage ? <StatusPill label={`KP P${sourceCoverage.killPoints.profile}/R${sourceCoverage.killPoints.rankboard}`} tone="neutral" /> : null}
-                  </div>
-                </div>
-                <div className="rounded-[22px] border border-white/10 bg-black/20 p-4 lg:min-w-[26rem]">
+              <FilterBar className="rounded-[22px] bg-black/20 p-3.5">
+                {weeklyActivity ? <StatusPill label={`${weeklyActivity.summary.membersTracked} tracked`} tone="info" /> : null}
+                <StatusPill label={`Pending sync ${pendingSyncCount}`} tone={pendingSyncCount > 0 ? 'warn' : 'good'} />
+                {isHistoricalWeek ? <StatusPill label="Historical week" tone="neutral" /> : null}
+                {freshness ? <StatusPill label={freshness.label} tone={freshness.tone} /> : null}
+                {sourceCoverage ? <StatusPill label={`Power P${sourceCoverage.power.profile}/R${sourceCoverage.power.rankboard}`} tone="neutral" /> : null}
+                {sourceCoverage ? <StatusPill label={`KP P${sourceCoverage.killPoints.profile}/R${sourceCoverage.killPoints.rankboard}`} tone="neutral" /> : null}
+              </FilterBar>
+
+              <details className="rounded-[22px] border border-white/10 bg-black/20 p-4">
+                <summary className="cursor-pointer list-none text-sm font-medium text-white">
+                  Advanced layout and presets
+                </summary>
+                <div className="mt-4 space-y-4">
                   <div className="grid gap-3.5 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:grid-cols-[minmax(0,1fr)_11rem]">
                     <Select value={selectedPresetId || PRESET_NONE} onValueChange={(value) => applyPreset(value === PRESET_NONE ? '' : value)}>
                       <SelectTrigger className="w-full min-w-0 rounded-full border-white/10 bg-white/4 text-white"><SelectValue placeholder="Saved presets" /></SelectTrigger>
@@ -791,36 +789,35 @@ export default function RankingsScreen() {
                     </Select>
                     <Input value={presetName} onChange={(event) => setPresetName(event.target.value)} placeholder="Preset name" className="w-full rounded-full border-white/10 bg-white/4 text-white placeholder:text-white/28" />
                   </div>
-                  <div className="mt-3.5 grid gap-2.5 sm:grid-cols-3">
-                    <Button variant="outline" className="w-full rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white sm:w-auto" onClick={savePreset}>Save Preset</Button>
-                    <Button variant="outline" className="w-full rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white sm:w-auto" onClick={deleteSelectedPreset} disabled={!selectedPresetId}>Delete</Button>
-                    <Button variant="outline" className="w-full rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white sm:w-auto" onClick={resetFilters}>Reset</Button>
+                  <div className="grid gap-2.5 sm:grid-cols-3">
+                    <Button variant="outline" className="w-full rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white" onClick={savePreset}>Save Preset</Button>
+                    <Button variant="outline" className="w-full rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white" onClick={deleteSelectedPreset} disabled={!selectedPresetId}>Delete</Button>
+                    <Button variant="outline" className="w-full rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white" onClick={resetFilters}>Reset</Button>
+                  </div>
+                  <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto]">
+                    <div>
+                      <p className="mb-2 text-[11px] uppercase tracking-[0.22em] text-white/38">Leaderboard layout</p>
+                      <ToggleGroup className="w-full flex-wrap justify-start" type="single" value={viewMode} onValueChange={(value) => value && setViewMode(value as RankingsViewMode)}>
+                        {['auto', 'table', 'cards'].map((item) => (
+                          <ToggleGroupItem key={item} value={item} className="rounded-full border border-white/10 bg-white/5 px-4 text-xs font-medium uppercase tracking-[0.16em] text-white/64 data-[state=on]:border-sky-300/20 data-[state=on]:bg-sky-300/12 data-[state=on]:text-white">
+                            {item}
+                          </ToggleGroupItem>
+                        ))}
+                      </ToggleGroup>
+                    </div>
+                    <div>
+                      <p className="mb-2 text-[11px] uppercase tracking-[0.22em] text-white/38">Metric rendering</p>
+                      <ToggleGroup className="w-full flex-wrap justify-start sm:w-auto" type="single" value={metricVisualMode} onValueChange={(value) => value && setMetricVisualMode(value as MetricVisualMode)}>
+                        {['numeric', 'bars'].map((item) => (
+                          <ToggleGroupItem key={item} value={item} className="rounded-full border border-white/10 bg-white/5 px-4 text-xs font-medium uppercase tracking-[0.16em] text-white/64 data-[state=on]:border-sky-300/20 data-[state=on]:bg-sky-300/12 data-[state=on]:text-white">
+                            {item}
+                          </ToggleGroupItem>
+                        ))}
+                      </ToggleGroup>
+                    </div>
                   </div>
                 </div>
-              </div>
-
-              <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto]">
-                <div className="rounded-[22px] border border-white/10 bg-black/20 p-4">
-                  <p className="mb-3 text-[11px] uppercase tracking-[0.22em] text-white/38">Leaderboard layout</p>
-                  <ToggleGroup className="w-full flex-wrap justify-start" type="single" value={viewMode} onValueChange={(value) => value && setViewMode(value as RankingsViewMode)}>
-                    {['auto', 'table', 'cards'].map((item) => (
-                      <ToggleGroupItem key={item} value={item} className="rounded-full border border-white/10 bg-white/5 px-4 text-xs font-medium uppercase tracking-[0.16em] text-white/64 data-[state=on]:border-sky-300/20 data-[state=on]:bg-sky-300/12 data-[state=on]:text-white">
-                        {item}
-                      </ToggleGroupItem>
-                    ))}
-                  </ToggleGroup>
-                </div>
-                <div className="rounded-[22px] border border-white/10 bg-black/20 p-4">
-                  <p className="mb-3 text-[11px] uppercase tracking-[0.22em] text-white/38">Metric rendering</p>
-                  <ToggleGroup className="w-full flex-wrap justify-start sm:w-auto" type="single" value={metricVisualMode} onValueChange={(value) => value && setMetricVisualMode(value as MetricVisualMode)}>
-                    {['numeric', 'bars'].map((item) => (
-                      <ToggleGroupItem key={item} value={item} className="rounded-full border border-white/10 bg-white/5 px-4 text-xs font-medium uppercase tracking-[0.16em] text-white/64 data-[state=on]:border-sky-300/20 data-[state=on]:bg-sky-300/12 data-[state=on]:text-white">
-                        {item}
-                      </ToggleGroupItem>
-                    ))}
-                  </ToggleGroup>
-                </div>
-              </div>
+              </details>
 
               {uiNotice ? <p className="text-sm text-white/56">{uiNotice}</p> : null}
             </div>
@@ -828,11 +825,11 @@ export default function RankingsScreen() {
         </motion.section>
 
         {spotlightRows.length ? (
-          <section className="grid gap-4 md:grid-cols-3">
+          <section className="grid gap-3 md:grid-cols-3">
             {spotlightRows.map((row, index) => (
               <motion.div key={row.id} initial={false} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.28, delay: index * 0.04 }}>
                 <Card className={index === 0 ? 'border-[#ffd57d]/20 bg-[linear-gradient(145deg,rgba(26,20,8,0.9),rgba(8,10,18,0.98))]' : 'border-white/10 bg-[rgba(11,15,24,0.92)]'}>
-                  <CardContent className="space-y-4 p-5">
+                  <CardContent className="space-y-4 p-4 sm:p-5">
                     <div className="flex items-center justify-between">
                       <StatusPill label={`#${row.stableRank}`} tone={index === 0 ? 'warn' : 'neutral'} />
                       {index === 0 ? <Crown className="size-5 text-[#ffd57d]" /> : <Sparkles className="size-4 text-white/32" />}
@@ -861,32 +858,72 @@ export default function RankingsScreen() {
           subtitle="Canonical board rows with the current filters, week selection, and saved presets applied."
           actions={
             <ActionToolbar>
-              <Button variant="outline" className="rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white" onClick={goBack} disabled={loading || cursorStack.length <= 1}>
+              <Button variant="outline" className="w-full rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white sm:w-auto" onClick={goBack} disabled={loading || cursorStack.length <= 1}>
                 <ArrowLeft data-icon="inline-start" /> Prev
               </Button>
-              <Button variant="outline" className="rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white" onClick={goNext} disabled={loading || !nextCursor}>
+              <Button variant="outline" className="w-full rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white sm:w-auto" onClick={goNext} disabled={loading || !nextCursor}>
                 Next <ArrowRight data-icon="inline-end" />
               </Button>
             </ActionToolbar>
           }
         >
           {displayRows.length ? (
-            <DataTableLite
-              stickyFirst
-              dense={denseRows}
-              mobileCards={viewMode !== 'table'}
-              columns={columns}
-              rows={displayRows}
-              rowKey={(row) => row.id}
-              rowClassName={(row) =>
-                row.status === 'ACTIVE'
-                  ? 'shadow-[inset_0_0_0_1px_rgba(255,255,255,0.01)]'
-                  : row.status === 'UNRESOLVED'
-                    ? 'bg-[rgba(76,127,197,0.06)]'
-                    : 'bg-[rgba(150,62,90,0.08)]'
-              }
-              emptyLabel="No canonical ranking rows found for these filters."
-            />
+            viewMode === 'cards' ? (
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {displayRows.map((row) => (
+                  <article
+                    key={row.id}
+                    className={
+                      row.status === 'ACTIVE'
+                        ? 'rounded-[24px] border border-white/10 bg-[rgba(11,15,24,0.92)] p-4 shadow-[0_12px_28px_rgba(0,0,0,0.24)]'
+                        : row.status === 'UNRESOLVED'
+                          ? 'rounded-[24px] border border-sky-300/20 bg-[rgba(76,127,197,0.14)] p-4 shadow-[0_12px_28px_rgba(0,0,0,0.24)]'
+                          : 'rounded-[24px] border border-rose-300/20 bg-[rgba(150,62,90,0.15)] p-4 shadow-[0_12px_28px_rgba(0,0,0,0.24)]'
+                    }
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <StatusPill label={`#${row.stableRank}`} tone={row.stableRank <= 3 ? 'warn' : 'neutral'} />
+                      <StatusPill label={row.status} tone={statusTone(row.status)} />
+                    </div>
+                    <div className="mt-4 space-y-2">
+                      <p className="font-heading text-xl text-white">{row.displayName}</p>
+                      <div className="flex flex-wrap gap-2">
+                        <StatusPill label={row.allianceLabel || 'No alliance'} tone={allianceTone(row.allianceTag)} />
+                        <StatusPill label={row.linkedGovernorId ? `ID ${row.linkedGovernorId}` : 'Unlinked'} tone="neutral" />
+                      </div>
+                    </div>
+                    <div className="mt-4 grid grid-cols-2 gap-3">
+                      <div className="rounded-2xl border border-white/8 bg-white/4 p-3">
+                        <p className="text-[11px] uppercase tracking-[0.16em] text-white/36">{row.metricLabel}</p>
+                        <p className="mt-2 font-heading text-lg text-white">{formatMetric(row.metricValue)}</p>
+                      </div>
+                      <div className="rounded-2xl border border-white/8 bg-white/4 p-3">
+                        <p className="text-[11px] uppercase tracking-[0.16em] text-white/36">Board</p>
+                        <p className="mt-2 text-sm text-white/78">{formatTokenLabel(row.rankingType)}</p>
+                      </div>
+                    </div>
+                    <p className="mt-3 text-xs text-white/46">Updated {formatRelativeDate(row.updatedAt)}</p>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <DataTableLite
+                stickyFirst
+                dense={denseRows}
+                mobileCards
+                columns={columns}
+                rows={displayRows}
+                rowKey={(row) => row.id}
+                rowClassName={(row) =>
+                  row.status === 'ACTIVE'
+                    ? 'shadow-[inset_0_0_0_1px_rgba(255,255,255,0.01)]'
+                    : row.status === 'UNRESOLVED'
+                      ? 'bg-[rgba(76,127,197,0.06)]'
+                      : 'bg-[rgba(150,62,90,0.08)]'
+                }
+                emptyLabel="No canonical ranking rows found for these filters."
+              />
+            )
           ) : (
             <EmptyState
               title="No board rows found"
