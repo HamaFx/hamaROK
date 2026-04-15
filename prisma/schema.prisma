@@ -20,6 +20,8 @@ model Governor {
   aliases    GovernorAlias[]
   rankingRows RankingRow[]
   rankingSnapshots RankingSnapshot[]
+  metricObservations MetricObservation[]
+  metricSyncBacklog MetricSyncBacklog[]
 
   @@index([governorId])
   @@index([name])
@@ -53,6 +55,8 @@ model Event {
   rankingRuns RankingRun[]
   ingestionTasks IngestionTask[]
   rankingSnapshots RankingSnapshot[]
+  metricObservations MetricObservation[]
+  metricSyncBacklog MetricSyncBacklog[] @relation("MetricSyncBacklogEvent")
   reportSnapshotsAsA ReportSnapshot[] @relation("ReportEventA")
   reportSnapshotsAsB ReportSnapshot[] @relation("ReportEventB")
   exportJobsAsA ExportJob[] @relation("ExportEventA")
@@ -136,6 +140,8 @@ model Workspace {
   governorAliases   GovernorAlias[]
   ingestionTasks    IngestionTask[]
   activityStandards AllianceActivityStandard[]
+  metricObservations MetricObservation[]
+  metricSyncBacklog MetricSyncBacklog[]
 
   @@index([createdAt])
 }
@@ -246,6 +252,7 @@ model ScanJob {
   ocrExtractions    OcrExtraction[]
   artifacts         Artifact[]
   ingestionTasks    IngestionTask[]
+  metricSyncBacklog MetricSyncBacklog[]
 
   @@unique([workspaceId, idempotencyKey])
   @@index([workspaceId, status])
@@ -339,6 +346,18 @@ enum IngestionTaskStatus {
   FAILED
 }
 
+enum MetricObservationSourceType {
+  PROFILE
+  RANKBOARD
+}
+
+enum MetricSyncBacklogStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
 model IngestionTask {
   id             String              @id @default(cuid())
   workspaceId    String
@@ -388,6 +407,7 @@ model OcrExtraction {
   candidates     Json?
   fusionDecision Json?
   correctionLogs OcrCorrectionLog[]
+  metricSyncBacklog MetricSyncBacklog[]
   createdAt      DateTime            @default(now())
   scanJob        ScanJob             @relation(fields: [scanJobId], references: [id], onDelete: Cascade)
   artifact       Artifact?           @relation(fields: [artifactId], references: [id], onDelete: SetNull)
@@ -561,6 +581,63 @@ model RankingRevision {
 
   @@index([workspaceId, createdAt])
   @@index([snapshotId, createdAt])
+}
+
+model MetricObservation {
+  id          String                      @id @default(cuid())
+  workspaceId String
+  eventId     String
+  governorId  String
+  metricKey   String
+  metricValue BigInt
+  sourceType  MetricObservationSourceType
+  sourceRank  Int?
+  sourceRefId String?
+  observedAt  DateTime
+  createdAt   DateTime                    @default(now())
+  updatedAt   DateTime                    @updatedAt
+  workspace   Workspace                   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  event       Event                       @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  governor    Governor                    @relation(fields: [governorId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, eventId, governorId, metricKey])
+  @@index([workspaceId, eventId, metricKey, sourceType])
+  @@index([workspaceId, governorId, metricKey, observedAt])
+}
+
+model MetricSyncBacklog {
+  id              String                  @id @default(cuid())
+  workspaceId     String
+  scanJobId       String?
+  extractionId    String?
+  governorId      String?
+  linkedEventId   String?
+  governorGameId  String
+  governorNameRaw String
+  power           BigInt
+  killPoints      BigInt
+  t4Kills         BigInt                  @default(0)
+  t5Kills         BigInt                  @default(0)
+  deads           BigInt                  @default(0)
+  status          MetricSyncBacklogStatus @default(PENDING)
+  attemptCount    Int                     @default(0)
+  sourceRefId     String?
+  observedAt      DateTime
+  processedAt     DateTime?
+  lastError       String?
+  metadata        Json?
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+  workspace       Workspace               @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  scanJob         ScanJob?                @relation(fields: [scanJobId], references: [id], onDelete: SetNull)
+  extraction      OcrExtraction?          @relation(fields: [extractionId], references: [id], onDelete: SetNull)
+  governor        Governor?               @relation(fields: [governorId], references: [id], onDelete: SetNull)
+  linkedEvent     Event?                  @relation("MetricSyncBacklogEvent", fields: [linkedEventId], references: [id], onDelete: SetNull)
+
+  @@unique([workspaceId, extractionId])
+  @@index([workspaceId, status, createdAt])
+  @@index([workspaceId, linkedEventId, status])
+  @@index([scanJobId, createdAt])
 }
 
 model OcrCorrectionLog {

@@ -12,6 +12,9 @@ import {
 describe('ranking normalize helpers', () => {
   it('normalizes ranking type and metric key consistently', () => {
     expect(normalizeRankingType('INDIVIDUAL POWER RANKINGS')).toBe('individual_power');
+    expect(normalizeRankingType('FORTDESTROYER RANKINGS')).toBe('fort_destroyer');
+    expect(normalizeRankingType('MADSCIENTIST')).toBe('mad_scientist');
+    expect(normalizeRankingType('KILLPOINTS')).toBe('kill_point');
     expect(normalizeMetricKey('Contribution Points')).toBe('contribution_points');
   });
 

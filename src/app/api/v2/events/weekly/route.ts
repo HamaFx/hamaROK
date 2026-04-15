@@ -6,6 +6,8 @@ import { authorizeWorkspaceAccess } from '@/lib/workspace-auth';
 import { ensureWeeklyEventForWorkspace, findWeeklyEventByKey } from '@/lib/weekly-events';
 import { invalidateServerCacheTags } from '@/lib/server-cache';
 import { workspaceCacheTags } from '@/lib/cache-scopes';
+import { assertWeeklySchemaCapability } from '@/lib/weekly-schema-guard';
+import { drainMetricSyncBacklogOnRead } from '@/lib/metric-sync';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -21,6 +23,9 @@ export async function GET(request: NextRequest) {
     if (!auth.ok) {
       return fail(auth.code, auth.message, auth.code === 'UNAUTHORIZED' ? 401 : 403);
     }
+
+    await assertWeeklySchemaCapability();
+    await drainMetricSyncBacklogOnRead(workspaceId, 8);
 
     const weekly = weekKey
       ? await findWeeklyEventByKey(workspaceId, weekKey)

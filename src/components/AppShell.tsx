@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   Activity,
   BarChart3,
@@ -98,6 +98,7 @@ function NavSection({
 export default function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
+  const [weeklySchemaWarning, setWeeklySchemaWarning] = useState<string | null>(null);
 
   const grouped = useMemo(() => {
     return {
@@ -116,6 +117,30 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const mobileMoreItems = NAV_ITEMS.filter((item) => !MOBILE_PRIMARY.includes(item.href));
   const mobileQuickItems = mobileMoreItems.filter((item) => ['/events', '/review', '/settings'].includes(item.href));
   const mobileMoreGroups: Array<NavItem['group']> = ['core', 'analysis', 'ops'];
+
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      try {
+        const res = await fetch('/api/healthz', { cache: 'no-store' });
+        const payload = await res.json();
+        const warnings: unknown[] = Array.isArray(payload?.warnings) ? payload.warnings : [];
+        const weeklyWarning = warnings.find((entry: unknown) =>
+          String(entry).toLowerCase().includes('weekly schema migration required')
+        );
+        if (!cancelled) {
+          setWeeklySchemaWarning(weeklyWarning ? String(weeklyWarning) : null);
+        }
+      } catch {
+        if (!cancelled) setWeeklySchemaWarning(null);
+      }
+    };
+
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
     <div className="app-shell">
@@ -152,6 +177,14 @@ export default function AppShell({ children }: { children: ReactNode }) {
             </Link>
           </div>
         </header>
+
+        {weeklySchemaWarning ? (
+          <div className="card" style={{ marginBottom: 12, borderColor: 'var(--clr-warn)' }}>
+            <div className="text-sm" style={{ color: 'var(--clr-warn)' }}>
+              {weeklySchemaWarning}
+            </div>
+          </div>
+        ) : null}
 
         <main className="app-content">{children}</main>
       </div>

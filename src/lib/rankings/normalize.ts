@@ -6,14 +6,19 @@ import {
 
 const RANKING_TYPE_SYNONYMS: Record<string, string> = {
   individual_power: 'individual_power',
+  individualpower: 'individual_power',
   mad_scientist: 'mad_scientist',
+  madscientist: 'mad_scientist',
   fort_destroyer: 'fort_destroyer',
+  fortdestroyer: 'fort_destroyer',
   fort_destroy: 'fort_destroyer',
   fort_destroying: 'fort_destroyer',
   governor_profile_power: 'governor_profile_power',
   governor_profile: 'governor_profile_power',
   kill_point: 'kill_point',
   kill_points: 'kill_point',
+  killpoint: 'kill_point',
+  killpoints: 'kill_point',
 };
 
 const STRICT_RANKING_TYPE_METRIC_MAP: Record<string, string> = {

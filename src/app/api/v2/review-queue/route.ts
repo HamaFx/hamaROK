@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { OcrExtractionStatus, WorkspaceRole } from '@prisma/client';
+import { MetricSyncBacklogStatus, OcrExtractionStatus, WorkspaceRole } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import {
   ApiHttpError,
@@ -19,6 +19,7 @@ import {
 } from '@/lib/review-queue';
 import { makeServerCacheKey, withServerCache } from '@/lib/server-cache';
 import { workspaceCacheTags } from '@/lib/cache-scopes';
+import { validateGovernorData } from '@/lib/ocr/validators';
 
 type QueueSeverity = 'HIGH' | 'MEDIUM' | 'LOW';
 
@@ -133,6 +134,30 @@ export async function GET(request: NextRequest) {
           }),
         }));
 
+        const extractionIds = parsedCandidates.map((candidate) => candidate.item.id);
+        const backlogRows =
+          extractionIds.length > 0
+            ? await prisma.metricSyncBacklog.findMany({
+                where: {
+                  workspaceId,
+                  extractionId: {
+                    in: extractionIds,
+                  },
+                },
+                select: {
+                  extractionId: true,
+                  linkedEventId: true,
+                  status: true,
+                  lastError: true,
+                },
+              })
+            : [];
+        const backlogByExtractionId = new Map(
+          backlogRows
+            .filter((row): row is typeof row & { extractionId: string } => Boolean(row.extractionId))
+            .map((row) => [row.extractionId, row])
+        );
+
         const governorGameIds = new Set<string>();
         for (const candidate of parsedCandidates) {
           const cleanId = candidate.values.governorId.value.replace(/[^0-9]/g, '');
@@ -209,7 +234,26 @@ export async function GET(request: NextRequest) {
 
         const reviewed = parsedCandidates
           .map(({ item, values }) => {
-            const validation = parseValidation(item.validation);
+            const parsedValidation = parseValidation(item.validation);
+            const computedValidation = validateGovernorData({
+              governorId: values.governorId.value,
+              name: values.governorName.value,
+              power: values.power.value,
+              killPoints: values.killPoints.value,
+              t4Kills: values.t4Kills.value,
+              t5Kills: values.t5Kills.value,
+              deads: values.deads.value,
+              confidences: {
+                governorId: values.governorId.confidence,
+                name: values.governorName.confidence,
+                power: values.power.confidence,
+                killPoints: values.killPoints.confidence,
+                t4Kills: values.t4Kills.confidence,
+                t5Kills: values.t5Kills.confidence,
+                deads: values.deads.confidence,
+              },
+            });
+            const validation = parsedValidation.length > 0 ? parsedValidation : computedValidation;
             const severity = inferReviewSeverity({
               extractionStatus: item.status,
               lowConfidence: item.lowConfidence,
@@ -232,6 +276,12 @@ export async function GET(request: NextRequest) {
               item.scanJob.eventId && governor
                 ? snapshotByEventGovernor.get(`${item.scanJob.eventId}:${governor.id}`)
                 : null;
+            const backlog = backlogByExtractionId.get(item.id);
+            const syncPending =
+              backlog &&
+              (backlog.status === MetricSyncBacklogStatus.PENDING ||
+                backlog.status === MetricSyncBacklogStatus.PROCESSING ||
+                backlog.status === MetricSyncBacklogStatus.FAILED);
 
             const withDiff = {
               governorId: {
@@ -307,6 +357,14 @@ export async function GET(request: NextRequest) {
               values: withDiff,
               validation,
               artifact: item.artifact,
+              syncState:
+                item.status === OcrExtractionStatus.APPROVED
+                  ? syncPending || !item.scanJob.eventId
+                    ? 'PENDING_WEEK_LINK'
+                    : 'SYNCED'
+                  : null,
+              linkedEventId: backlog?.linkedEventId || item.scanJob.eventId || null,
+              syncMessage: syncPending ? backlog?.lastError || null : null,
               createdAt: item.createdAt.toISOString(),
             };
           })

@@ -1,11 +1,8 @@
 import { NextRequest } from 'next/server';
 import { WorkspaceRole } from '@prisma/client';
 import { fail, handleApiError, ok, requireParam } from '@/lib/api-response';
-import { parseCommaValues } from '@/lib/v2';
 import { authorizeWorkspaceAccess } from '@/lib/workspace-auth';
-import { getWeeklyActivityReport } from '@/lib/activity/service';
-import { makeServerCacheKey, withServerCache } from '@/lib/server-cache';
-import { workspaceCacheTags } from '@/lib/cache-scopes';
+import { getWorkspaceStatsOverview } from '@/lib/stats-overview';
 import { assertWeeklySchemaCapability } from '@/lib/weekly-schema-guard';
 import { drainMetricSyncBacklogOnRead } from '@/lib/metric-sync';
 
@@ -17,8 +14,6 @@ export async function GET(request: NextRequest) {
     const url = new URL(request.url);
     const workspaceId = requireParam(url.searchParams.get('workspaceId'), 'workspaceId');
     const weekKey = url.searchParams.get('weekKey')?.trim() || null;
-    const alliances = [...new Set(parseCommaValues(url.searchParams.get('alliance')))];
-    const sortedAlliances = [...alliances].sort();
 
     const auth = await authorizeWorkspaceAccess(request, workspaceId, WorkspaceRole.VIEWER);
     if (!auth.ok) {
@@ -28,26 +23,12 @@ export async function GET(request: NextRequest) {
     await assertWeeklySchemaCapability();
     await drainMetricSyncBacklogOnRead(workspaceId, 10);
 
-    const tags = workspaceCacheTags(workspaceId);
-    const result = await withServerCache(
-      makeServerCacheKey('api:v2:activity:weekly', {
-        workspaceId,
-        weekKey,
-        alliances: sortedAlliances,
-      }),
-      {
-        ttlMs: 8_000,
-        tags: [tags.all, tags.rankings],
-      },
-      () =>
-        getWeeklyActivityReport({
-          workspaceId,
-          weekKey,
-          alliances,
-        })
-    );
+    const data = await getWorkspaceStatsOverview({
+      workspaceId,
+      weekKey,
+    });
 
-    return ok(result);
+    return ok(data);
   } catch (error) {
     return handleApiError(error);
   }

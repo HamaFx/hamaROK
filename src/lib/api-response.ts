@@ -7,6 +7,7 @@ export type ApiErrorCode =
   | 'FORBIDDEN'
   | 'NOT_FOUND'
   | 'CONFLICT'
+  | 'PRECONDITION_FAILED'
   | 'RATE_LIMITED'
   | 'INTERNAL_ERROR';
 
@@ -111,6 +112,19 @@ function logServerError(error: unknown) {
   console.error('[api-error]', { message: 'Non-error thrown value' });
 }
 
+function isSchemaPreconditionError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const code = (error as { code?: unknown }).code;
+  if (typeof code === 'string' && code === 'P2022') return true;
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    /column .* does not exist/i.test(message) ||
+    /relation .* does not exist/i.test(message) ||
+    /type .* does not exist/i.test(message) ||
+    /invalid input value for enum/i.test(message)
+  );
+}
+
 export function handleApiError(error: unknown) {
   if (error instanceof ZodError) {
     return fail('VALIDATION_ERROR', 'Invalid request payload', 400, error.flatten());
@@ -122,6 +136,14 @@ export function handleApiError(error: unknown) {
       error.expose ? error.message : 'Request failed.',
       error.status,
       error.details
+    );
+  }
+
+  if (isSchemaPreconditionError(error)) {
+    return fail(
+      'PRECONDITION_FAILED',
+      'Required database schema updates are missing. Apply latest migrations and redeploy.',
+      412
     );
   }
 

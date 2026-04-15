@@ -7,6 +7,12 @@ import { listCanonicalRankings } from '@/lib/rankings/service';
 import { makeServerCacheKey, withServerCache } from '@/lib/server-cache';
 import { workspaceCacheTags } from '@/lib/cache-scopes';
 import { prisma } from '@/lib/prisma';
+import { assertWeeklySchemaCapability } from '@/lib/weekly-schema-guard';
+import {
+  countPendingMetricSyncBacklog,
+  drainMetricSyncBacklogOnRead,
+  getMetricSourceCoverage,
+} from '@/lib/metric-sync';
 
 function parseStatuses(
   value: string | null,
@@ -63,6 +69,9 @@ export async function GET(request: NextRequest) {
       return fail(auth.code, auth.message, auth.code === 'UNAUTHORIZED' ? 401 : 403);
     }
 
+    await assertWeeklySchemaCapability();
+    await drainMetricSyncBacklogOnRead(workspaceId, 8);
+
     let eventId = eventIdParam;
     if (!eventId && weekKey) {
       const weeklyEvent = await prisma.event.findFirst({
@@ -101,9 +110,12 @@ export async function GET(request: NextRequest) {
         tags: [tags.all, tags.rankings],
       },
       async () => {
-        const result = await listCanonicalRankings({
+        let appliedEventId = eventId;
+        let fallbackUsed = false;
+
+        let result = await listCanonicalRankings({
           workspaceId,
-          eventId,
+          eventId: appliedEventId,
           rankingType,
           metricKey,
           alliances,
@@ -113,6 +125,45 @@ export async function GET(request: NextRequest) {
           limit,
           cursor,
         });
+
+        if (weekKey && !eventIdParam && appliedEventId && result.total === 0) {
+          const legacyWeekly = await prisma.event.findFirst({
+            where: {
+              workspaceId,
+              eventType: EventType.WEEKLY,
+              weekKey: null,
+              rankingSnapshots: {
+                some: {},
+              },
+            },
+            orderBy: [{ createdAt: 'desc' }],
+            select: {
+              id: true,
+            },
+          });
+
+          if (legacyWeekly) {
+            appliedEventId = legacyWeekly.id;
+            fallbackUsed = true;
+            result = await listCanonicalRankings({
+              workspaceId,
+              eventId: appliedEventId,
+              rankingType,
+              metricKey,
+              alliances,
+              q,
+              sort,
+              status,
+              limit,
+              cursor,
+            });
+          }
+        }
+
+        const [pendingSyncCount, sourceCoverage] = await Promise.all([
+          countPendingMetricSyncBacklog({ workspaceId }),
+          getMetricSourceCoverage({ workspaceId, eventId: appliedEventId }),
+        ]);
 
         return {
           rows: result.rows,
@@ -132,6 +183,10 @@ export async function GET(request: NextRequest) {
               'governorNameNormalized ASC',
               'rowId ASC',
             ],
+            eventIdApplied: appliedEventId,
+            weekFallbackUsed: fallbackUsed,
+            pendingSyncCount,
+            sourceCoverage,
           },
         };
       }
@@ -147,6 +202,10 @@ export async function GET(request: NextRequest) {
       sortRequested: cached.meta.sortRequested,
       sortApplied: cached.meta.sortApplied,
       sort: cached.meta.sort,
+      eventIdApplied: cached.meta.eventIdApplied,
+      weekFallbackUsed: cached.meta.weekFallbackUsed,
+      pendingSyncCount: cached.meta.pendingSyncCount,
+      sourceCoverage: cached.meta.sourceCoverage,
     });
   } catch (error) {
     return handleApiError(error);

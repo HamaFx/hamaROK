@@ -3,6 +3,7 @@ import { EventType, WorkspaceRole } from '@prisma/client';
 import { fail, handleApiError, ok, parseIntQuery, requireParam } from '@/lib/api-response';
 import { prisma } from '@/lib/prisma';
 import { authorizeWorkspaceAccess } from '@/lib/workspace-auth';
+import { assertWeeklySchemaCapability } from '@/lib/weekly-schema-guard';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -17,6 +18,8 @@ export async function GET(request: NextRequest) {
     if (!auth.ok) {
       return fail(auth.code, auth.message, auth.code === 'UNAUTHORIZED' ? 401 : 403);
     }
+
+    await assertWeeklySchemaCapability();
 
     const weeks = await prisma.event.findMany({
       where: {

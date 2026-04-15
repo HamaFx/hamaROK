@@ -168,59 +168,61 @@ fi
 
 BOOTSTRAP_COMMANDS=$(cat <<EOF
 set -euo pipefail
-dnf install -y python3-pip python3-virtualenv tesseract mesa-libGL libXext libSM >/dev/null 2>&1 || true
+dnf install -y python3-pip python3-virtualenv tesseract mesa-libGL libXext libSM libxcb libXau >/dev/null 2>&1 || true
 mkdir -p /opt/hama-ocr
 python3 -m venv /opt/hama-ocr/.venv
 /opt/hama-ocr/.venv/bin/pip install --upgrade pip setuptools wheel >/dev/null 2>&1 || true
 /opt/hama-ocr/.venv/bin/pip install \
   "boto3>=1.34,<2" \
   "requests>=2.31,<3" \
-  "numpy<2" \
-  "opencv-python-headless==4.10.0.84" \
   "pytesseract>=0.3.10,<0.4" \
-  "paddlepaddle==2.6.2" \
-  "paddleocr==2.7.3" >/dev/null 2>&1
-/opt/hama-ocr/.venv/bin/pip uninstall -y opencv-python >/dev/null 2>&1 || true
-/opt/hama-ocr/.venv/bin/pip install --upgrade --force-reinstall "opencv-python-headless==4.10.0.84" >/dev/null 2>&1
-/opt/hama-ocr/.venv/bin/pip install --upgrade --force-reinstall "numpy<2" >/dev/null 2>&1
+  "rapidocr-onnxruntime>=1.4.4,<2" >/dev/null 2>&1
 
 cat > /opt/hama-ocr/paddle_runner.py <<'PY'
 import json
 import sys
-import io
-import contextlib
 from typing import Any, Dict, List
 
 import cv2
-from paddleocr import PaddleOCR
+from rapidocr_onnxruntime import RapidOCR
+
+_ENGINE = None
+
+def _get_engine() -> RapidOCR:
+    global _ENGINE
+    if _ENGINE is None:
+        _ENGINE = RapidOCR()
+    return _ENGINE
 
 
 def _to_lines(result: Any) -> List[Dict[str, Any]]:
     lines: List[Dict[str, Any]] = []
-    for block in result or []:
-        if not block:
+    for item in result or []:
+        if not isinstance(item, (list, tuple)) or len(item) < 2:
             continue
-        for line in block:
-            if not line or len(line) < 2:
-                continue
-            box = line[0]
-            text_conf = line[1]
-            text = str(text_conf[0] if isinstance(text_conf, (list, tuple)) and len(text_conf) > 0 else '').strip()
-            if not text:
-                continue
-            confidence = float(text_conf[1] if isinstance(text_conf, (list, tuple)) and len(text_conf) > 1 else 0.0)
+
+        box = item[0]
+        text = str(item[1] or '').strip()
+        confidence = float(item[2] if len(item) > 2 else 0.0)
+        if not text:
+            continue
+        if not isinstance(box, (list, tuple)) or len(box) < 4:
+            continue
+        try:
             xs = [float(point[0]) for point in box]
             ys = [float(point[1]) for point in box]
-            lines.append({
-                'text': text,
-                'confidence': max(0.0, min(1.0, confidence)),
-                'x': float(min(xs)),
-                'y': float(min(ys)),
-                'w': float(max(xs) - min(xs)),
-                'h': float(max(ys) - min(ys)),
-                'cx': float((min(xs) + max(xs)) / 2.0),
-                'cy': float((min(ys) + max(ys)) / 2.0),
-            })
+        except Exception:
+            continue
+        lines.append({
+            'text': text,
+            'confidence': max(0.0, min(1.0, confidence)),
+            'x': float(min(xs)),
+            'y': float(min(ys)),
+            'w': float(max(xs) - min(xs)),
+            'h': float(max(ys) - min(ys)),
+            'cx': float((min(xs) + max(xs)) / 2.0),
+            'cy': float((min(ys) + max(ys)) / 2.0),
+        })
     lines.sort(key=lambda item: (item['cy'], item['cx']))
     return lines
 
@@ -234,13 +236,8 @@ def main() -> int:
     if image is None:
         print('[]')
         return 3
-    captured = io.StringIO()
-    with contextlib.redirect_stdout(captured):
-        ocr = PaddleOCR(use_angle_cls=True, lang='en', show_log=False)
-        result = ocr.ocr(image, cls=True)
-    noisy = captured.getvalue().strip()
-    if noisy:
-        sys.stderr.write(noisy[-4000:])
+    engine = _get_engine()
+    result, _ = engine(image_path)
     print(json.dumps(_to_lines(result), ensure_ascii=True))
     return 0
 
@@ -253,7 +250,7 @@ if __name__ == '__main__':
         raise SystemExit(1)
 PY
 
-# Warm up PaddleOCR models once during bootstrap to avoid first-task cold start timeouts.
+# Warm up local OCR models once during bootstrap to avoid first-task cold start timeouts.
 /opt/hama-ocr/.venv/bin/python3 - <<'PY'
 import cv2
 import numpy as np
@@ -274,6 +271,7 @@ import hmac
 import hashlib
 import subprocess
 import tempfile
+import shutil
 from typing import Any, Dict, List, Optional, Tuple
 
 import boto3
@@ -297,6 +295,8 @@ ENABLE_PADDLE_OCR = os.getenv('ENABLE_PADDLE_OCR', '1').strip().lower() not in (
 TESSERACT_TIMEOUT_SEC = float(os.getenv('TESSERACT_TIMEOUT_SEC', '15'))
 TESSERACT_CMD = os.getenv('TESSERACT_CMD', '/usr/bin/tesseract')
 WORKER_ID = os.getenv('WORKER_ID', os.uname().nodename)
+TESSERACT_BIN = TESSERACT_CMD if os.path.exists(TESSERACT_CMD) else (shutil.which('tesseract') or '')
+TESSERACT_AVAILABLE = bool(TESSERACT_BIN)
 
 if not QUEUE_URL:
     raise RuntimeError('QUEUE_URL is required')
@@ -307,7 +307,10 @@ if not APP_SIGNING_SECRET:
 
 sqs = boto3.client('sqs', region_name=REGION)
 http = requests.Session()
-pytesseract.pytesseract.tesseract_cmd = TESSERACT_CMD
+if TESSERACT_AVAILABLE:
+    pytesseract.pytesseract.tesseract_cmd = TESSERACT_BIN
+else:
+    logging.warning('tesseract binary not found; running OCR with local runner only.')
 
 PRIMARY_KINGDOM_NUMBER = '4057'
 TRACKED_ALLIANCES = [
@@ -462,6 +465,8 @@ def _normalize_ocr_line(raw: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         return None
 
 def _ocr_lines_tesseract(img: np.ndarray, psm: int = 6, whitelist: Optional[str] = None) -> List[Dict[str, Any]]:
+    if not TESSERACT_AVAILABLE:
+        return []
     rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     config = f'--oem 1 --psm {psm}'
     if whitelist:
@@ -534,7 +539,7 @@ def _ocr_lines_paddle(img: np.ndarray) -> List[Dict[str, Any]]:
             check=False,
         )
         if proc.returncode != 0:
-            logging.warning('paddle runner failed rc=%s stderr=%s', proc.returncode, proc.stderr.strip()[:200])
+            logging.warning('ocr runner failed rc=%s stderr=%s', proc.returncode, proc.stderr.strip()[:200])
             return []
         raw_output = (proc.stdout or '').strip()
         if not raw_output:
@@ -542,10 +547,10 @@ def _ocr_lines_paddle(img: np.ndarray) -> List[Dict[str, Any]]:
         try:
             payload = json.loads(raw_output)
         except json.JSONDecodeError:
-            # Some Paddle builds may emit non-JSON progress/log lines to stdout.
+            # Some OCR builds may emit non-JSON progress/log lines to stdout.
             match = re.search(r'(\[[\s\S]*\])\s*$', raw_output)
             if not match:
-                logging.warning('paddle runner returned non-json stdout')
+                logging.warning('ocr runner returned non-json stdout')
                 return []
             payload = json.loads(match.group(1))
         if not isinstance(payload, list):
@@ -682,6 +687,49 @@ def _clean_digits(value: str, max_len: int = 18) -> str:
     )
     return re.sub(r'[^0-9]', '', normalized)[:max_len]
 
+def _normalize_token(value: str) -> str:
+    return re.sub(r'[^A-Z0-9]', '', str(value or '').upper())
+
+def _extract_numeric_from_region(
+    lines: List[Dict[str, Any]],
+    width: int,
+    height: int,
+    region: Tuple[float, float, float, float],
+    min_digits: int = 2,
+) -> Tuple[str, float]:
+    x, y, w, h = region
+    x0 = width * x
+    y0 = height * y
+    x1 = width * (x + w)
+    y1 = height * (y + h)
+    center_x = (x0 + x1) / 2.0
+    center_y = (y0 + y1) / 2.0
+
+    best = None
+    best_score = None
+    for line in lines:
+        if line['cx'] < x0 or line['cx'] > x1 or line['cy'] < y0 or line['cy'] > y1:
+            continue
+        digits = _clean_digits(line['text'])
+        if len(digits) < min_digits:
+            continue
+        dx = abs(line['cx'] - center_x) / max(1.0, width)
+        dy = abs(line['cy'] - center_y) / max(1.0, height)
+        score = (
+            (len(digits) * 1.6)
+            + (float(line['confidence']) * 5.0)
+            - (dx * 2.2)
+            - (dy * 2.6)
+            + (0.25 if ',' in line['text'] or '.' in line['text'] else 0.0)
+        )
+        if best_score is None or score > best_score:
+            best_score = score
+            best = (digits, float(line['confidence']))
+
+    if best is None:
+        return '', 0.0
+    return best
+
 def _extract_profile_alliance(lines: List[Dict[str, Any]], width: int) -> Tuple[str, float]:
     for line in lines:
         text_upper = line['text'].upper()
@@ -721,36 +769,119 @@ def _extract_profile_alliance(lines: List[Dict[str, Any]], width: int) -> Tuple[
 
     return '', 0.0
 
-def _extract_label_value(lines: List[Dict[str, Any]], keyword: str, width: int) -> tuple[str, float]:
-    keyword_upper = keyword.upper()
+def _extract_label_value(
+    lines: List[Dict[str, Any]],
+    keyword: str,
+    width: int,
+    height: int,
+    min_digits: int = 2,
+) -> tuple[str, float]:
+    keyword_token = _normalize_token(keyword)
+    anchors: List[Dict[str, Any]] = []
     for line in lines:
-        text_upper = line['text'].upper()
-        if keyword_upper in text_upper:
-            digits = _clean_digits(line['text'])
-            if digits:
-                return digits, float(line['confidence'])
-            nearest = None
-            best_dx = None
-            for candidate in lines:
-                if candidate['cx'] <= line['cx']:
-                    continue
-                if abs(candidate['cy'] - line['cy']) > max(18, line['h'] * 1.5):
-                    continue
-                if candidate['cx'] < width * 0.55:
-                    continue
-                cand_digits = _clean_digits(candidate['text'])
-                if not cand_digits:
-                    continue
-                dx = candidate['cx'] - line['cx']
-                if best_dx is None or dx < best_dx:
-                    best_dx = dx
-                    nearest = candidate
-            if nearest is not None:
-                return _clean_digits(nearest['text']), float(nearest['confidence'])
-    return '', 0.0
+        text_token = _normalize_token(line['text'])
+        if keyword_token and keyword_token in text_token:
+            anchors.append(line)
+
+    best_digits = ''
+    best_conf = 0.0
+    best_score = None
+    for anchor in anchors:
+        inline_digits = _clean_digits(anchor['text'])
+        if len(inline_digits) >= min_digits:
+            return inline_digits, float(anchor['confidence'])
+        for candidate in lines:
+            if candidate is anchor:
+                continue
+            digits = _clean_digits(candidate['text'])
+            if len(digits) < min_digits:
+                continue
+
+            dx = candidate['cx'] - anchor['cx']
+            dy = candidate['cy'] - anchor['cy']
+            abs_dy = abs(dy)
+
+            primary_window = (
+                candidate['cx'] >= anchor['cx'] - max(24, anchor['w'] * 0.25)
+                and candidate['cx'] <= anchor['cx'] + width * 0.32
+                and dy >= -max(14, anchor['h'] * 0.8)
+                and dy <= max(130, anchor['h'] * 5.5)
+            )
+            secondary_window = (
+                dx > max(14, anchor['w'] * 0.15)
+                and abs_dy <= max(42, anchor['h'] * 2.8)
+            )
+            if not (primary_window or secondary_window):
+                continue
+
+            score = (
+                (len(digits) * 1.8)
+                + (float(candidate['confidence']) * 5.2)
+                - (abs(dx) / max(1.0, width) * 2.6)
+                - (abs_dy / max(1.0, height) * 4.0)
+                + (0.3 if dy >= 0 else 0.0)
+                + (0.25 if ',' in candidate['text'] or '.' in candidate['text'] else 0.0)
+            )
+            if best_score is None or score > best_score:
+                best_score = score
+                best_digits = digits
+                best_conf = float(candidate['confidence'])
+
+    if best_digits:
+        return best_digits, best_conf
+
+    fallback_regions: List[Tuple[Tuple[float, float, float, float], int]] = []
+    keyword_upper = keyword.upper()
+    if 'POWER' in keyword_upper:
+        fallback_regions = [((0.60, 0.28, 0.28, 0.30), 4), ((0.56, 0.24, 0.34, 0.36), 4)]
+    elif 'KILL POINT' in keyword_upper:
+        fallback_regions = [((0.46, 0.28, 0.24, 0.30), 4), ((0.42, 0.24, 0.30, 0.36), 4)]
+
+    for region, region_min_digits in fallback_regions:
+        value, conf = _extract_numeric_from_region(
+            lines,
+            width,
+            height,
+            region,
+            max(min_digits, region_min_digits),
+        )
+        if value:
+            return value, conf
+
+    # For optional combat sub-metrics (T4/T5/DEAD), avoid global "best number" fallback.
+    # If a label/anchor was not detected we prefer an empty value over random digits.
+    allow_global_fallback = ('POWER' in keyword_upper) or ('KILL POINT' in keyword_upper)
+    if not allow_global_fallback:
+        return '', 0.0
+
+    global_best = None
+    global_score = None
+    for line in lines:
+        digits = _clean_digits(line['text'])
+        if len(digits) < min_digits:
+            continue
+        score = (
+            (len(digits) * 1.2)
+            + (float(line['confidence']) * 4.0)
+            + (0.2 if ',' in line['text'] or '.' in line['text'] else 0.0)
+        )
+        if global_score is None or score > global_score:
+            global_score = score
+            global_best = (digits, float(line['confidence']))
+
+    if global_best is None:
+        return '', 0.0
+    return global_best
 
 def _extract_governor_name(lines: List[Dict[str, Any]], width: int, height: int) -> tuple[str, float]:
-    candidates: List[Dict[str, Any]] = []
+    governor_anchor = None
+    for line in lines:
+        text_upper = line['text'].upper()
+        if 'GOVERNOR' in text_upper and ('ID' in text_upper or '(' in text_upper):
+            governor_anchor = line
+            break
+
+    candidates: List[Tuple[Dict[str, Any], float]] = []
     for line in lines:
         text = line['text'].strip()
         text_upper = text.upper()
@@ -758,20 +889,40 @@ def _extract_governor_name(lines: List[Dict[str, Any]], width: int, height: int)
             continue
         if re.fullmatch(r'[0-9,]+', text):
             continue
-        if any(token in text_upper for token in ['GOVERNOR', 'KILL', 'POWER', 'PROFILE', 'ALLIANCE', 'CHINA']):
+        if any(token in text_upper for token in ['GOVERNOR', 'KILL', 'POWER', 'PROFILE', 'ALLIANCE', 'CHINA', 'UTC', 'VIP']):
             continue
-        if line['cx'] < width * 0.28 or line['cx'] > width * 0.72:
+        if any(token in text_upper for token in ['THUNDER', 'VELMORA', 'PHOENIX', 'RISING']):
             continue
-        if line['cy'] < height * 0.12 or line['cy'] > height * 0.5:
+        if line['cx'] < width * 0.24 or line['cx'] > width * 0.74:
             continue
-        candidates.append(line)
+        if line['cy'] < height * 0.10 or line['cy'] > height * 0.52:
+            continue
+        if governor_anchor is not None:
+            if line['cy'] < governor_anchor['cy'] - max(6, governor_anchor['h'] * 0.6):
+                continue
+            if line['cy'] > governor_anchor['cy'] + height * 0.16:
+                continue
+        dy_center = abs(line['cy'] - (height * 0.255)) / max(1.0, height)
+        dx_center = abs(line['cx'] - (width * 0.50)) / max(1.0, width)
+        alpha_bonus = 0.35 if re.search(r'[A-Za-z]', text) else 0.0
+        bracket_penalty = 0.35 if re.search(r'\[[A-Za-z0-9]{2,6}\]', text) else 0.0
+        score = (
+            float(line['confidence']) * 4.8
+            + (min(len(text), 24) / 24.0) * 1.2
+            + alpha_bonus
+            - bracket_penalty
+            - (dy_center * 2.4)
+            - (dx_center * 1.5)
+        )
+        candidates.append((line, score))
 
     if not candidates:
         return '', 0.0
 
-    candidates.sort(key=lambda item: (item['cy'], -item['confidence']))
-    best = max(candidates[:5], key=lambda item: item['confidence'])
+    candidates.sort(key=lambda item: item[1], reverse=True)
+    best = candidates[0][0]
     cleaned = re.sub(r'[^A-Za-z0-9 _\-\[\]()#.:+]', '', best['text']).strip()
+    cleaned = re.sub(r'\s+', ' ', cleaned).strip()
     return cleaned[:64], float(best['confidence'])
 
 def _extract_profile(lines: List[Dict[str, Any]], width: int, height: int, trace: Dict[str, Any]) -> Dict[str, Any]:
@@ -780,11 +931,11 @@ def _extract_profile(lines: List[Dict[str, Any]], width: int, height: int, trace
     governor_id = governor_id_match.group(1) if governor_id_match else ''
     governor_id_conf = 0.92 if governor_id else 0.0
 
-    kill_points, kp_conf = _extract_label_value(lines, 'KILL POINT', width)
-    power, power_conf = _extract_label_value(lines, 'POWER', width)
-    t4, t4_conf = _extract_label_value(lines, 'T4', width)
-    t5, t5_conf = _extract_label_value(lines, 'T5', width)
-    deads, deads_conf = _extract_label_value(lines, 'DEAD', width)
+    kill_points, kp_conf = _extract_label_value(lines, 'KILL POINT', width, height, min_digits=4)
+    power, power_conf = _extract_label_value(lines, 'POWER', width, height, min_digits=4)
+    t4, t4_conf = _extract_label_value(lines, 'T4', width, height, min_digits=2)
+    t5, t5_conf = _extract_label_value(lines, 'T5', width, height, min_digits=2)
+    deads, deads_conf = _extract_label_value(lines, 'DEAD', width, height, min_digits=2)
     governor_name, name_conf = _extract_governor_name(lines, width, height)
     alliance_raw, alliance_conf = _extract_profile_alliance(lines, width)
     split = _split_name_and_alliance(governor_name, alliance_raw)
@@ -863,9 +1014,10 @@ def _classify_ranking_header(header_text: str) -> Tuple[Optional[str], Optional[
     cleaned = re.sub(r'\s+', ' ', cleaned).strip()
     without_rank_suffix = re.sub(r'\bRANKINGS?\b', ' ', cleaned)
     without_rank_suffix = re.sub(r'\s+', ' ', without_rank_suffix).strip()
+    compact = without_rank_suffix.replace(' ', '')
 
     for pattern, ranking_type, metric_key in STRICT_RANKING_HEADER_MAP:
-        if pattern in without_rank_suffix:
+        if pattern in without_rank_suffix or pattern.replace(' ', '') in compact:
             return ranking_type, metric_key, without_rank_suffix
 
     return None, None, without_rank_suffix
@@ -1042,7 +1194,22 @@ def _handle_ingestion_message(msg: Dict[str, Any]) -> bool:
         variants = _preprocess_variants(image)
         lines, ocr_trace = _merge_lines(variants)
         archetype = _detect_archetype(lines, hint)
-        height, width = image.shape[:2]
+        base_height, base_width = image.shape[:2]
+        width = int(base_width)
+        height = int(base_height)
+        if lines:
+            max_x = max(max(float(line.get('cx', 0.0)), float(line.get('x', 0.0)) + float(line.get('w', 0.0))) for line in lines)
+            max_y = max(max(float(line.get('cy', 0.0)), float(line.get('y', 0.0)) + float(line.get('h', 0.0))) for line in lines)
+            if max_x > base_width * 1.05:
+                width = int(max_x)
+            if max_y > base_height * 1.05:
+                height = int(max_y)
+            ocr_trace['coordinateScale'] = {
+                'baseWidth': int(base_width),
+                'baseHeight': int(base_height),
+                'workingWidth': int(width),
+                'workingHeight': int(height),
+            }
         ocr_duration_ms = int((time.time() - started) * 1000)
 
         if archetype == 'ranking_board':

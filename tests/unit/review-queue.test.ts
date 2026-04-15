@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { inferReviewSeverity, parseExtractionValues, toApprovedSnapshotPayload } from '@/lib/review-queue';
+import {
+  assessProfileMetricSyncSafety,
+  inferReviewSeverity,
+  parseExtractionValues,
+  toApprovedSnapshotPayload,
+} from '@/lib/review-queue';
 
 describe('review queue helpers', () => {
   it('classifies high severity when confidence is low and validation errors exist', () => {
@@ -56,5 +61,46 @@ describe('review queue helpers', () => {
     expect(payload.governorName).toBe('Nova');
     expect(payload.power).toBe(BigInt('125000000'));
     expect(payload.killPoints).toBe(BigInt('400000000'));
+  });
+
+  it('flags suspicious profile metrics before sync', () => {
+    const bad = assessProfileMetricSyncSafety({
+      governorId: '222289750',
+      governorName: 'Lac',
+      power: BigInt(0),
+      killPoints: BigInt(111015),
+      t4Kills: BigInt(0),
+      t5Kills: BigInt(0),
+      deads: BigInt(0),
+    });
+
+    expect(bad.shouldSync).toBe(false);
+    expect(bad.reasons.join(' ')).toContain('power is zero or missing');
+
+    const good = assessProfileMetricSyncSafety({
+      governorId: '222289750',
+      governorName: 'Lac',
+      power: BigInt(123450000),
+      killPoints: BigInt(567890000),
+      t4Kills: BigInt(1000000),
+      t5Kills: BigInt(500000),
+      deads: BigInt(100000),
+    });
+
+    expect(good.shouldSync).toBe(true);
+    expect(good.reasons).toEqual([]);
+
+    const noisyOptionalCombatFields = assessProfileMetricSyncSafety({
+      governorId: '333289750',
+      governorName: 'Lac',
+      power: BigInt(123450000),
+      killPoints: BigInt(567890000),
+      t4Kills: BigInt(999999999),
+      t5Kills: BigInt(999999999),
+      deads: BigInt(999999999),
+    });
+
+    expect(noisyOptionalCombatFields.shouldSync).toBe(true);
+    expect(noisyOptionalCombatFields.reasons).toEqual([]);
   });
 });

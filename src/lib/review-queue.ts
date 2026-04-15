@@ -201,3 +201,27 @@ export function toApprovedSnapshotPayload(values: ParsedExtractionValues): Appro
     deads: cleanNumeric(values.deads.value),
   };
 }
+
+export interface ProfileMetricSyncAssessment {
+  shouldSync: boolean;
+  reasons: string[];
+}
+
+export function assessProfileMetricSyncSafety(
+  payload: ApprovedSnapshotPayload
+): ProfileMetricSyncAssessment {
+  const reasons: string[] = [];
+
+  if (payload.power <= BigInt(0)) {
+    reasons.push('power is zero or missing');
+  }
+
+  if (payload.killPoints === BigInt(111015) && payload.power === BigInt(0)) {
+    reasons.push('matches known OCR artifact pattern (power=0 & killPoints=111015)');
+  }
+
+  return {
+    shouldSync: reasons.length === 0,
+    reasons,
+  };
+}

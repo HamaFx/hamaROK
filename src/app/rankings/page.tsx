@@ -84,6 +84,7 @@ interface WeeklyActivitySummary {
   unresolvedIdentityCount?: number;
   noPowerBaselineCount?: number;
   noKillPointsBaselineCount?: number;
+  pendingSyncCount?: number;
   allianceSummary: Array<{
     allianceTag: string;
     allianceLabel: string;
@@ -121,6 +122,11 @@ interface RankingsFilterPreset {
   viewMode: RankingsViewMode;
   metricVisualMode: MetricVisualMode;
   createdAt: string;
+}
+
+interface SourceCoverageSummary {
+  power: { profile: number; rankboard: number; total: number };
+  killPoints: { profile: number; rankboard: number; total: number };
 }
 
 function formatMetric(value: string) {
@@ -235,6 +241,8 @@ export default function RankingsPage() {
   const [allianceFilter, setAllianceFilter] = useState('');
   const [weeklyActivity, setWeeklyActivity] = useState<WeeklyActivityResponse | null>(null);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [pendingSyncCount, setPendingSyncCount] = useState(0);
+  const [sourceCoverage, setSourceCoverage] = useState<SourceCoverageSummary | null>(null);
   const [cursorStack, setCursorStack] = useState<Array<string | null>>([null]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -245,6 +253,7 @@ export default function RankingsPage() {
   const [selectedPresetId, setSelectedPresetId] = useState('');
   const [presetName, setPresetName] = useState('');
   const [uiNotice, setUiNotice] = useState<string | null>(null);
+  const [syncBusy, setSyncBusy] = useState(false);
 
   const presetStorageKey = useMemo(
     () => `hama:rankings:presets:${workspaceId || 'unknown'}`,
@@ -369,6 +378,8 @@ export default function RankingsPage() {
 
         setRows(Array.isArray(rowsPayload?.data) ? rowsPayload.data : []);
         setNextCursor(rowsPayload?.meta?.nextCursor || null);
+        setPendingSyncCount(Number(rowsPayload?.meta?.pendingSyncCount || 0));
+        setSourceCoverage((rowsPayload?.meta?.sourceCoverage || null) as SourceCoverageSummary | null);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load rankings.');
       } finally {
@@ -479,6 +490,48 @@ export default function RankingsPage() {
     setCursorStack(next);
     void loadData(previousCursor);
   };
+
+  const runMetricSync = useCallback(async () => {
+    if (!workspaceReady || syncBusy) return;
+    setSyncBusy(true);
+    setError(null);
+    try {
+      const params = new URLSearchParams({
+        workspaceId,
+        limit: '50',
+      });
+      const res = await fetch(`/api/v2/sync/metrics/drain?${params.toString()}`, {
+        method: 'POST',
+        headers: { 'x-access-token': accessToken },
+      });
+      const payload = await res.json();
+      if (!res.ok) {
+        throw new Error(payload?.error?.message || 'Failed to run metric sync.');
+      }
+      const succeeded = Number(payload?.data?.succeeded || 0);
+      const failed = Number(payload?.data?.failed || 0);
+      const pending = Number(payload?.data?.pending || 0);
+      setUiNotice(
+        `Metric sync finished. Succeeded ${succeeded}, failed ${failed}, pending ${pending}.`
+      );
+      setPendingSyncCount(pending);
+      await loadData(cursorStack[cursorStack.length - 1] || null, selectedWeekKey || null);
+      await loadWeeklyActivity(selectedWeekKey || null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to run metric sync.');
+    } finally {
+      setSyncBusy(false);
+    }
+  }, [
+    workspaceReady,
+    syncBusy,
+    workspaceId,
+    accessToken,
+    loadData,
+    loadWeeklyActivity,
+    cursorStack,
+    selectedWeekKey,
+  ]);
 
   const displayRows = useMemo<DisplayRankingRow[]>(() => {
     const mapped = rows.map((row) => {
@@ -845,6 +898,17 @@ export default function RankingsPage() {
                   Tracked Members: <strong>{weeklyActivity.summary.membersTracked}</strong>
                 </div>
               ) : null}
+              <StatusPill
+                label={`Pending Sync ${pendingSyncCount}`}
+                tone={pendingSyncCount > 0 ? 'warn' : 'good'}
+              />
+              <button
+                className="btn btn-secondary btn-sm"
+                onClick={runMetricSync}
+                disabled={loading || syncBusy}
+              >
+                {syncBusy ? 'Running Sync...' : 'Run Sync Now'}
+              </button>
               {isHistoricalWeek ? <StatusPill label="Historical Week" tone="info" /> : null}
               {freshness ? <StatusPill label={freshness.label} tone={freshness.tone} /> : null}
             </div>
@@ -877,6 +941,24 @@ export default function RankingsPage() {
               <StatusPill
                 label={`No KP baseline ${weeklyActivity.summary.noKillPointsBaselineCount}`}
                 tone={weeklyActivity.summary.noKillPointsBaselineCount > 0 ? 'warn' : 'good'}
+              />
+            ) : null}
+            {weeklyActivity?.summary?.pendingSyncCount != null ? (
+              <StatusPill
+                label={`Pending Week Sync ${weeklyActivity.summary.pendingSyncCount}`}
+                tone={weeklyActivity.summary.pendingSyncCount > 0 ? 'warn' : 'good'}
+              />
+            ) : null}
+            {sourceCoverage ? (
+              <StatusPill
+                label={`Power Src P${sourceCoverage.power.profile}/R${sourceCoverage.power.rankboard}`}
+                tone="info"
+              />
+            ) : null}
+            {sourceCoverage ? (
+              <StatusPill
+                label={`KP Src P${sourceCoverage.killPoints.profile}/R${sourceCoverage.killPoints.rankboard}`}
+                tone="info"
               />
             ) : null}
           </FilterBar>

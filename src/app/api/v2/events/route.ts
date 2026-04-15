@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma';
 import { ok, fail, handleApiError, readJson } from '@/lib/api-response';
 import { parsePagination, getQueryParam } from '@/lib/v2';
 import { authorizeWorkspaceAccess } from '@/lib/workspace-auth';
+import { assertWeeklySchemaCapability } from '@/lib/weekly-schema-guard';
 
 const createEventSchema = z.object({
   workspaceId: z.string().min(1),
@@ -28,6 +29,8 @@ export async function GET(request: NextRequest) {
     if (!auth.ok) {
       return fail(auth.code, auth.message, auth.code === 'UNAUTHORIZED' ? 401 : 403);
     }
+
+    await assertWeeklySchemaCapability();
 
     const { limit, offset } = parsePagination(request, { limit: 50, offset: 0 });
 
@@ -79,6 +82,8 @@ export async function POST(request: NextRequest) {
     if (!auth.ok) {
       return fail(auth.code, auth.message, auth.code === 'UNAUTHORIZED' ? 401 : 403);
     }
+
+    await assertWeeklySchemaCapability();
 
     const event = await prisma.event.create({
       data: {

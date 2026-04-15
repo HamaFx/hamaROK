@@ -11,6 +11,7 @@ import { dispatchOcrWork } from '@/lib/aws/ocr-dispatch';
 import { makeServerCacheKey, withServerCache, invalidateServerCacheTags } from '@/lib/server-cache';
 import { workspaceCacheTags } from '@/lib/cache-scopes';
 import { ensureWeeklyEventForWorkspace } from '@/lib/weekly-events';
+import { assertWeeklySchemaCapability } from '@/lib/weekly-schema-guard';
 
 const createScanJobSchema = z.object({
   workspaceId: z.string().min(1),
@@ -20,17 +21,6 @@ const createScanJobSchema = z.object({
   notes: z.string().max(500).optional(),
   idempotencyKey: z.string().min(8).max(120).optional(),
 });
-
-function isWeeklyAutoCreateSafeError(error: unknown): boolean {
-  if (!error || typeof error !== 'object') return false;
-  const maybeCode = (error as { code?: unknown }).code;
-  if (typeof maybeCode === 'string' && maybeCode === 'P2022') return true; // Missing DB column
-  const message =
-    typeof (error as { message?: unknown }).message === 'string'
-      ? String((error as { message?: string }).message)
-      : '';
-  return /column .* does not exist/i.test(message);
-}
 
 export async function GET(request: NextRequest) {
   try {
@@ -137,16 +127,8 @@ export async function POST(request: NextRequest) {
 
     let resolvedEvent: Awaited<ReturnType<typeof ensureWeeklyEventForWorkspace>> | null = null;
     if (!body.eventId && body.source === ScanJobSource.MANUAL_UPLOAD) {
-      try {
-        resolvedEvent = await ensureWeeklyEventForWorkspace(body.workspaceId);
-      } catch (error) {
-        if (!isWeeklyAutoCreateSafeError(error)) {
-          throw error;
-        }
-        // Backward-compat fallback: allow uploads even if weekly-event DB fields
-        // are not yet migrated in the target environment.
-        resolvedEvent = null;
-      }
+      await assertWeeklySchemaCapability();
+      resolvedEvent = await ensureWeeklyEventForWorkspace(body.workspaceId);
     }
     const eventId = body.eventId || resolvedEvent?.event.id || null;
 

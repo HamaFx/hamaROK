@@ -5,11 +5,12 @@ import {
   getUploadMode,
   validateRuntimeEnv,
 } from '@/lib/env';
+import { getWeeklySchemaCapability } from '@/lib/weekly-schema-guard';
 
 export const dynamic = 'force-dynamic';
 
 interface ReadinessCheck {
-  name: 'env' | 'database';
+  name: 'env' | 'database' | 'weekly_schema';
   ok: boolean;
   message?: string;
 }
@@ -56,12 +57,37 @@ export async function GET() {
     });
   }
 
+  let weeklySchema: Awaited<ReturnType<typeof getWeeklySchemaCapability>> | null = null;
+  try {
+    weeklySchema = await getWeeklySchemaCapability({ forceRefresh: true });
+    checks.push({
+      name: 'weekly_schema',
+      ok: weeklySchema.ok,
+      message: weeklySchema.ok ? undefined : weeklySchema.message || 'Weekly schema is incomplete.',
+    });
+    if (!weeklySchema.ok) {
+      ready = false;
+    }
+  } catch (error) {
+    ready = false;
+    checks.push({
+      name: 'weekly_schema',
+      ok: false,
+      message: toErrorMessage(error),
+    });
+  }
+
   const warnings: string[] = [];
   if (env && !env.BLOB_READ_WRITE_TOKEN) {
     warnings.push('BLOB_READ_WRITE_TOKEN is not configured.');
   }
   if (env?.AWS_OCR_CONTROL_ENABLED && !env.AWS_OCR_START_LAMBDA) {
     warnings.push('AWS_OCR_START_LAMBDA is not configured.');
+  }
+  if (weeklySchema && !weeklySchema.ok) {
+    warnings.push(
+      `Weekly schema migration required: ${weeklySchema.missing.join(', ')}.`
+    );
   }
 
   return NextResponse.json(
@@ -82,6 +108,13 @@ export async function GET() {
           stopLambdaConfigured: Boolean(env?.AWS_OCR_STOP_LAMBDA),
           instanceConfigured: Boolean(env?.AWS_OCR_INSTANCE_ID),
         },
+        weeklySchema: weeklySchema
+          ? {
+              ok: weeklySchema.ok,
+              missing: weeklySchema.missing,
+              checkedAt: weeklySchema.checkedAt,
+            }
+          : null,
       },
       warnings,
     },

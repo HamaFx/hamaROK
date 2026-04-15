@@ -62,11 +62,11 @@ export function validateGovernorData(data: {
 
   // Numeric fields validation
   const numericFields = [
-    { key: 'power', label: 'Power', min: 100_000, max: 3_000_000_000 },
-    { key: 'killPoints', label: 'Kill Points', min: 0, max: 5_000_000_000 },
-    { key: 't4Kills', label: 'T4 Kills', min: 0, max: 2_000_000_000 },
-    { key: 't5Kills', label: 'T5 Kills', min: 0, max: 2_000_000_000 },
-    { key: 'deads', label: 'Deads', min: 0, max: 2_000_000_000 },
+    { key: 'power', label: 'Power', min: 100_000, max: 3_000_000_000, optional: false },
+    { key: 'killPoints', label: 'Kill Points', min: 0, max: 5_000_000_000, optional: false },
+    { key: 't4Kills', label: 'T4 Kills', min: 0, max: 2_000_000_000, optional: true },
+    { key: 't5Kills', label: 'T5 Kills', min: 0, max: 2_000_000_000, optional: true },
+    { key: 'deads', label: 'Deads', min: 0, max: 2_000_000_000, optional: true },
   ];
 
   for (const field of numericFields) {
@@ -77,9 +77,19 @@ export function validateGovernorData(data: {
     let severity: 'ok' | 'warning' | 'error' = 'ok';
     let warning: string | undefined;
 
-    if (isNaN(num) || raw.replace(/[^0-9]/g, '').length === 0) {
+    const digits = raw.replace(/[^0-9]/g, '');
+
+    if (isNaN(num) || digits.length === 0) {
+      if (field.optional) {
+        severity = 'ok';
+        warning = undefined;
+      } else {
+        severity = 'error';
+        warning = `${field.label} could not be parsed as a number`;
+      }
+    } else if (field.key === 'power' && num <= 0) {
       severity = 'error';
-      warning = `${field.label} could not be parsed as a number`;
+      warning = 'Power is zero or missing';
     } else if (num < field.min) {
       severity = 'warning';
       warning = `${field.label} (${num.toLocaleString()}) seems too low`;

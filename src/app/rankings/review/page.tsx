@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import Image from 'next/image';
 import {
   AlertTriangle,
   ImageIcon,
@@ -496,6 +497,77 @@ export default function RankingReviewPage() {
     }
   };
 
+  const runBulkAction = useCallback(
+    async (mode: 'accept_linked' | 'reject_all') => {
+      if (!workspaceId || !accessToken) return;
+
+      const targets =
+        mode === 'accept_linked'
+          ? rows.filter(
+              (row) =>
+                row.identityStatus === 'AUTO_LINKED' ||
+                row.identityStatus === 'MANUAL_LINKED'
+            )
+          : rows.filter((row) => row.identityStatus !== 'REJECTED');
+
+      if (targets.length === 0) return;
+      const confirmed = window.confirm(
+        mode === 'accept_linked'
+          ? `Accept ${targets.length} linked row${targets.length === 1 ? '' : 's'} now?`
+          : `Reject ${targets.length} visible row${targets.length === 1 ? '' : 's'} now?`
+      );
+      if (!confirmed) return;
+
+      setBusyRow(`bulk:${mode}`);
+      setError(null);
+
+      let succeeded = 0;
+      let failed = 0;
+
+      for (const row of targets) {
+        try {
+          const action = mode === 'accept_linked' ? 'CORRECT_ROW' : 'REJECT_ROW';
+          const body: Record<string, unknown> = {
+            workspaceId,
+            action,
+          };
+
+          if (mode === 'accept_linked') {
+            body.corrected = {
+              sourceRank: row.sourceRank,
+              governorNameRaw: row.governorNameRaw,
+              metricRaw: row.metricRaw,
+              metricValue: row.metricValue,
+            };
+          }
+
+          const res = await fetch(`/api/v2/rankings/review/${row.id}`, {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-access-token': accessToken,
+            },
+            body: JSON.stringify(body),
+          });
+          const payload = await res.json();
+          if (!res.ok) {
+            throw new Error(payload?.error?.message || 'Bulk action failed.');
+          }
+          succeeded += 1;
+        } catch {
+          failed += 1;
+        }
+      }
+
+      await loadRows();
+      if (failed > 0) {
+        setError(`Bulk action finished: ${succeeded} succeeded, ${failed} failed.`);
+      }
+      setBusyRow(null);
+    },
+    [workspaceId, accessToken, rows, loadRows]
+  );
+
   return (
     <div className="page-container">
       <PageHero
@@ -547,6 +619,20 @@ export default function RankingReviewPage() {
         </div>
         <button className="btn btn-primary" onClick={loadRows} disabled={loading}>
           {loading ? 'Loading...' : 'Apply'}
+        </button>
+        <button
+          className="btn btn-secondary"
+          onClick={() => runBulkAction('accept_linked')}
+          disabled={loading || Boolean(busyRow)}
+        >
+          {busyRow === 'bulk:accept_linked' ? 'Accepting...' : 'Accept Linked'}
+        </button>
+        <button
+          className="btn btn-danger"
+          onClick={() => runBulkAction('reject_all')}
+          disabled={loading || Boolean(busyRow)}
+        >
+          {busyRow === 'bulk:reject_all' ? 'Rejecting...' : 'Reject All'}
         </button>
       </FilterBar>
 
@@ -638,12 +724,15 @@ export default function RankingReviewPage() {
                           Open screenshot
                         </a>
                         <div className="mt-8">
-                          <img
+                          <Image
                             src={row.run.artifact.url}
                             alt={`Ranking screenshot for ${row.governorNameRaw}`}
-                            loading="lazy"
+                            width={920}
+                            height={520}
+                            unoptimized
                             style={{
                               width: '100%',
+                              height: 'auto',
                               maxWidth: 460,
                               borderRadius: 10,
                               border: '1px solid var(--line-soft)',

@@ -1,10 +1,9 @@
 import { NextRequest } from 'next/server';
 import {
   AnomalySeverity,
+  MetricObservationSourceType,
   OcrExtractionStatus,
   Prisma,
-  RankingRowReviewAction,
-  RankingSnapshotStatus,
   ScanJobStatus,
   WorkspaceRole,
 } from '@prisma/client';
@@ -22,22 +21,25 @@ import {
   detectSnapshotPayloadAnomalies,
 } from '@/lib/anomalies';
 import {
+  assessProfileMetricSyncSafety,
   parseExtractionValues,
   parseValidation,
   toApprovedSnapshotPayload,
 } from '@/lib/review-queue';
-import {
-  computeCanonicalIdentityKey,
-  normalizeGovernorAlias,
-  normalizeMetricKey,
-  normalizeRankingType,
-} from '@/lib/rankings/normalize';
 import { invalidateServerCacheTags } from '@/lib/server-cache';
 import { scanJobCacheTag, workspaceCacheTags } from '@/lib/cache-scopes';
 import { splitGovernorNameAndAlliance } from '@/lib/alliances';
-
-const PROFILE_POWER_RANKING_TYPE = normalizeRankingType('governor_profile_power');
-const PROFILE_POWER_METRIC_KEY = normalizeMetricKey('power');
+import { ensureWeeklyEventForWorkspace } from '@/lib/weekly-events';
+import { assertWeeklySchemaCapability, isWeeklySchemaCapabilityError } from '@/lib/weekly-schema-guard';
+import {
+  METRIC_KEY_KILL_POINTS,
+  METRIC_KEY_POWER,
+  enqueueMetricSyncBacklogTx,
+  recordMetricObservationTx,
+  upsertProfileSnapshotForEventTx,
+} from '@/lib/metric-sync';
+import { validateGovernorData } from '@/lib/ocr/validators';
+import { normalizeGovernorAlias } from '@/lib/rankings/normalize';
 
 const correctedSchema = z
   .object({
@@ -211,6 +213,100 @@ function extractAllianceFromExtraction(extraction: {
   return split.allianceRaw;
 }
 
+function extractNormalizedNumericField(
+  normalized: Prisma.JsonValue | null,
+  fieldKey: 'power' | 'killPoints'
+): string {
+  if (!normalized || typeof normalized !== 'object') return '';
+  const record = normalized as Record<string, unknown>;
+  const entry = record[fieldKey];
+  if (typeof entry === 'string') return entry.replace(/[^0-9]/g, '');
+  if (entry && typeof entry === 'object') {
+    const value = (entry as Record<string, unknown>).value;
+    return String(value ?? '').replace(/[^0-9]/g, '');
+  }
+  return '';
+}
+
+function sanitizeApprovedGovernorName(raw: string): string {
+  let cleaned = String(raw || '')
+    .replace(/[^\x20-\x7E]/g, ' ')
+    .replace(/\bGOVERNOR\b/gi, ' ')
+    .replace(/\(\s*ID\s*[: ]*\d{4,14}\s*\)/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!cleaned) cleaned = 'Unknown';
+  return cleaned.slice(0, 64);
+}
+
+function normalizeOptionalCombatMetrics(args: {
+  payload: ReturnType<typeof toApprovedSnapshotPayload>;
+  values: ReturnType<typeof parseExtractionValues>;
+}) {
+  let { payload } = args;
+  const notes: string[] = [];
+  const lowConfidenceThreshold = 75;
+  const maxOptionalDigits = 12;
+
+  const maybeZeroOptionalField = (
+    key: 't4Kills' | 't5Kills' | 'deads'
+  ) => {
+    const confidence = Number(args.values[key].confidence || 0);
+    if (confidence < lowConfidenceThreshold && payload[key] > BigInt(0)) {
+      if (key === 't4Kills') {
+        payload = { ...payload, t4Kills: BigInt(0) };
+      } else if (key === 't5Kills') {
+        payload = { ...payload, t5Kills: BigInt(0) };
+      } else {
+        payload = { ...payload, deads: BigInt(0) };
+      }
+      notes.push(`${key} reset to 0 (low confidence ${Math.round(confidence)}%)`);
+    }
+  };
+
+  maybeZeroOptionalField('t4Kills');
+  maybeZeroOptionalField('t5Kills');
+  maybeZeroOptionalField('deads');
+
+  const maybeClampOptionalDigits = (key: 't4Kills' | 't5Kills' | 'deads') => {
+    const value = payload[key];
+    if (value <= BigInt(0)) return;
+    if (value.toString().length <= maxOptionalDigits) return;
+    if (key === 't4Kills') {
+      payload = { ...payload, t4Kills: BigInt(0) };
+    } else if (key === 't5Kills') {
+      payload = { ...payload, t5Kills: BigInt(0) };
+    } else {
+      payload = { ...payload, deads: BigInt(0) };
+    }
+    notes.push(`${key} reset to 0 (implausible digit length)`);
+  };
+
+  maybeClampOptionalDigits('t4Kills');
+  maybeClampOptionalDigits('t5Kills');
+  maybeClampOptionalDigits('deads');
+
+  const tierKills = payload.t4Kills + payload.t5Kills;
+  if (payload.killPoints > BigInt(0) && tierKills > payload.killPoints * BigInt(3)) {
+    payload = {
+      ...payload,
+      t4Kills: BigInt(0),
+      t5Kills: BigInt(0),
+    };
+    notes.push('t4/t5 reset to 0 (implausible vs kill points)');
+  }
+
+  if (payload.power > BigInt(0) && payload.deads > payload.power * BigInt(2)) {
+    payload = {
+      ...payload,
+      deads: BigInt(0),
+    };
+    notes.push('deads reset to 0 (implausible vs power)');
+  }
+
+  return { payload, notes };
+}
+
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -255,9 +351,41 @@ export async function PATCH(
     const rerunValues = applyRerunNormalized(parsedValues, body.rerun);
     const mergedValues = applyCorrections(rerunValues, body.corrected);
     let approvedPayload = toApprovedSnapshotPayload(mergedValues);
-    const targetEventId = extraction.scanJob.eventId;
+    approvedPayload = {
+      ...approvedPayload,
+      governorName: sanitizeApprovedGovernorName(approvedPayload.governorName),
+    };
+    const optionalCombatNormalization = normalizeOptionalCombatMetrics({
+      payload: approvedPayload,
+      values: mergedValues,
+    });
+    approvedPayload = optionalCombatNormalization.payload;
+    let targetEventId = extraction.scanJob.eventId;
+    let syncState: 'SYNCED' | 'PENDING_WEEK_LINK' = 'SYNCED';
+    let syncMessage: string | null = null;
 
     if (body.status === OcrExtractionStatus.APPROVED) {
+      if (!targetEventId) {
+        try {
+          await assertWeeklySchemaCapability();
+          const ensured = await ensureWeeklyEventForWorkspace(extraction.scanJob.workspaceId);
+          targetEventId = ensured.event.id;
+        } catch (error) {
+          if (
+            (error instanceof ApiHttpError && error.code === 'PRECONDITION_FAILED') ||
+            isWeeklySchemaCapabilityError(error)
+          ) {
+            syncState = 'PENDING_WEEK_LINK';
+            syncMessage =
+              'Approved, but weekly linkage is pending because the database schema is behind. Apply latest migrations, then run metric sync.';
+          } else {
+            syncState = 'PENDING_WEEK_LINK';
+            syncMessage =
+              'Approved, but weekly linkage is pending due to event resolution failure. Run metric sync after weekly events recover.';
+          }
+        }
+      }
+
       if (!/^\d{6,12}$/.test(approvedPayload.governorId)) {
         const matchedGovernor = await prisma.governor.findFirst({
           where: {
@@ -285,9 +413,70 @@ export async function PATCH(
           );
         }
       }
+
+      const normalizedApprovedName = normalizeGovernorAlias(approvedPayload.governorName);
+      if (normalizedApprovedName && normalizedApprovedName !== 'unknown') {
+        const governorById = await prisma.governor.findFirst({
+          where: {
+            workspaceId: extraction.scanJob.workspaceId,
+            governorId: approvedPayload.governorId,
+          },
+          select: { id: true },
+        });
+
+        if (!governorById) {
+          const sameNameCandidates = await prisma.governor.findMany({
+            where: {
+              workspaceId: extraction.scanJob.workspaceId,
+              name: {
+                equals: approvedPayload.governorName,
+                mode: 'insensitive',
+              },
+            },
+            select: {
+              governorId: true,
+              name: true,
+            },
+          });
+
+          const exactNormalizedMatches = sameNameCandidates.filter(
+            (entry) => normalizeGovernorAlias(entry.name) === normalizedApprovedName
+          );
+
+          if (
+            exactNormalizedMatches.length === 1 &&
+            /^\d{6,12}$/.test(exactNormalizedMatches[0].governorId)
+          ) {
+            approvedPayload = {
+              ...approvedPayload,
+              governorId: exactNormalizedMatches[0].governorId,
+            };
+          }
+        }
+      }
     }
 
-    const validation = body.validation ?? parseValidation(extraction.validation);
+    const persistedValidation = body.validation ?? parseValidation(extraction.validation);
+    const computedValidation = validateGovernorData({
+      governorId: approvedPayload.governorId,
+      name: approvedPayload.governorName,
+      power: approvedPayload.power.toString(),
+      killPoints: approvedPayload.killPoints.toString(),
+      t4Kills: approvedPayload.t4Kills.toString(),
+      t5Kills: approvedPayload.t5Kills.toString(),
+      deads: approvedPayload.deads.toString(),
+      confidences: {
+        governorId: mergedValues.governorId.confidence,
+        name: mergedValues.governorName.confidence,
+        power: mergedValues.power.confidence,
+        killPoints: mergedValues.killPoints.confidence,
+        t4Kills: mergedValues.t4Kills.confidence,
+        t5Kills: mergedValues.t5Kills.confidence,
+        deads: mergedValues.deads.confidence,
+      },
+    });
+    const validation = persistedValidation.length > 0 ? persistedValidation : computedValidation;
+    const profileMetricAssessment = assessProfileMetricSyncSafety(approvedPayload);
     const anomalies = detectSnapshotPayloadAnomalies({
       power: approvedPayload.power,
       killPoints: approvedPayload.killPoints,
@@ -339,6 +528,7 @@ export async function PATCH(
       extraction.fusionDecision == null
         ? undefined
         : (extraction.fusionDecision as unknown as Prisma.InputJsonValue);
+    let metricSyncSkippedReason: string | null = null;
 
     const result = await prisma.$transaction(async (tx) => {
       const updatedExtraction = await tx.ocrExtraction.update({
@@ -392,6 +582,7 @@ export async function PATCH(
       }
 
       let snapshotId: string | null = null;
+      let linkedEventId: string | null = null;
       if (body.status === OcrExtractionStatus.APPROVED) {
         const allianceDetection = splitGovernorNameAndAlliance({
           governorNameRaw: approvedPayload.governorName,
@@ -419,7 +610,44 @@ export async function PATCH(
           },
         });
 
-        if (targetEventId) {
+        let shouldSyncProfileMetrics = profileMetricAssessment.shouldSync;
+        let syncSkipReason = profileMetricAssessment.shouldSync
+          ? null
+          : `Profile metrics were not synced: ${profileMetricAssessment.reasons.join('; ')}`;
+
+        if (shouldSyncProfileMetrics) {
+          const approvedPeers = await tx.ocrExtraction.findMany({
+            where: {
+              scanJobId: extraction.scanJobId,
+              status: OcrExtractionStatus.APPROVED,
+              id: { not: extraction.id },
+            },
+            select: {
+              normalized: true,
+            },
+            take: 80,
+          });
+
+          const currentPowerDigits = approvedPayload.power.toString();
+          const currentKillPointsDigits = approvedPayload.killPoints.toString();
+          let samePairCount = 0;
+          for (const peer of approvedPeers) {
+            const peerPower = extractNormalizedNumericField(peer.normalized, 'power');
+            const peerKillPoints = extractNormalizedNumericField(peer.normalized, 'killPoints');
+            if (peerPower === currentPowerDigits && peerKillPoints === currentKillPointsDigits) {
+              samePairCount += 1;
+            }
+          }
+
+          if (samePairCount >= 2 && approvedPayload.power <= BigInt(0)) {
+            shouldSyncProfileMetrics = false;
+            syncSkipReason =
+              'Profile metrics were not synced: repeated identical power/kill points were detected across this upload batch.';
+          }
+        }
+
+        if (targetEventId && shouldSyncProfileMetrics) {
+          linkedEventId = targetEventId;
           if (extraction.scanJob.eventId !== targetEventId) {
             await tx.scanJob.update({
               where: { id: extraction.scanJobId },
@@ -427,99 +655,23 @@ export async function PATCH(
             });
           }
 
-          const previous = await tx.snapshot.findUnique({
-            where: {
-              eventId_governorId: {
-                eventId: targetEventId,
-                governorId: governor.id,
-              },
-            },
-            select: {
-              id: true,
-              power: true,
-              killPoints: true,
-              t4Kills: true,
-              t5Kills: true,
-              deads: true,
-              verified: true,
-              ocrConfidence: true,
-            },
-          });
-
-          const snapshot = await tx.snapshot.upsert({
-            where: {
-              eventId_governorId: {
-                eventId: targetEventId,
-                governorId: governor.id,
-              },
-            },
-            update: {
-              power: approvedPayload.power,
-              killPoints: approvedPayload.killPoints,
-              t4Kills: approvedPayload.t4Kills,
-              t5Kills: approvedPayload.t5Kills,
-              deads: approvedPayload.deads,
-              workspaceId: extraction.scanJob.workspaceId,
-              verified: true,
-              ocrConfidence:
-                extraction.confidence <= 1 ? extraction.confidence * 100 : extraction.confidence,
-            },
-            create: {
-              eventId: targetEventId,
-              governorId: governor.id,
-              workspaceId: extraction.scanJob.workspaceId,
-              power: approvedPayload.power,
-              killPoints: approvedPayload.killPoints,
-              t4Kills: approvedPayload.t4Kills,
-              t5Kills: approvedPayload.t5Kills,
-              deads: approvedPayload.deads,
-              verified: true,
-              ocrConfidence:
-                extraction.confidence <= 1 ? extraction.confidence * 100 : extraction.confidence,
-            },
-            select: {
-              id: true,
-              power: true,
-              killPoints: true,
-              t4Kills: true,
-              t5Kills: true,
-              deads: true,
-            },
+          const confidencePct =
+            extraction.confidence <= 1 ? extraction.confidence * 100 : extraction.confidence;
+          const { snapshot } = await upsertProfileSnapshotForEventTx(tx, {
+            workspaceId: extraction.scanJob.workspaceId,
+            eventId: targetEventId,
+            governorId: governor.id,
+            power: approvedPayload.power,
+            killPoints: approvedPayload.killPoints,
+            t4Kills: approvedPayload.t4Kills,
+            t5Kills: approvedPayload.t5Kills,
+            deads: approvedPayload.deads,
+            confidencePct,
+            changedByLinkId: auth.link.id,
+            reason: body.reason || 'Manual OCR review approval',
           });
 
           snapshotId = snapshot.id;
-
-          if (previous) {
-            await tx.snapshotRevision.create({
-              data: {
-                workspaceId: extraction.scanJob.workspaceId,
-                snapshotId: previous.id,
-                changedByLinkId: auth.link.id,
-                reason: body.reason || 'Manual OCR review approval',
-                previousData: {
-                  power: previous.power.toString(),
-                  killPoints: previous.killPoints.toString(),
-                  t4Kills: previous.t4Kills.toString(),
-                  t5Kills: previous.t5Kills.toString(),
-                  deads: previous.deads.toString(),
-                  verified: previous.verified,
-                  ocrConfidence: previous.ocrConfidence,
-                },
-                nextData: {
-                  power: snapshot.power.toString(),
-                  killPoints: snapshot.killPoints.toString(),
-                  t4Kills: snapshot.t4Kills.toString(),
-                  t5Kills: snapshot.t5Kills.toString(),
-                  deads: snapshot.deads.toString(),
-                  verified: true,
-                  ocrConfidence:
-                    extraction.confidence <= 1
-                      ? extraction.confidence * 100
-                      : extraction.confidence,
-                },
-              },
-            });
-          }
 
           if (anomalies.length > 0) {
             await tx.anomaly.createMany({
@@ -542,118 +694,57 @@ export async function PATCH(
             });
           }
 
-          // Keep ranking board in sync with approved profile reviews so players
-          // appear in canonical rankings immediately after approval.
-          const governorNameNormalized = normalizeGovernorAlias(approvedGovernorName);
-          const identityKey = computeCanonicalIdentityKey({
+          await recordMetricObservationTx(tx, {
+            workspaceId: extraction.scanJob.workspaceId,
+            eventId: targetEventId,
             governorId: governor.id,
-            governorNameNormalized,
-          });
-
-          const previousRankingSnapshot = await tx.rankingSnapshot.findUnique({
-            where: {
-              workspaceId_eventId_rankingType_identityKey: {
-                workspaceId: extraction.scanJob.workspaceId,
-                eventId: targetEventId,
-                rankingType: PROFILE_POWER_RANKING_TYPE,
-                identityKey,
-              },
-            },
-            select: {
-              id: true,
-              rankingType: true,
-              metricKey: true,
-              identityKey: true,
-              governorId: true,
-              governorNameRaw: true,
-              governorNameNormalized: true,
-              sourceRank: true,
-              metricValue: true,
-              status: true,
-              lastRunId: true,
-              lastRowId: true,
-            },
-          });
-
-          const nextRankingData = {
-            rankingType: PROFILE_POWER_RANKING_TYPE,
-            metricKey: PROFILE_POWER_METRIC_KEY,
-            identityKey,
-            governorId: governor.id,
-            governorNameRaw: approvedGovernorName,
-            governorNameNormalized,
+            metricKey: METRIC_KEY_POWER,
+            metricValue: approvedPayload.power,
+            sourceType: MetricObservationSourceType.PROFILE,
             sourceRank: null,
-            metricValue: approvedPayload.power.toString(),
-            status: RankingSnapshotStatus.ACTIVE,
-            lastRunId: null,
-            lastRowId: null,
-          };
-
-          const rankingSnapshot = await tx.rankingSnapshot.upsert({
-            where: {
-              workspaceId_eventId_rankingType_identityKey: {
-                workspaceId: extraction.scanJob.workspaceId,
-                eventId: targetEventId,
-                rankingType: PROFILE_POWER_RANKING_TYPE,
-                identityKey,
-              },
-            },
-            create: {
-              workspaceId: extraction.scanJob.workspaceId,
-              eventId: targetEventId,
-              rankingType: PROFILE_POWER_RANKING_TYPE,
-              metricKey: PROFILE_POWER_METRIC_KEY,
-              identityKey,
-              governorId: governor.id,
-              governorNameRaw: approvedGovernorName,
-              governorNameNormalized,
-              sourceRank: null,
-              metricValue: approvedPayload.power,
-              status: RankingSnapshotStatus.ACTIVE,
-              lastRunId: null,
-              lastRowId: null,
-            },
-            update: {
-              metricKey: PROFILE_POWER_METRIC_KEY,
-              governorId: governor.id,
-              governorNameRaw: approvedGovernorName,
-              governorNameNormalized,
-              sourceRank: null,
-              metricValue: approvedPayload.power,
-              status: RankingSnapshotStatus.ACTIVE,
-              lastRunId: null,
-              lastRowId: null,
-            },
-            select: {
-              id: true,
-            },
+            sourceRefId: extraction.id,
+            observedAt: new Date(),
+            changedByLinkId: auth.link.id,
+            reason: body.reason || 'Profile review approval sync (power)',
+            governorNameRaw: approvedGovernorName,
           });
 
-          await tx.rankingRevision.create({
-            data: {
-              workspaceId: extraction.scanJob.workspaceId,
-              snapshotId: rankingSnapshot.id,
-              changedByLinkId: auth.link.id,
-              action: RankingRowReviewAction.SYSTEM_MERGE,
-              reason: body.reason || 'Profile review approval sync',
-              previousData: previousRankingSnapshot
-                ? {
-                    rankingType: previousRankingSnapshot.rankingType,
-                    metricKey: previousRankingSnapshot.metricKey,
-                    identityKey: previousRankingSnapshot.identityKey,
-                    governorId: previousRankingSnapshot.governorId,
-                    governorNameRaw: previousRankingSnapshot.governorNameRaw,
-                    governorNameNormalized: previousRankingSnapshot.governorNameNormalized,
-                    sourceRank: previousRankingSnapshot.sourceRank,
-                    metricValue: previousRankingSnapshot.metricValue.toString(),
-                    status: previousRankingSnapshot.status,
-                    lastRunId: previousRankingSnapshot.lastRunId,
-                    lastRowId: previousRankingSnapshot.lastRowId,
-                  }
-                : undefined,
-              nextData: nextRankingData,
+          await recordMetricObservationTx(tx, {
+            workspaceId: extraction.scanJob.workspaceId,
+            eventId: targetEventId,
+            governorId: governor.id,
+            metricKey: METRIC_KEY_KILL_POINTS,
+            metricValue: approvedPayload.killPoints,
+            sourceType: MetricObservationSourceType.PROFILE,
+            sourceRank: null,
+            sourceRefId: extraction.id,
+            observedAt: new Date(),
+            changedByLinkId: auth.link.id,
+            reason: body.reason || 'Profile review approval sync (kill points)',
+            governorNameRaw: approvedGovernorName,
+          });
+        } else if (!targetEventId && shouldSyncProfileMetrics) {
+          await enqueueMetricSyncBacklogTx(tx, {
+            workspaceId: extraction.scanJob.workspaceId,
+            scanJobId: extraction.scanJobId,
+            extractionId: extraction.id,
+            governorId: governor.id,
+            governorGameId: approvedPayload.governorId,
+            governorNameRaw: approvedGovernorName,
+            power: approvedPayload.power,
+            killPoints: approvedPayload.killPoints,
+            t4Kills: approvedPayload.t4Kills,
+            t5Kills: approvedPayload.t5Kills,
+            deads: approvedPayload.deads,
+            sourceRefId: extraction.id,
+            observedAt: new Date(),
+            metadata: {
+              reason: body.reason || null,
+              source: 'review-queue-approval',
             },
           });
+        } else if (syncSkipReason) {
+          metricSyncSkippedReason = syncSkipReason;
         }
       }
 
@@ -679,10 +770,20 @@ export async function PATCH(
       return {
         extraction: updatedExtraction,
         snapshotId,
+        linkedEventId,
+        metricSyncSkippedReason,
         anomalyCount: anomalies.length,
         correctionCount: correctionEntries.length,
       };
     });
+
+    if (!syncMessage && result.metricSyncSkippedReason) {
+      syncMessage = result.metricSyncSkippedReason;
+    }
+    if (optionalCombatNormalization.notes.length > 0) {
+      const normalizationNote = `Sanitized optional combat metrics: ${optionalCombatNormalization.notes.join('; ')}.`;
+      syncMessage = syncMessage ? `${syncMessage} ${normalizationNote}` : normalizationNote;
+    }
 
     invalidateServerCacheTags([
       ...Object.values(workspaceCacheTags(extraction.scanJob.workspaceId)),
@@ -694,10 +795,13 @@ export async function PATCH(
       status: result.extraction.status,
       scanJobId: result.extraction.scanJobId,
       snapshotId: result.snapshotId,
+      linkedEventId: result.linkedEventId,
       anomalyCount: result.anomalyCount,
       correctionCount: result.correctionCount,
-      eventLinked: Boolean(targetEventId),
-      warning: null,
+      syncState,
+      eventLinked: Boolean(result.linkedEventId),
+      syncMessage,
+      warning: syncMessage,
       updatedAt: new Date().toISOString(),
     });
   } catch (error) {

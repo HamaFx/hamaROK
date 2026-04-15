@@ -1,5 +1,6 @@
 import {
   IngestionDomain,
+  MetricObservationSourceType,
   Prisma,
   RankingIdentityStatus,
   RankingRowReviewAction,
@@ -36,6 +37,12 @@ import {
   decodeRankingCursor,
   encodeRankingCursor,
 } from './sorting';
+import {
+  METRIC_KEY_KILL_POINTS,
+  METRIC_KEY_POWER,
+  RANKING_TYPE_POWER,
+  recordMetricObservationTx,
+} from '@/lib/metric-sync';
 
 export interface RankingRowInput {
   sourceRank?: number | null;
@@ -348,6 +355,37 @@ async function mergeRankingRowToCanonicalTx(
       revisionId: null,
       reason: 'missing-event',
     };
+  }
+
+  const normalizedMetricKey = normalizeMetricKey(args.run.metricKey);
+  if (args.row.governorId) {
+    const observationSync = await recordMetricObservationTx(tx, {
+      workspaceId: args.run.workspaceId,
+      eventId: args.run.eventId,
+      governorId: args.row.governorId,
+      metricKey: normalizedMetricKey,
+      metricValue: args.row.metricValue,
+      sourceType: MetricObservationSourceType.RANKBOARD,
+      sourceRank: args.row.sourceRank,
+      sourceRefId: args.row.id,
+      observedAt: args.row.updatedAt,
+      changedByLinkId: args.changedByLinkId || null,
+      reason: args.reason || 'Ranking row observation sync',
+      governorNameRaw: args.row.governorNameRaw,
+    });
+
+    if (
+      normalizedMetricKey === METRIC_KEY_POWER ||
+      normalizedMetricKey === METRIC_KEY_KILL_POINTS
+    ) {
+      return {
+        applied:
+          observationSync.observation.applied || observationSync.canonicalSync.applied,
+        snapshotId: observationSync.canonicalSync.snapshotId,
+        revisionId: observationSync.canonicalSync.revisionId,
+        reason: `${observationSync.observation.reason}:${observationSync.canonicalSync.reason}`,
+      };
+    }
   }
 
   const identityKey = computeCanonicalIdentityKey({
@@ -1694,11 +1732,27 @@ export async function listCanonicalRankings(args: ListCanonicalRankingsInput) {
   const searchDigits = searchRaw ? searchRaw.replace(/[^0-9]/g, '') : '';
 
   const allianceFilters = resolveAllianceQueryFilters(args.alliances || []);
+  const normalizedRankingType = args.rankingType
+    ? normalizeRankingType(args.rankingType)
+    : null;
+  const legacyProfilePowerRankingType = normalizeRankingType('governor_profile_power');
+  const rankingTypeFilters = normalizedRankingType
+    ? normalizedRankingType === RANKING_TYPE_POWER
+      ? [RANKING_TYPE_POWER, legacyProfilePowerRankingType]
+      : [normalizedRankingType]
+    : null;
 
   const where: Prisma.RankingSnapshotWhereInput = {
     workspaceId: args.workspaceId,
     ...(args.eventId ? { eventId: args.eventId } : {}),
-    ...(args.rankingType ? { rankingType: normalizeRankingType(args.rankingType) } : {}),
+    ...(rankingTypeFilters
+      ? {
+          rankingType:
+            rankingTypeFilters.length === 1
+              ? rankingTypeFilters[0]
+              : { in: rankingTypeFilters },
+        }
+      : {}),
     ...(args.metricKey ? { metricKey: normalizeMetricKey(args.metricKey) } : {}),
     ...(allianceFilters.length > 0
       ? {
@@ -1750,39 +1804,76 @@ export async function listCanonicalRankings(args: ListCanonicalRankingsInput) {
       : {}),
   };
 
-  const [rows, total] = await Promise.all([
-    prisma.rankingSnapshot.findMany({
-      where,
-      select: {
-        id: true,
-        workspaceId: true,
-        eventId: true,
-        rankingType: true,
-        metricKey: true,
-        identityKey: true,
-        governorId: true,
-        governorNameRaw: true,
-        governorNameNormalized: true,
-        sourceRank: true,
-        metricValue: true,
-        status: true,
-        updatedAt: true,
-        createdAt: true,
-        lastRunId: true,
-        lastRowId: true,
-        lastRow: {
-          select: {
-            allianceRaw: true,
-            titleRaw: true,
-          },
+  const rows = await prisma.rankingSnapshot.findMany({
+    where,
+    select: {
+      id: true,
+      workspaceId: true,
+      eventId: true,
+      rankingType: true,
+      metricKey: true,
+      identityKey: true,
+      governorId: true,
+      governorNameRaw: true,
+      governorNameNormalized: true,
+      sourceRank: true,
+      metricValue: true,
+      status: true,
+      updatedAt: true,
+      createdAt: true,
+      lastRunId: true,
+      lastRowId: true,
+      lastRow: {
+        select: {
+          allianceRaw: true,
+          titleRaw: true,
         },
       },
-      take: 5000,
-    }),
-    prisma.rankingSnapshot.count({ where }),
-  ]);
+    },
+    take: 5000,
+  });
 
-  const sorted = [...rows].sort((a, b) =>
+  const rowsForRanking =
+    rankingTypeFilters &&
+    rankingTypeFilters.length > 1 &&
+    rankingTypeFilters.includes(RANKING_TYPE_POWER) &&
+    rankingTypeFilters.includes(legacyProfilePowerRankingType)
+      ? (() => {
+          const byIdentity = new Map<string, (typeof rows)[number]>();
+          for (const row of rows) {
+            const key = `${row.workspaceId}:${row.eventId}:${row.metricKey}:${row.identityKey}`;
+            const existing = byIdentity.get(key);
+            if (!existing) {
+              byIdentity.set(key, row);
+              continue;
+            }
+
+            const rowPriority = row.rankingType === RANKING_TYPE_POWER ? 2 : 1;
+            const existingPriority = existing.rankingType === RANKING_TYPE_POWER ? 2 : 1;
+            if (rowPriority !== existingPriority) {
+              if (rowPriority > existingPriority) byIdentity.set(key, row);
+              continue;
+            }
+
+            if (row.updatedAt.getTime() !== existing.updatedAt.getTime()) {
+              if (row.updatedAt.getTime() > existing.updatedAt.getTime()) {
+                byIdentity.set(key, row);
+              }
+              continue;
+            }
+
+            if (row.metricValue !== existing.metricValue) {
+              if (row.metricValue > existing.metricValue) byIdentity.set(key, row);
+              continue;
+            }
+
+            if (row.id > existing.id) byIdentity.set(key, row);
+          }
+          return [...byIdentity.values()];
+        })()
+      : rows;
+
+  const sorted = [...rowsForRanking].sort((a, b) =>
     compareRankingRows(
       {
         rowId: a.id,
@@ -1845,7 +1936,7 @@ export async function listCanonicalRankings(args: ListCanonicalRankingsInput) {
   const governorById = new Map(governors.map((governor) => [governor.id, governor]));
 
   return {
-    total,
+    total: ranked.length,
     nextCursor,
     rows: page.map((entry) => ({
       id: entry.item.row.id,

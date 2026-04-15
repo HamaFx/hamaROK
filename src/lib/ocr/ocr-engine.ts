@@ -379,14 +379,18 @@ async function detectScreenshotArchetype(
     });
     const { data } = await w.recognize(processed.canvas);
     const text = String(data.text || '').toUpperCase().replace(/\s+/g, ' ').trim();
+    const compact = text.replace(/\s+/g, '');
     if (text.includes('GOVERNOR PROFILE') || text.includes('PROFILE')) {
       return 'governor-profile';
     }
     if (
       text.includes('RANKINGS') ||
       text.includes('MAD SCIENTIST') ||
+      compact.includes('MADSCIENTIST') ||
       text.includes('FORT DESTROYER') ||
+      compact.includes('FORTDESTROYER') ||
       text.includes('INDIVIDUAL POWER') ||
+      compact.includes('INDIVIDUALPOWER') ||
       text.includes('KILL POINT')
     ) {
       return 'rankboard';
@@ -399,12 +403,17 @@ async function detectScreenshotArchetype(
 
 const RANKING_TYPE_HEADER_MAP: Record<string, string> = {
   'individual power': 'individual_power',
+  'individualpower': 'individual_power',
   'mad scientist': 'mad_scientist',
+  'madscientist': 'mad_scientist',
   'fort destroyer': 'fort_destroyer',
+  'fortdestroyer': 'fort_destroyer',
   'fort destroy': 'fort_destroyer',
   'governor profile': 'governor_profile_power',
   'kill point': 'kill_point',
+  'killpoint': 'kill_point',
   'kill points': 'kill_point',
+  'killpoints': 'kill_point',
 };
 
 export function normalizeRankingTypeLabel(value: string): string {

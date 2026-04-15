@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import React from 'react';
+import Image from 'next/image';
 import {
   AlertTriangle,
   CheckCircle2,
@@ -85,6 +86,9 @@ interface QueueItem {
     url: string;
     type: string;
   } | null;
+  syncState?: 'SYNCED' | 'PENDING_WEEK_LINK' | null;
+  linkedEventId?: string | null;
+  syncMessage?: string | null;
   createdAt: string;
 }
 
@@ -101,6 +105,9 @@ interface RankingQueueSummary {
 interface ReviewUpdateResult {
   warning?: string | null;
   eventLinked?: boolean;
+  syncState?: 'SYNCED' | 'PENDING_WEEK_LINK' | null;
+  linkedEventId?: string | null;
+  syncMessage?: string | null;
 }
 
 const defaultDraft = {
@@ -151,6 +158,21 @@ function formatFieldConfidence(value?: number) {
   if (typeof value !== 'number') return '0%';
   const normalized = value <= 1 ? value * 100 : value;
   return `${Math.round(normalized)}%`;
+}
+
+function buildCorrectedPayload(
+  draft: typeof defaultDraft
+): Partial<typeof defaultDraft> | undefined {
+  const corrected: Partial<typeof defaultDraft> = {};
+
+  for (const field of FIELD_ORDER) {
+    const raw = String(draft[field] ?? '');
+    const trimmed = raw.trim();
+    if (!trimmed) continue;
+    corrected[field] = trimmed;
+  }
+
+  return Object.keys(corrected).length > 0 ? corrected : undefined;
 }
 
 export default function ReviewQueuePage() {
@@ -340,6 +362,7 @@ export default function ReviewQueuePage() {
     async (id: string, status: ExtractionStatus): Promise<ReviewUpdateResult> => {
       if (!workspaceId || !accessToken) return {};
       const draft = drafts[id] || defaultDraft;
+      const corrected = buildCorrectedPayload(draft);
       const res = await fetch(`/api/v2/review-queue/${id}`, {
         method: 'PATCH',
         headers: {
@@ -348,7 +371,7 @@ export default function ReviewQueuePage() {
         },
         body: JSON.stringify({
           status,
-          corrected: draft,
+          corrected,
           rerun: rerunPayloadByItem[id] || undefined,
           reason:
             status === 'APPROVED'
@@ -455,7 +478,9 @@ export default function ReviewQueuePage() {
     try {
       const result = await requestReviewUpdate(id, status);
       await loadQueue();
-      if (result?.warning) {
+      if (result?.syncMessage) {
+        setActionNotice(result.syncMessage);
+      } else if (result?.warning) {
         setActionNotice(result.warning);
       }
     } catch (err) {
@@ -486,7 +511,7 @@ export default function ReviewQueuePage() {
       for (const item of items) {
         try {
           const result = await requestReviewUpdate(item.id, status);
-          if (result?.warning) warningCount += 1;
+          if (result?.syncState === 'PENDING_WEEK_LINK' || result?.warning) warningCount += 1;
           successCount += 1;
         } catch (err) {
           const message = err instanceof Error ? err.message : 'Unknown error';
@@ -504,7 +529,7 @@ export default function ReviewQueuePage() {
       } else {
         const warningNote =
           warningCount > 0
-            ? ` ${warningCount} row${warningCount === 1 ? '' : 's'} approved without weekly-event linking.`
+            ? ` ${warningCount} row${warningCount === 1 ? '' : 's'} pending week-link sync.`
             : '';
         setActionNotice(`Bulk ${verb} completed for ${successCount} row${successCount === 1 ? '' : 's'}.${warningNote}`);
       }
@@ -689,13 +714,23 @@ export default function ReviewQueuePage() {
                         <StatusPill label="Governor Profile" tone="info" />
                         <StatusPill label={item.severity.level} tone={statusTone(item.severity.level)} />
                         <StatusPill label={item.status} tone="info" />
+                        {item.syncState === 'SYNCED' ? (
+                          <StatusPill label="Synced" tone="good" />
+                        ) : null}
+                        {item.syncState === 'PENDING_WEEK_LINK' ? (
+                          <StatusPill label="Pending Week Link" tone="warn" />
+                        ) : null}
                         {item.lowConfidence ? <StatusPill label="Low Confidence" tone="warn" /> : null}
                       </div>
                       <div className="text-sm text-muted mt-4">
                         ID {item.values.governorId.value || '—'} • {item.engineVersion || item.provider} •{' '}
                         {new Date(item.createdAt).toLocaleString()} • Overall {formatFieldConfidence(item.confidence)}
                         {item.scanSource ? ` • ${item.scanSource}` : ''}
+                        {item.linkedEventId ? ` • Event ${item.linkedEventId.slice(0, 8)}` : ''}
                       </div>
+                      {item.syncState === 'PENDING_WEEK_LINK' && item.syncMessage ? (
+                        <div className="text-sm text-muted mt-4">{item.syncMessage}</div>
+                      ) : null}
                     </div>
                   </header>
 
@@ -706,12 +741,15 @@ export default function ReviewQueuePage() {
                         Open screenshot
                       </a>
                       <div className="mt-8">
-                        <img
+                        <Image
                           src={item.artifact.url}
                           alt={`Profile screenshot for ${item.values.governorName.value || 'governor'}`}
-                          loading="lazy"
+                          width={920}
+                          height={520}
+                          unoptimized
                           style={{
                             width: '100%',
+                            height: 'auto',
                             maxWidth: 460,
                             borderRadius: 10,
                             border: '1px solid var(--line-soft)',

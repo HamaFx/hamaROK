@@ -14,6 +14,7 @@ import {
   deriveOverallComplianceStatus,
   WeeklyMetricComplianceStatus,
 } from '@/lib/activity/scoring';
+import { countPendingMetricSyncBacklog } from '@/lib/metric-sync';
 
 const METRIC_KEY_POWER = normalizeMetricKey('power');
 const METRIC_KEY_CONTRIBUTION = normalizeMetricKey('contribution_points');
@@ -298,6 +299,8 @@ export async function getWeeklyActivityReport(args: {
   const govIdFilter = governorIds.length > 0 ? governorIds : ['__none__'];
 
   const [
+    currentObservationRows,
+    previousObservationRows,
     currentContributionRows,
     currentFortRows,
     currentKpRankingRows,
@@ -309,7 +312,52 @@ export async function getWeeklyActivityReport(args: {
     currentSnapshotKp,
     previousSnapshotKp,
     unresolvedIdentityCount,
+    pendingSyncCount,
   ] = await Promise.all([
+    prisma.metricObservation.findMany({
+      where: {
+        workspaceId: args.workspaceId,
+        eventId: event.id,
+        metricKey: {
+          in: [
+            METRIC_KEY_CONTRIBUTION,
+            METRIC_KEY_FORT_DESTROYING,
+            METRIC_KEY_POWER,
+            METRIC_KEY_KILL_POINTS,
+          ],
+        },
+        governorId: { in: govIdFilter },
+      },
+      select: {
+        governorId: true,
+        metricKey: true,
+        metricValue: true,
+        observedAt: true,
+      },
+    }),
+    previousEvent
+      ? prisma.metricObservation.findMany({
+          where: {
+            workspaceId: args.workspaceId,
+            eventId: previousEvent.id,
+            metricKey: {
+              in: [
+                METRIC_KEY_CONTRIBUTION,
+                METRIC_KEY_FORT_DESTROYING,
+                METRIC_KEY_POWER,
+                METRIC_KEY_KILL_POINTS,
+              ],
+            },
+            governorId: { in: govIdFilter },
+          },
+          select: {
+            governorId: true,
+            metricKey: true,
+            metricValue: true,
+            observedAt: true,
+          },
+        })
+      : Promise.resolve([]),
     // Contribution points (weekly reset — raw value from ranking board)
     prisma.rankingSnapshot.findMany({
       where: {
@@ -428,6 +476,7 @@ export async function getWeeklyActivityReport(args: {
         status: RankingSnapshotStatus.UNRESOLVED,
       },
     }),
+    countPendingMetricSyncBacklog({ workspaceId: args.workspaceId }),
   ]);
 
   const standardsByAllianceMetric = new Map<string, bigint>();
@@ -440,6 +489,13 @@ export async function getWeeklyActivityReport(args: {
 
   // --- Contribution (weekly reset: highest value wins) ---
   const contributionByGovernor = new Map<string, bigint>();
+  for (const row of currentObservationRows) {
+    if (row.metricKey !== METRIC_KEY_CONTRIBUTION) continue;
+    const existing = contributionByGovernor.get(row.governorId);
+    if (!existing || row.metricValue > existing) {
+      contributionByGovernor.set(row.governorId, row.metricValue);
+    }
+  }
   for (const row of currentContributionRows) {
     if (!row.governorId) continue;
     const existing = contributionByGovernor.get(row.governorId);
@@ -450,6 +506,13 @@ export async function getWeeklyActivityReport(args: {
 
   // --- Fort destroying (weekly reset: highest value wins) ---
   const fortByGovernor = new Map<string, bigint>();
+  for (const row of currentObservationRows) {
+    if (row.metricKey !== METRIC_KEY_FORT_DESTROYING) continue;
+    const existing = fortByGovernor.get(row.governorId);
+    if (!existing || row.metricValue > existing) {
+      fortByGovernor.set(row.governorId, row.metricValue);
+    }
+  }
   for (const row of currentFortRows) {
     if (!row.governorId) continue;
     const existing = fortByGovernor.get(row.governorId);
@@ -460,6 +523,13 @@ export async function getWeeklyActivityReport(args: {
 
   // --- Kill points (progressive: delta between weeks) ---
   const currentKpByGovernor = new Map<string, bigint>();
+  for (const row of currentObservationRows) {
+    if (row.metricKey !== METRIC_KEY_KILL_POINTS) continue;
+    const existing = currentKpByGovernor.get(row.governorId);
+    if (!existing || row.metricValue > existing) {
+      currentKpByGovernor.set(row.governorId, row.metricValue);
+    }
+  }
   for (const row of currentKpRankingRows) {
     if (!row.governorId) continue;
     const existing = currentKpByGovernor.get(row.governorId);
@@ -475,6 +545,13 @@ export async function getWeeklyActivityReport(args: {
   }
 
   const previousKpByGovernor = new Map<string, bigint>();
+  for (const row of previousObservationRows) {
+    if (row.metricKey !== METRIC_KEY_KILL_POINTS) continue;
+    const existing = previousKpByGovernor.get(row.governorId);
+    if (!existing || row.metricValue > existing) {
+      previousKpByGovernor.set(row.governorId, row.metricValue);
+    }
+  }
   for (const row of previousKpRankingRows) {
     if (!row.governorId) continue;
     const existing = previousKpByGovernor.get(row.governorId);
@@ -490,6 +567,13 @@ export async function getWeeklyActivityReport(args: {
 
   // --- Power (progressive: delta between weeks) ---
   const currentPowerByGovernor = new Map<string, bigint>();
+  for (const row of currentObservationRows) {
+    if (row.metricKey !== METRIC_KEY_POWER) continue;
+    const existing = currentPowerByGovernor.get(row.governorId);
+    if (!existing || row.metricValue > existing) {
+      currentPowerByGovernor.set(row.governorId, row.metricValue);
+    }
+  }
   const currentPowerCandidates = new Map<
     string,
     Array<{ metricValue: bigint; rankingType: string; updatedAt: Date }>
@@ -511,6 +595,13 @@ export async function getWeeklyActivityReport(args: {
   }
 
   const previousPowerByGovernor = new Map<string, bigint>();
+  for (const row of previousObservationRows) {
+    if (row.metricKey !== METRIC_KEY_POWER) continue;
+    const existing = previousPowerByGovernor.get(row.governorId);
+    if (!existing || row.metricValue > existing) {
+      previousPowerByGovernor.set(row.governorId, row.metricValue);
+    }
+  }
   const previousPowerCandidates = new Map<
     string,
     Array<{ metricValue: bigint; rankingType: string; updatedAt: Date }>
@@ -687,6 +778,7 @@ export async function getWeeklyActivityReport(args: {
       noPowerBaselineCount: rows.filter((row) => !row.powerBaselineReady).length,
       noKillPointsBaselineCount: rows.filter((row) => !row.killPointsBaselineReady).length,
       unresolvedIdentityCount,
+      pendingSyncCount,
       allianceSummary,
       topContribution: rows.slice(0, 5),
       topPowerGrowth: [...rows]
