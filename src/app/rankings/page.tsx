@@ -1,7 +1,20 @@
 'use client';
 
+import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, ArrowRight, Crown, Filter, Search } from 'lucide-react';
+import {
+  ArrowLeft,
+  ArrowRight,
+  Crown,
+  Download,
+  Filter,
+  LayoutGrid,
+  Save,
+  Search,
+  Sparkles,
+  Table2,
+  Trash2,
+} from 'lucide-react';
 import { useWorkspaceSession } from '@/lib/workspace-session';
 import { splitGovernorNameAndAlliance } from '@/lib/alliances';
 import {
@@ -15,6 +28,8 @@ import {
 } from '@/components/ui/primitives';
 
 type RankingStatus = 'ACTIVE' | 'UNRESOLVED' | 'REJECTED';
+type RankingsViewMode = 'auto' | 'table' | 'cards';
+type MetricVisualMode = 'numeric' | 'bars';
 
 interface CanonicalRow {
   id: string;
@@ -51,6 +66,8 @@ interface DisplayRankingRow extends CanonicalRow {
   metricLabel: string;
   boardLabel: string;
   linkedGovernorId: string | null;
+  metricValueBigInt: bigint | null;
+  metricRatio: number;
 }
 
 interface WeeklyEventInfo {
@@ -92,6 +109,20 @@ interface WeeklyActivityResponse {
   summary: WeeklyActivitySummary;
 }
 
+interface RankingsFilterPreset {
+  id: string;
+  name: string;
+  search: string;
+  rankingTypeFilter: string;
+  metricFilter: string;
+  allianceFilter: string;
+  weekKey: string;
+  denseRows: boolean;
+  viewMode: RankingsViewMode;
+  metricVisualMode: MetricVisualMode;
+  createdAt: string;
+}
+
 function formatMetric(value: string) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed.toLocaleString() : value;
@@ -116,6 +147,50 @@ function statusTone(status: RankingStatus): 'good' | 'warn' | 'bad' {
 function allianceClass(tag: string | null) {
   if (!tag) return '';
   return `alliance-${tag.toLowerCase()}`;
+}
+
+function parseBigIntSafe(value: string | null | undefined): bigint | null {
+  if (!value) return null;
+  try {
+    const parsed = BigInt(value);
+    return parsed >= BigInt(0) ? parsed : BigInt(0);
+  } catch {
+    return null;
+  }
+}
+
+function formatRelativeDate(iso: string): string {
+  const now = Date.now();
+  const ts = new Date(iso).getTime();
+  if (!Number.isFinite(ts)) return 'unknown';
+  const deltaMs = Math.max(0, now - ts);
+  const hours = Math.floor(deltaMs / 3_600_000);
+  if (hours < 1) return 'just now';
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
+function csvValue(value: string | number | null | undefined): string {
+  const raw = value == null ? '' : String(value);
+  if (raw.includes(',') || raw.includes('"') || raw.includes('\n')) {
+    return `"${raw.replace(/"/g, '""')}"`;
+  }
+  return raw;
+}
+
+function downloadCsv(filename: string, lines: string[]) {
+  const blob = new Blob([`\uFEFF${lines.join('\n')}`], {
+    type: 'text/csv;charset=utf-8;',
+  });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
 }
 
 const RANKING_TYPE_FILTERS = [
@@ -164,8 +239,19 @@ export default function RankingsPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [denseRows, setDenseRows] = useState(false);
+  const [viewMode, setViewMode] = useState<RankingsViewMode>('auto');
+  const [metricVisualMode, setMetricVisualMode] = useState<MetricVisualMode>('numeric');
   const [sortHint, setSortHint] = useState(
     'metricValue DESC, sourceRank ASC NULLS LAST, normalizedName ASC, rowId ASC'
+  );
+  const [presets, setPresets] = useState<RankingsFilterPreset[]>([]);
+  const [selectedPresetId, setSelectedPresetId] = useState('');
+  const [presetName, setPresetName] = useState('');
+  const [uiNotice, setUiNotice] = useState<string | null>(null);
+
+  const presetStorageKey = useMemo(
+    () => `hama:rankings:presets:${workspaceId || 'unknown'}`,
+    [workspaceId]
   );
 
   const loadWeekOptions = useCallback(async () => {
@@ -187,9 +273,7 @@ export default function RankingsPage() {
 
       if (weekRows.length > 0) {
         setWeeks(weekRows);
-        const preferred =
-          weekRows.find((week) => week.weekKey === selectedWeekKey) ||
-          weekRows[0];
+        const preferred = weekRows.find((week) => week.weekKey === selectedWeekKey) || weekRows[0];
         setSelectedWeekKey(preferred.weekKey || '');
         setWeeklyEvent(preferred);
         return preferred.weekKey || null;
@@ -309,6 +393,12 @@ export default function RankingsPage() {
     ]
   );
 
+  const runSearch = useCallback(() => {
+    setCursorStack([null]);
+    setNextCursor(null);
+    void loadData(null, selectedWeekKey || null);
+  }, [loadData, selectedWeekKey]);
+
   const refresh = useCallback(() => {
     const run = async () => {
       setCursorStack([null]);
@@ -345,6 +435,27 @@ export default function RankingsPage() {
     loadData,
   ]);
 
+  useEffect(() => {
+    if (!workspaceReady) return;
+    try {
+      const raw = localStorage.getItem(presetStorageKey);
+      const parsed = raw ? (JSON.parse(raw) as RankingsFilterPreset[]) : [];
+      if (Array.isArray(parsed)) {
+        setPresets(parsed);
+      } else {
+        setPresets([]);
+      }
+    } catch {
+      setPresets([]);
+    }
+  }, [workspaceReady, presetStorageKey]);
+
+  useEffect(() => {
+    if (!uiNotice) return;
+    const timer = window.setTimeout(() => setUiNotice(null), 3200);
+    return () => window.clearTimeout(timer);
+  }, [uiNotice]);
+
   const currentWeekIndex = useMemo(
     () => weeks.findIndex((week) => week.weekKey === selectedWeekKey),
     [weeks, selectedWeekKey]
@@ -363,7 +474,7 @@ export default function RankingsPage() {
   const goNext = () => {
     if (!nextCursor) return;
     setCursorStack((prev) => [...prev, nextCursor]);
-    loadData(nextCursor);
+    void loadData(nextCursor);
   };
 
   const goBack = () => {
@@ -372,11 +483,11 @@ export default function RankingsPage() {
     next.pop();
     const previousCursor = next[next.length - 1] || null;
     setCursorStack(next);
-    loadData(previousCursor);
+    void loadData(previousCursor);
   };
 
   const displayRows = useMemo<DisplayRankingRow[]>(() => {
-    return rows.map((row) => {
+    const mapped = rows.map((row) => {
       const split = splitGovernorNameAndAlliance({
         governorNameRaw: row.governorNameRaw,
         allianceRaw: row.allianceRaw || row.titleRaw || undefined,
@@ -392,6 +503,22 @@ export default function RankingsPage() {
         metricLabel,
         boardLabel,
         linkedGovernorId: row.governor?.governorId || null,
+        metricValueBigInt: parseBigIntSafe(row.metricValue),
+        metricRatio: 0,
+      };
+    });
+
+    const maxMetric = mapped.reduce((max, row) => {
+      if (row.metricValueBigInt == null) return max;
+      return row.metricValueBigInt > max ? row.metricValueBigInt : max;
+    }, BigInt(0));
+
+    return mapped.map((row) => {
+      if (!row.metricValueBigInt || maxMetric <= BigInt(0)) return row;
+      const ratio = Number((row.metricValueBigInt * BigInt(10_000)) / maxMetric) / 100;
+      return {
+        ...row,
+        metricRatio: Math.max(0, Math.min(100, ratio)),
       };
     });
   }, [rows]);
@@ -401,6 +528,177 @@ export default function RankingsPage() {
     const base = activeRows.length >= 3 ? activeRows : displayRows;
     return base.slice(0, 3);
   }, [displayRows]);
+
+  const freshness = useMemo(() => {
+    if (displayRows.length === 0) return null;
+    const latest = displayRows.reduce((current, row) => {
+      const ts = new Date(row.updatedAt).getTime();
+      if (!Number.isFinite(ts)) return current;
+      return ts > current ? ts : current;
+    }, 0);
+
+    if (!latest) return null;
+
+    const hoursOld = Math.floor((Date.now() - latest) / 3_600_000);
+    if (hoursOld <= 24) {
+      return {
+        tone: 'good' as const,
+        label: `Fresh ${formatRelativeDate(new Date(latest).toISOString())}`,
+      };
+    }
+    if (hoursOld <= 72) {
+      return {
+        tone: 'warn' as const,
+        label: `Aging ${formatRelativeDate(new Date(latest).toISOString())}`,
+      };
+    }
+    return {
+      tone: 'bad' as const,
+      label: `Outdated ${formatRelativeDate(new Date(latest).toISOString())}`,
+    };
+  }, [displayRows]);
+
+  const latestWeekKey = weeks[0]?.weekKey || '';
+  const isHistoricalWeek = Boolean(selectedWeekKey && latestWeekKey && selectedWeekKey !== latestWeekKey);
+
+  const savePreset = useCallback(() => {
+    if (!workspaceReady) return;
+    const name = presetName.trim() || `Preset ${presets.length + 1}`;
+    const id =
+      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.round(Math.random() * 1000)}`;
+
+    const nextPreset: RankingsFilterPreset = {
+      id,
+      name,
+      search,
+      rankingTypeFilter,
+      metricFilter,
+      allianceFilter,
+      weekKey: selectedWeekKey,
+      denseRows,
+      viewMode,
+      metricVisualMode,
+      createdAt: new Date().toISOString(),
+    };
+
+    const trimmed = [nextPreset, ...presets].slice(0, 20);
+    setPresets(trimmed);
+    setSelectedPresetId(id);
+    setPresetName('');
+    localStorage.setItem(presetStorageKey, JSON.stringify(trimmed));
+    setUiNotice(`Saved preset: ${name}`);
+  }, [
+    workspaceReady,
+    presetName,
+    presets,
+    search,
+    rankingTypeFilter,
+    metricFilter,
+    allianceFilter,
+    selectedWeekKey,
+    denseRows,
+    viewMode,
+    metricVisualMode,
+    presetStorageKey,
+  ]);
+
+  const applyPreset = useCallback(
+    (presetId: string) => {
+      setSelectedPresetId(presetId);
+      if (!presetId) return;
+      const target = presets.find((preset) => preset.id === presetId);
+      if (!target) return;
+
+      setSearch(target.search);
+      setRankingTypeFilter(target.rankingTypeFilter);
+      setMetricFilter(target.metricFilter);
+      setAllianceFilter(target.allianceFilter);
+      setDenseRows(target.denseRows);
+      setViewMode(target.viewMode);
+      setMetricVisualMode(target.metricVisualMode);
+
+      if (target.weekKey && weeks.some((week) => week.weekKey === target.weekKey)) {
+        setSelectedWeekKey(target.weekKey);
+      }
+
+      window.setTimeout(() => {
+        setCursorStack([null]);
+        setNextCursor(null);
+        void loadData(null, target.weekKey || selectedWeekKey || null);
+      }, 0);
+
+      setUiNotice(`Applied preset: ${target.name}`);
+    },
+    [presets, weeks, loadData, selectedWeekKey]
+  );
+
+  const deleteSelectedPreset = useCallback(() => {
+    if (!selectedPresetId) return;
+    const target = presets.find((preset) => preset.id === selectedPresetId);
+    const next = presets.filter((preset) => preset.id !== selectedPresetId);
+    setPresets(next);
+    setSelectedPresetId('');
+    localStorage.setItem(presetStorageKey, JSON.stringify(next));
+    if (target) {
+      setUiNotice(`Deleted preset: ${target.name}`);
+    }
+  }, [selectedPresetId, presets, presetStorageKey]);
+
+  const resetFilters = useCallback(() => {
+    setSearch('');
+    setRankingTypeFilter('');
+    setMetricFilter('');
+    setAllianceFilter('');
+    setDenseRows(false);
+    setViewMode('auto');
+    setMetricVisualMode('numeric');
+    setSelectedPresetId('');
+    window.setTimeout(() => {
+      setCursorStack([null]);
+      setNextCursor(null);
+      void loadData(null, selectedWeekKey || null);
+    }, 0);
+  }, [loadData, selectedWeekKey]);
+
+  const exportLeaderboardCsv = useCallback(() => {
+    if (displayRows.length === 0) return;
+
+    const headers = [
+      'Stable Rank',
+      'Player',
+      'Alliance',
+      'Governor ID',
+      'Metric',
+      'Metric Value',
+      'Board',
+      'Source Rank',
+      'Status',
+      'Updated At',
+    ];
+
+    const body = displayRows.map((row) => [
+      row.stableRank,
+      row.displayName,
+      row.allianceLabel || '',
+      row.linkedGovernorId || '',
+      row.metricLabel,
+      row.metricValue,
+      row.boardLabel,
+      row.sourceRank ?? '',
+      row.status,
+      row.updatedAt,
+    ]);
+
+    const filename = `rankings-${selectedWeekKey || 'current'}-${new Date().toISOString().slice(0, 10)}.csv`;
+    const lines = [headers.map((cell) => csvValue(cell)).join(',')].concat(
+      body.map((line) => line.map((cell) => csvValue(cell)).join(','))
+    );
+
+    downloadCsv(filename, lines);
+    setUiNotice(`Exported ${displayRows.length} rows.`);
+  }, [displayRows, selectedWeekKey]);
 
   const columns = useMemo(() => {
     const base = [
@@ -450,7 +748,19 @@ export default function RankingsPage() {
         render: (row: DisplayRankingRow) => (
           <div className="ranking-metric-cell">
             <strong>{formatMetric(row.metricValue)}</strong>
-            <span>{row.metricLabel}</span>
+            {metricVisualMode === 'bars' ? (
+              <div className="ranking-metric-progress">
+                <span>{row.metricLabel}</span>
+                <div className="ranking-metric-progress-track" aria-label={`${row.metricRatio.toFixed(1)} percent of top score`}>
+                  <div
+                    className="ranking-metric-progress-fill"
+                    style={{ width: `${Math.max(4, row.metricRatio)}%` }}
+                  />
+                </div>
+              </div>
+            ) : (
+              <span>{row.metricLabel}</span>
+            )}
           </div>
         ),
       },
@@ -483,23 +793,27 @@ export default function RankingsPage() {
         key: 'updated',
         label: 'Updated',
         mobileHidden: true,
-        render: (row: DisplayRankingRow) => <span className="ranking-updated">{new Date(row.updatedAt).toLocaleString()}</span>,
+        render: (row: DisplayRankingRow) => (
+          <span className="ranking-updated">{new Date(row.updatedAt).toLocaleString()}</span>
+        ),
       },
     ];
 
     return base;
-  }, []);
+  }, [metricVisualMode]);
 
   return (
     <div className="page-container">
       <PageHero
         title="Rankings Board"
-        subtitle="Leaderboard view with tie-aware ordering and weekly filters."
+        subtitle="Leaderboard with strict filters, saved presets, export, and weekly navigation."
       />
 
       {!workspaceReady ? (
         <div className="card mb-24">
-          <div className="text-sm text-muted">{sessionLoading ? 'Connecting workspace...' : sessionError || 'Workspace session is not ready yet.'}</div>
+          <div className="text-sm text-muted">
+            {sessionLoading ? 'Connecting workspace...' : sessionError || 'Workspace session is not ready yet.'}
+          </div>
         </div>
       ) : null}
 
@@ -534,12 +848,17 @@ export default function RankingsPage() {
                 Next Week <ArrowRight size={14} />
               </button>
             </div>
-            {weeklyActivity ? (
-              <div className="text-sm text-muted">
-                Tracked Members: <strong>{weeklyActivity.summary.membersTracked}</strong>
-              </div>
-            ) : null}
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              {weeklyActivity ? (
+                <div className="text-sm text-muted">
+                  Tracked Members: <strong>{weeklyActivity.summary.membersTracked}</strong>
+                </div>
+              ) : null}
+              {isHistoricalWeek ? <StatusPill label="Historical Week" tone="info" /> : null}
+              {freshness ? <StatusPill label={freshness.label} tone={freshness.tone} /> : null}
+            </div>
           </FilterBar>
+
           <FilterBar style={{ marginTop: 10, flexWrap: 'wrap' }}>
             <span className="text-sm text-muted">
               {weeklyEvent.weekKey || 'week key pending'}
@@ -554,9 +873,7 @@ export default function RankingsPage() {
             {weeklyActivity?.summary?.unresolvedIdentityCount != null ? (
               <StatusPill
                 label={`Unlinked rows ${weeklyActivity.summary.unresolvedIdentityCount}`}
-                tone={
-                  weeklyActivity.summary.unresolvedIdentityCount > 0 ? 'warn' : 'good'
-                }
+                tone={weeklyActivity.summary.unresolvedIdentityCount > 0 ? 'warn' : 'good'}
               />
             ) : null}
             {weeklyActivity?.summary?.noPowerBaselineCount != null ? (
@@ -568,12 +885,11 @@ export default function RankingsPage() {
             {weeklyActivity?.summary?.noKillPointsBaselineCount != null ? (
               <StatusPill
                 label={`No KP baseline ${weeklyActivity.summary.noKillPointsBaselineCount}`}
-                tone={
-                  weeklyActivity.summary.noKillPointsBaselineCount > 0 ? 'warn' : 'good'
-                }
+                tone={weeklyActivity.summary.noKillPointsBaselineCount > 0 ? 'warn' : 'good'}
               />
             ) : null}
           </FilterBar>
+
           {weeklyActivity?.summary?.allianceSummary?.length ? (
             <div className="ranking-mobile-meta-line" style={{ marginTop: 10, flexWrap: 'wrap' }}>
               {weeklyActivity.summary.allianceSummary.map((alliance) => (
@@ -590,7 +906,17 @@ export default function RankingsPage() {
         <FilterBar className="ranking-controls-top">
           <div className="search-bar" style={{ minWidth: 240, flex: 1 }}>
             <Search size={16} className="search-icon" style={{ marginLeft: '4px' }} />
-            <input placeholder="Search player name or governor ID..." value={search} onChange={(e) => setSearch(e.target.value)} />
+            <input
+              placeholder="Search player name or governor ID..."
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault();
+                  runSearch();
+                }
+              }}
+            />
           </div>
           <select
             className="form-select"
@@ -618,17 +944,14 @@ export default function RankingsPage() {
           </select>
           <button
             className="btn btn-secondary"
-            onClick={() => {
-              setCursorStack([null]);
-              setNextCursor(null);
-              void loadData(null, selectedWeekKey || null);
-            }}
+            onClick={runSearch}
             disabled={loading || !workspaceReady}
             style={{ padding: '0 16px' }}
           >
             <Filter size={14} /> Search
           </button>
         </FilterBar>
+
         <FilterBar style={{ marginTop: 10 }}>
           {ALLIANCE_FILTERS.map((alliance) => (
             <button
@@ -640,6 +963,90 @@ export default function RankingsPage() {
             </button>
           ))}
         </FilterBar>
+
+        <FilterBar className="ranking-advanced-strip" style={{ marginTop: 10 }}>
+          <select
+            className="form-select"
+            style={{ minWidth: 210 }}
+            value={selectedPresetId}
+            onChange={(event) => applyPreset(event.target.value)}
+          >
+            <option value="">Saved presets</option>
+            {presets.map((preset) => (
+              <option key={preset.id} value={preset.id}>
+                {preset.name}
+              </option>
+            ))}
+          </select>
+          <input
+            className="form-input"
+            style={{ minWidth: 190, width: 220 }}
+            placeholder="Preset name"
+            value={presetName}
+            onChange={(event) => setPresetName(event.target.value)}
+          />
+          <button className="btn btn-secondary btn-sm" onClick={savePreset} type="button">
+            <Save size={14} /> Save Preset
+          </button>
+          <button
+            className="btn btn-secondary btn-sm"
+            onClick={deleteSelectedPreset}
+            type="button"
+            disabled={!selectedPresetId}
+          >
+            <Trash2 size={14} /> Delete
+          </button>
+          <button className="btn btn-secondary btn-sm" onClick={resetFilters} type="button">
+            Reset
+          </button>
+
+          <span className="ranking-segment-wrap" role="group" aria-label="view mode">
+            <button
+              className={`ranking-segment ${viewMode === 'auto' ? 'active' : ''}`}
+              onClick={() => setViewMode('auto')}
+              type="button"
+            >
+              <Sparkles size={13} /> Auto
+            </button>
+            <button
+              className={`ranking-segment ${viewMode === 'table' ? 'active' : ''}`}
+              onClick={() => setViewMode('table')}
+              type="button"
+            >
+              <Table2 size={13} /> Table
+            </button>
+            <button
+              className={`ranking-segment ${viewMode === 'cards' ? 'active' : ''}`}
+              onClick={() => setViewMode('cards')}
+              type="button"
+            >
+              <LayoutGrid size={13} /> Cards
+            </button>
+          </span>
+
+          <span className="ranking-segment-wrap" role="group" aria-label="metric visual mode">
+            <button
+              className={`ranking-segment ${metricVisualMode === 'numeric' ? 'active' : ''}`}
+              onClick={() => setMetricVisualMode('numeric')}
+              type="button"
+            >
+              Numeric
+            </button>
+            <button
+              className={`ranking-segment ${metricVisualMode === 'bars' ? 'active' : ''}`}
+              onClick={() => setMetricVisualMode('bars')}
+              type="button"
+            >
+              Bars
+            </button>
+          </span>
+        </FilterBar>
+
+        {uiNotice ? (
+          <div className="text-sm text-muted" style={{ marginTop: 8 }}>
+            {uiNotice}
+          </div>
+        ) : null}
       </section>
 
       {spotlightRows.length > 0 ? (
@@ -681,6 +1088,9 @@ export default function RankingsPage() {
             <button className="btn btn-secondary btn-sm" onClick={() => setDenseRows((prev) => !prev)} type="button">
               {denseRows ? 'Comfort Spacing' : 'Compact Rows'}
             </button>
+            <button className="btn btn-secondary btn-sm" onClick={exportLeaderboardCsv} disabled={displayRows.length === 0}>
+              <Download size={14} /> Export CSV
+            </button>
             <button className="btn btn-secondary btn-sm" onClick={goBack} disabled={loading || cursorStack.length <= 1}>
               <ArrowLeft size={14} /> Prev
             </button>
@@ -694,77 +1104,98 @@ export default function RankingsPage() {
 
         {displayRows.length > 0 ? (
           <>
-            <div className="ranking-desktop-table">
-              <DataTableLite
-                stickyFirst
-                dense={denseRows}
-                mobileCards={false}
-                columns={columns}
-                rows={displayRows}
-                rowKey={(row) => row.id}
-                rowClassName={(row) =>
-                  [
-                    'ranking-player-row',
-                    row.status === 'ACTIVE'
-                      ? 'is-active'
-                      : row.status === 'UNRESOLVED'
-                        ? 'is-unresolved'
-                        : 'is-rejected',
-                    row.stableRank <= 3 ? 'is-top' : '',
-                  ]
-                    .filter(Boolean)
-                    .join(' ')
-                }
-                emptyLabel="No canonical ranking rows found for these filters."
-              />
-            </div>
+            {viewMode !== 'cards' ? (
+              <div className="ranking-desktop-table">
+                <DataTableLite
+                  stickyFirst
+                  dense={denseRows}
+                  mobileCards={viewMode === 'table'}
+                  columns={columns}
+                  rows={displayRows}
+                  rowKey={(row) => row.id}
+                  rowClassName={(row) =>
+                    [
+                      'ranking-player-row',
+                      row.status === 'ACTIVE'
+                        ? 'is-active'
+                        : row.status === 'UNRESOLVED'
+                          ? 'is-unresolved'
+                          : 'is-rejected',
+                      row.stableRank <= 3 ? 'is-top' : '',
+                    ]
+                      .filter(Boolean)
+                      .join(' ')
+                  }
+                  emptyLabel="No canonical ranking rows found for these filters."
+                />
+              </div>
+            ) : null}
 
-            <div className="ranking-mobile-list" aria-label="Ranking rows mobile cards">
-              {displayRows.map((row) => (
-                <article key={row.id} className={`ranking-mobile-card ${row.stableRank <= 3 ? 'is-top' : ''}`}>
-                  <header className="ranking-mobile-head">
-                    <span className={`ranking-rank-chip ${row.stableRank <= 3 ? 'top' : ''}`}>#{row.stableRank}</span>
-                    <div className="ranking-mobile-metric-main">
-                      <span>{row.metricLabel}</span>
-                      <strong>{formatMetric(row.metricValue)}</strong>
-                    </div>
-                    <StatusPill label={row.status} tone={statusTone(row.status)} />
-                  </header>
+            {viewMode !== 'table' ? (
+              <div className={`ranking-mobile-list ${viewMode === 'cards' ? 'force-grid' : ''}`} aria-label="Ranking rows card view">
+                {displayRows.map((row) => (
+                  <article key={row.id} className={`ranking-mobile-card ${row.stableRank <= 3 ? 'is-top' : ''}`}>
+                    <header className="ranking-mobile-head">
+                      <span className={`ranking-rank-chip ${row.stableRank <= 3 ? 'top' : ''}`}>#{row.stableRank}</span>
+                      <div className="ranking-mobile-metric-main">
+                        <span>{row.metricLabel}</span>
+                        <strong>{formatMetric(row.metricValue)}</strong>
+                      </div>
+                      <StatusPill label={row.status} tone={statusTone(row.status)} />
+                    </header>
 
-                  <div className="ranking-mobile-main">
-                    <div className="ranking-mobile-name-wrap">
-                      <strong className="ranking-mobile-name">{row.displayName}</strong>
-                      {row.titleRaw ? <span className="ranking-title-pill">{row.titleRaw}</span> : null}
-                    </div>
-                    <div className="ranking-player-meta">
-                      {row.allianceLabel ? (
-                        <span className={`ranking-alliance-pill ${allianceClass(row.allianceTag)}`}>
-                          {row.allianceLabel}
+                    <div className="ranking-mobile-main">
+                      <div className="ranking-mobile-name-wrap">
+                        <strong className="ranking-mobile-name">{row.displayName}</strong>
+                        {row.titleRaw ? <span className="ranking-title-pill">{row.titleRaw}</span> : null}
+                      </div>
+                      <div className="ranking-player-meta">
+                        {row.allianceLabel ? (
+                          <span className={`ranking-alliance-pill ${allianceClass(row.allianceTag)}`}>
+                            {row.allianceLabel}
+                          </span>
+                        ) : (
+                          <span className="ranking-alliance-pill neutral">No alliance</span>
+                        )}
+                        <span className="ranking-id-pill">
+                          {row.linkedGovernorId ? `ID ${row.linkedGovernorId}` : 'Unlinked profile'}
                         </span>
-                      ) : (
-                        <span className="ranking-alliance-pill neutral">No alliance</span>
-                      )}
-                      <span className="ranking-id-pill">
-                        {row.linkedGovernorId ? `ID ${row.linkedGovernorId}` : 'Unlinked profile'}
+                      </div>
+                    </div>
+
+                    <div className="ranking-mobile-meta-line">
+                      <span>Source {row.sourceRank ? `#${row.sourceRank}` : '—'}</span>
+                      <span>{formatTokenLabel(row.rankingType)}</span>
+                      <span>
+                        {new Date(row.updatedAt).toLocaleDateString(undefined, {
+                          month: 'short',
+                          day: 'numeric',
+                        })}
                       </span>
                     </div>
-                  </div>
 
-                  <div className="ranking-mobile-meta-line">
-                    <span>Source {row.sourceRank ? `#${row.sourceRank}` : '—'}</span>
-                    <span>{formatTokenLabel(row.rankingType)}</span>
-                    <span>{new Date(row.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
-                  </div>
-
-                  {row.conflictFlags?.tie ? <div className="ranking-mobile-foot">Tie Group {row.tieGroup} • Shared score</div> : null}
-                </article>
-              ))}
-            </div>
+                    {row.conflictFlags?.tie ? (
+                      <div className="ranking-mobile-foot">Tie Group {row.tieGroup} • Shared score</div>
+                    ) : null}
+                  </article>
+                ))}
+              </div>
+            ) : null}
           </>
         ) : (
           <EmptyState
             title="No players found"
-            description="Try adjusting your search term."
+            description="Try adjusting your filters or upload new ranking screenshots for this week."
+            action={
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
+                <Link href="/upload" className="btn btn-secondary btn-sm">
+                  Upload Screenshots
+                </Link>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={resetFilters}>
+                  Reset Filters
+                </button>
+              </div>
+            }
           />
         )}
       </Panel>
