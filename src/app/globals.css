@@ -365,7 +365,7 @@ h6 {
 .app-content {
   flex: 1;
   min-height: 0;
-  padding-bottom: 84px;
+  padding-bottom: calc(84px + env(safe-area-inset-bottom));
 }
 
 /* Mobile shell */
@@ -373,7 +373,7 @@ h6 {
   position: fixed;
   left: 20px;
   right: 20px;
-  bottom: 20px;
+  bottom: calc(12px + env(safe-area-inset-bottom));
   z-index: 70;
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -420,7 +420,7 @@ h6 {
   position: fixed;
   left: 0;
   right: 0;
-  bottom: 86px;
+  bottom: calc(78px + env(safe-area-inset-bottom));
   z-index: 72;
   padding: 0 10px;
   pointer-events: none;
@@ -1852,6 +1852,10 @@ h6 {
 .ranking-advanced-strip {
   border-top: 1px dashed rgba(113, 138, 165, 0.24);
   padding-top: 10px;
+}
+
+.ranking-leaderboard-toolbar {
+  gap: 6px;
 }
 
 .ranking-segment-wrap {
@@ -3550,14 +3554,22 @@ h6 {
     justify-content: center;
   }
 
-  .filter-bar,
-  .action-toolbar {
+  .filter-bar {
     align-items: stretch;
   }
 
-  .filter-bar > *,
-  .action-toolbar > * {
+  .filter-bar > * {
     width: 100%;
+  }
+
+  .action-toolbar {
+    align-items: center;
+    gap: 6px;
+  }
+
+  .action-toolbar > * {
+    width: auto;
+    flex: 0 0 auto;
   }
 
   .ranking-controls-card .ranking-controls-top {
@@ -3602,6 +3614,24 @@ h6 {
   .ranking-controls-card .btn svg {
     width: 12px;
     height: 12px;
+  }
+
+  .ranking-leaderboard-toolbar {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    gap: 6px;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .ranking-leaderboard-toolbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .ranking-leaderboard-toolbar > * {
+    width: auto;
+    flex: 0 0 auto;
   }
 
   .ranking-advanced-strip {
@@ -3729,5 +3759,100 @@ h6 {
 
   .activity-cards-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 430px) {
+  .page-container {
+    padding: 12px;
+  }
+
+  .page-hero {
+    margin-bottom: 14px;
+    gap: 8px;
+  }
+
+  .page-hero h1 {
+    font-size: clamp(1.24rem, 6.7vw, 1.52rem);
+    line-height: 1.08;
+  }
+
+  .page-hero p {
+    margin-top: 4px;
+    font-size: 0.8rem;
+    line-height: 1.42;
+  }
+
+  .panel,
+  .card,
+  .chart-container {
+    padding: 12px;
+  }
+
+  .panel-head {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .panel-head p {
+    font-size: 0.76rem;
+    line-height: 1.42;
+  }
+
+  .panel-actions {
+    width: 100%;
+  }
+
+  .panel-actions .btn {
+    min-height: 32px;
+  }
+
+  .app-topbar {
+    padding: 8px 10px;
+    min-height: 58px;
+  }
+
+  .app-header-logo {
+    height: 27px;
+  }
+
+  .app-topbar-heading strong {
+    font-size: 0.88rem;
+  }
+
+  .app-mobile-nav {
+    left: 10px;
+    right: 10px;
+    bottom: calc(8px + env(safe-area-inset-bottom));
+    padding: 6px 8px;
+  }
+
+  .app-mobile-link {
+    font-size: 0.6rem;
+    padding: 5px 2px;
+  }
+
+  .app-mobile-sheet {
+    bottom: calc(74px + env(safe-area-inset-bottom));
+    padding: 0 8px;
+  }
+
+  .ranking-controls-card .ranking-controls-top .search-bar {
+    min-width: 148px;
+    flex-basis: 160px;
+  }
+
+  .ranking-controls-card .ranking-controls-top .form-select {
+    min-width: 112px;
+  }
+
+  .ranking-controls-card .btn {
+    font-size: 0.68rem;
+    padding: 6px 7px;
+  }
+
+  .ranking-leaderboard-toolbar .btn {
+    min-height: 30px;
   }
 }

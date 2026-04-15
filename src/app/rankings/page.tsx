@@ -241,9 +241,6 @@ export default function RankingsPage() {
   const [denseRows, setDenseRows] = useState(false);
   const [viewMode, setViewMode] = useState<RankingsViewMode>('auto');
   const [metricVisualMode, setMetricVisualMode] = useState<MetricVisualMode>('numeric');
-  const [sortHint, setSortHint] = useState(
-    'metricValue DESC, sourceRank ASC NULLS LAST, normalizedName ASC, rowId ASC'
-  );
   const [presets, setPresets] = useState<RankingsFilterPreset[]>([]);
   const [selectedPresetId, setSelectedPresetId] = useState('');
   const [presetName, setPresetName] = useState('');
@@ -372,9 +369,6 @@ export default function RankingsPage() {
 
         setRows(Array.isArray(rowsPayload?.data) ? rowsPayload.data : []);
         setNextCursor(rowsPayload?.meta?.nextCursor || null);
-        if (Array.isArray(rowsPayload?.meta?.sort) && rowsPayload.meta.sort.length > 0) {
-          setSortHint(rowsPayload.meta.sort.join(', '));
-        }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load rankings.');
       } finally {
@@ -804,10 +798,7 @@ export default function RankingsPage() {
 
   return (
     <div className="page-container">
-      <PageHero
-        title="Rankings Board"
-        subtitle="Leaderboard with strict filters, saved presets, export, and weekly navigation."
-      />
+      <PageHero title="Rankings Board" />
 
       {!workspaceReady ? (
         <div className="card mb-24">
@@ -994,6 +985,9 @@ export default function RankingsPage() {
           <button className="btn btn-secondary btn-sm" onClick={resetFilters} type="button">
             Reset
           </button>
+          <button className="btn btn-secondary btn-sm" type="button" onClick={() => setDenseRows((prev) => !prev)}>
+            {denseRows ? 'Comfort Spacing' : 'Compact Rows'}
+          </button>
 
           <span className="ranking-segment-wrap" role="group" aria-label="view mode">
             <button
@@ -1077,14 +1071,10 @@ export default function RankingsPage() {
 
       <Panel
         title="Leaderboard"
-        subtitle={`Sort: ${sortHint}`}
         actions={
-          <ActionToolbar>
-            <button className="btn btn-secondary btn-sm" onClick={() => setDenseRows((prev) => !prev)} type="button">
-              {denseRows ? 'Comfort Spacing' : 'Compact Rows'}
-            </button>
+          <ActionToolbar className="ranking-leaderboard-toolbar">
             <button className="btn btn-secondary btn-sm" onClick={exportLeaderboardCsv} disabled={displayRows.length === 0}>
-              <Download size={14} /> Export CSV
+              <Download size={14} /> Export
             </button>
             <button className="btn btn-secondary btn-sm" onClick={goBack} disabled={loading || cursorStack.length <= 1}>
               <ArrowLeft size={14} /> Prev
