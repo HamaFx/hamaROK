@@ -98,6 +98,11 @@ interface RankingQueueSummary {
   }>;
 }
 
+interface ReviewUpdateResult {
+  warning?: string | null;
+  eventLinked?: boolean;
+}
+
 const defaultDraft = {
   governorId: '',
   governorName: '',
@@ -332,8 +337,8 @@ export default function ReviewQueuePage() {
   };
 
   const requestReviewUpdate = useCallback(
-    async (id: string, status: ExtractionStatus) => {
-      if (!workspaceId || !accessToken) return;
+    async (id: string, status: ExtractionStatus): Promise<ReviewUpdateResult> => {
+      if (!workspaceId || !accessToken) return {};
       const draft = drafts[id] || defaultDraft;
       const res = await fetch(`/api/v2/review-queue/${id}`, {
         method: 'PATCH',
@@ -358,6 +363,8 @@ export default function ReviewQueuePage() {
       if (!res.ok) {
         throw new Error(payload?.error?.message || 'Failed to update review status.');
       }
+
+      return (payload?.data || {}) as ReviewUpdateResult;
     },
     [workspaceId, accessToken, drafts, rerunPayloadByItem]
   );
@@ -446,8 +453,11 @@ export default function ReviewQueuePage() {
     setActionNotice(null);
 
     try {
-      await requestReviewUpdate(id, status);
+      const result = await requestReviewUpdate(id, status);
       await loadQueue();
+      if (result?.warning) {
+        setActionNotice(result.warning);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update review status.');
     } finally {
@@ -471,10 +481,12 @@ export default function ReviewQueuePage() {
 
       let successCount = 0;
       const failures: string[] = [];
+      let warningCount = 0;
 
       for (const item of items) {
         try {
-          await requestReviewUpdate(item.id, status);
+          const result = await requestReviewUpdate(item.id, status);
+          if (result?.warning) warningCount += 1;
           successCount += 1;
         } catch (err) {
           const message = err instanceof Error ? err.message : 'Unknown error';
@@ -490,9 +502,11 @@ export default function ReviewQueuePage() {
           `Bulk ${verb} finished: ${successCount} succeeded, ${failures.length} failed. ${failures[0]}`
         );
       } else {
-        setActionNotice(
-          `Bulk ${verb} completed for ${successCount} row${successCount === 1 ? '' : 's'}.`
-        );
+        const warningNote =
+          warningCount > 0
+            ? ` ${warningCount} row${warningCount === 1 ? '' : 's'} approved without weekly-event linking.`
+            : '';
+        setActionNotice(`Bulk ${verb} completed for ${successCount} row${successCount === 1 ? '' : 's'}.${warningNote}`);
       }
 
       setActionBusy(null);

@@ -80,6 +80,17 @@ const reviewSchema = z.object({
   ).optional(),
 });
 
+function isWeeklyAutoCreateSafeError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const maybeCode = (error as { code?: unknown }).code;
+  if (typeof maybeCode === 'string' && maybeCode === 'P2022') return true;
+  const message =
+    typeof (error as { message?: unknown }).message === 'string'
+      ? String((error as { message?: string }).message)
+      : '';
+  return /column .* does not exist/i.test(message);
+}
+
 function inferCorrectionReasonCode(
   field: keyof ReturnType<typeof parseExtractionValues>,
   previousValue: string,
@@ -257,18 +268,23 @@ export async function PATCH(
     const mergedValues = applyCorrections(rerunValues, body.corrected);
     let approvedPayload = toApprovedSnapshotPayload(mergedValues);
     let targetEventId = extraction.scanJob.eventId;
+    let eventLinkWarning: string | null = null;
 
     if (body.status === OcrExtractionStatus.APPROVED) {
       if (!targetEventId) {
         try {
           const ensured = await ensureWeeklyEventForWorkspace(extraction.scanJob.workspaceId);
           targetEventId = ensured.event.id;
-        } catch {
-          throw new ApiHttpError(
-            'VALIDATION_ERROR',
-            'Scan job is not linked to a weekly event. Open Upload once to initialize the active week, then retry approval.',
-            400
-          );
+        } catch (error) {
+          if (!isWeeklyAutoCreateSafeError(error)) {
+            throw new ApiHttpError(
+              'VALIDATION_ERROR',
+              'Scan job is not linked to a weekly event. Open Upload once to initialize the active week, then retry approval.',
+              400
+            );
+          }
+          eventLinkWarning =
+            'Approved, but weekly event linking is deferred because the database schema is behind. Run latest migrations, then reprocess if needed.';
         }
       }
       if (!/^\d{6,12}$/.test(approvedPayload.governorId)) {
@@ -708,6 +724,8 @@ export async function PATCH(
       snapshotId: result.snapshotId,
       anomalyCount: result.anomalyCount,
       correctionCount: result.correctionCount,
+      eventLinked: Boolean(targetEventId),
+      warning: eventLinkWarning,
       updatedAt: new Date().toISOString(),
     });
   } catch (error) {
