@@ -5,7 +5,6 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
 import { Menu, Sparkles } from 'lucide-react';
-import { motion } from 'framer-motion';
 import {
   getActiveNav,
   isActivePath,
@@ -53,7 +52,7 @@ function BrandLockup() {
         />
       </div>
       <div className="hidden min-w-0 sm:block">
-        <p className="font-[family-name:var(--font-sora)] text-sm font-semibold tracking-wide text-white">
+        <p className="font-heading text-sm font-semibold tracking-wide text-white">
           HamaROK
         </p>
         <p className="text-xs text-white/55">Player rankings and weekly statboards</p>
@@ -168,7 +167,7 @@ function MobileMoreNav() {
       </nav>
       <DrawerContent className="border-white/10 bg-[rgba(8,10,16,0.98)] text-white">
         <DrawerHeader>
-          <DrawerTitle className="font-[family-name:var(--font-sora)] text-xl text-white">More</DrawerTitle>
+          <DrawerTitle className="font-heading text-xl text-white">More</DrawerTitle>
           <DrawerDescription className="text-white/55">
             Compare boards first, then jump into operational tools.
           </DrawerDescription>
@@ -251,19 +250,14 @@ export default function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="relative min-h-screen overflow-x-hidden bg-background text-foreground">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(84,137,255,0.18),_transparent_32%),radial-gradient(circle_at_bottom_right,_rgba(108,214,255,0.12),_transparent_24%)]" />
-      <motion.header
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.35, ease: 'easeOut' }}
-        className="sticky top-0 z-30 border-b border-white/8 bg-[rgba(7,9,15,0.76)] backdrop-blur-xl"
-      >
-        <div className="mx-auto flex w-full max-w-[1600px] items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
+      <header className="sticky top-0 z-30 border-b border-white/10 bg-[rgba(7,9,15,0.8)] backdrop-blur-xl">
+        <div className="mx-auto flex w-full max-w-[1600px] items-center justify-between gap-4 px-4 py-3.5 sm:px-6 lg:px-8">
           <div className="flex min-w-0 items-center gap-4">
             <BrandLockup />
             <div className="hidden h-10 w-px bg-white/8 lg:block" />
             <div className="hidden min-w-0 lg:block">
               <p className="text-[11px] font-medium uppercase tracking-[0.24em] text-white/38">Now Viewing</p>
-              <p className="mt-1 truncate font-[family-name:var(--font-sora)] text-sm text-white">{activeNav.label}</p>
+              <p className="mt-1 truncate font-heading text-sm text-white">{activeNav.label}</p>
             </div>
           </div>
 
@@ -276,12 +270,12 @@ export default function AppShell({ children }: { children: ReactNode }) {
             <ToolsMenu />
           </div>
         </div>
-      </motion.header>
+      </header>
 
-      <main className="relative z-10 mx-auto flex w-full max-w-[1600px] flex-col px-4 pb-28 pt-6 sm:px-6 lg:px-8 lg:pb-12 lg:pt-8">
+      <main className="relative z-10 mx-auto flex w-full max-w-[1600px] flex-col px-4 pb-28 pt-5 sm:px-6 lg:px-8 lg:pb-14 lg:pt-7">
         {weeklySchemaWarning ? (
           <Alert className="mb-6 border-amber-300/16 bg-[rgba(120,78,9,0.18)] text-amber-50">
-            <AlertTitle className="font-[family-name:var(--font-sora)] text-sm">Schema Attention Needed</AlertTitle>
+            <AlertTitle className="font-heading text-sm">Schema Attention Needed</AlertTitle>
             <AlertDescription className="text-amber-100/80">{weeklySchemaWarning}</AlertDescription>
           </Alert>
         ) : null}

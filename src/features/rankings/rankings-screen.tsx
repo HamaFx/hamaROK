@@ -193,7 +193,7 @@ function allianceTone(tag: string | null): 'warn' | 'info' | 'neutral' {
 }
 
 export default function RankingsScreen() {
-  const { workspaceId, accessToken, ready, loading: sessionLoading, error: sessionError } = useWorkspaceSession();
+  const { workspaceId, accessToken, ready, loading: sessionLoading, error: sessionError, refreshSession } = useWorkspaceSession();
   const [search, setSearch] = useState('');
   const [rows, setRows] = useState<CanonicalRow[]>([]);
   const [weeklyEvent, setWeeklyEvent] = useState<WeeklyEventInfo | null>(null);
@@ -620,7 +620,7 @@ export default function RankingsScreen() {
         render: (row: DisplayRankingRow) => (
           <div className="flex min-w-0 flex-col gap-2">
             <div className="flex flex-wrap items-center gap-2">
-              <strong className="font-[family-name:var(--font-sora)] text-base text-white">{row.displayName}</strong>
+              <strong className="font-heading text-base text-white">{row.displayName}</strong>
               {row.titleRaw ? <StatusPill label={row.titleRaw} tone="info" /> : null}
             </div>
             <div className="flex flex-wrap gap-2">
@@ -637,7 +637,7 @@ export default function RankingsScreen() {
         render: (row: DisplayRankingRow) => (
           <div className="flex flex-col items-end gap-2 text-right">
             <div>
-              <p className="font-[family-name:var(--font-sora)] text-lg text-white">{formatMetric(row.metricValue)}</p>
+              <p className="font-heading text-lg text-white">{formatMetric(row.metricValue)}</p>
               <p className="text-xs uppercase tracking-[0.18em] text-white/38">{row.metricLabel}</p>
             </div>
             {metricVisualMode === 'bars' ? (
@@ -698,15 +698,15 @@ export default function RankingsScreen() {
         }
       />
 
-      <SessionGate ready={ready} loading={sessionLoading} error={sessionError}>
+      <SessionGate ready={ready} loading={sessionLoading} error={sessionError} onRetry={() => void refreshSession()}>
         {error ? <InlineError message={error} /> : null}
 
-        <motion.section initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }} className="sticky top-[88px] z-20">
-          <Panel className="border-white/12 bg-[rgba(8,11,19,0.9)]" title="Board Controls" subtitle="Week-aware filters and saved leaderboard presets.">
-            <div className="space-y-3">
-              <div className="grid gap-3 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
-                <div className="rounded-[24px] border border-white/8 bg-black/18 p-3">
-                  <div className="grid gap-3 md:grid-cols-[auto_minmax(0,1fr)_auto]">
+        <motion.section initial={false} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }} className="relative z-10">
+          <Panel title="Board Controls" subtitle="Week-aware filters and saved leaderboard presets.">
+            <div className="space-y-4">
+              <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
+                <div className="rounded-[22px] border border-white/10 bg-black/20 p-4">
+                  <div className="grid gap-3.5 md:grid-cols-[auto_minmax(0,1fr)_auto]">
                     <Button type="button" variant="outline" className="w-full rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white md:w-auto" onClick={goPreviousWeek} disabled={loading || currentWeekIndex >= weeks.length - 1}>
                       <ArrowLeft data-icon="inline-start" /> Older
                     </Button>
@@ -745,8 +745,8 @@ export default function RankingsScreen() {
                   </div>
                 </div>
 
-                <div className="rounded-[24px] border border-white/8 bg-black/18 p-3">
-                  <div className="grid gap-3 sm:grid-cols-3">
+                <div className="rounded-[22px] border border-white/10 bg-black/20 p-4">
+                  <div className="grid gap-3.5 sm:grid-cols-3">
                     <Select value={rankingTypeFilter || ALL_VALUE} onValueChange={(value) => setRankingTypeFilter(value === ALL_VALUE ? '' : value)}>
                       <SelectTrigger className="w-full min-w-0 rounded-full border-white/10 bg-white/4 text-white"><SelectValue placeholder="Board" /></SelectTrigger>
                       <SelectContent className="border-white/10 bg-[rgba(8,10,16,0.98)] text-white">
@@ -769,8 +769,8 @@ export default function RankingsScreen() {
                 </div>
               </div>
 
-              <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto]">
-                <div className="rounded-[24px] border border-white/8 bg-black/18 p-3">
+              <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto]">
+                <div className="rounded-[22px] border border-white/10 bg-black/20 p-4">
                   <div className="flex flex-wrap gap-2">
                     {weeklyActivity ? <StatusPill label={`${weeklyActivity.summary.membersTracked} tracked`} tone="info" /> : null}
                     <StatusPill label={`Pending sync ${pendingSyncCount}`} tone={pendingSyncCount > 0 ? 'warn' : 'good'} />
@@ -780,8 +780,8 @@ export default function RankingsScreen() {
                     {sourceCoverage ? <StatusPill label={`KP P${sourceCoverage.killPoints.profile}/R${sourceCoverage.killPoints.rankboard}`} tone="neutral" /> : null}
                   </div>
                 </div>
-                <div className="rounded-[24px] border border-white/8 bg-black/18 p-3 lg:min-w-[26rem]">
-                  <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:grid-cols-[minmax(0,1fr)_11rem]">
+                <div className="rounded-[22px] border border-white/10 bg-black/20 p-4 lg:min-w-[26rem]">
+                  <div className="grid gap-3.5 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:grid-cols-[minmax(0,1fr)_11rem]">
                     <Select value={selectedPresetId || PRESET_NONE} onValueChange={(value) => applyPreset(value === PRESET_NONE ? '' : value)}>
                       <SelectTrigger className="w-full min-w-0 rounded-full border-white/10 bg-white/4 text-white"><SelectValue placeholder="Saved presets" /></SelectTrigger>
                       <SelectContent className="border-white/10 bg-[rgba(8,10,16,0.98)] text-white">
@@ -791,7 +791,7 @@ export default function RankingsScreen() {
                     </Select>
                     <Input value={presetName} onChange={(event) => setPresetName(event.target.value)} placeholder="Preset name" className="w-full rounded-full border-white/10 bg-white/4 text-white placeholder:text-white/28" />
                   </div>
-                  <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                  <div className="mt-3.5 grid gap-2.5 sm:grid-cols-3">
                     <Button variant="outline" className="w-full rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white sm:w-auto" onClick={savePreset}>Save Preset</Button>
                     <Button variant="outline" className="w-full rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white sm:w-auto" onClick={deleteSelectedPreset} disabled={!selectedPresetId}>Delete</Button>
                     <Button variant="outline" className="w-full rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white sm:w-auto" onClick={resetFilters}>Reset</Button>
@@ -799,22 +799,22 @@ export default function RankingsScreen() {
                 </div>
               </div>
 
-              <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto]">
-                <div className="rounded-[24px] border border-white/8 bg-black/18 p-3">
+              <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto]">
+                <div className="rounded-[22px] border border-white/10 bg-black/20 p-4">
                   <p className="mb-3 text-[11px] uppercase tracking-[0.22em] text-white/38">Leaderboard layout</p>
                   <ToggleGroup className="w-full flex-wrap justify-start" type="single" value={viewMode} onValueChange={(value) => value && setViewMode(value as RankingsViewMode)}>
                     {['auto', 'table', 'cards'].map((item) => (
-                      <ToggleGroupItem key={item} value={item} className="rounded-full border border-white/10 bg-white/4 px-3 text-xs uppercase tracking-[0.18em] text-white/64 data-[state=on]:border-sky-300/20 data-[state=on]:bg-sky-300/12 data-[state=on]:text-white">
+                      <ToggleGroupItem key={item} value={item} className="rounded-full border border-white/10 bg-white/5 px-4 text-xs font-medium uppercase tracking-[0.16em] text-white/64 data-[state=on]:border-sky-300/20 data-[state=on]:bg-sky-300/12 data-[state=on]:text-white">
                         {item}
                       </ToggleGroupItem>
                     ))}
                   </ToggleGroup>
                 </div>
-                <div className="rounded-[24px] border border-white/8 bg-black/18 p-3">
+                <div className="rounded-[22px] border border-white/10 bg-black/20 p-4">
                   <p className="mb-3 text-[11px] uppercase tracking-[0.22em] text-white/38">Metric rendering</p>
                   <ToggleGroup className="w-full flex-wrap justify-start sm:w-auto" type="single" value={metricVisualMode} onValueChange={(value) => value && setMetricVisualMode(value as MetricVisualMode)}>
                     {['numeric', 'bars'].map((item) => (
-                      <ToggleGroupItem key={item} value={item} className="rounded-full border border-white/10 bg-white/4 px-3 text-xs uppercase tracking-[0.18em] text-white/64 data-[state=on]:border-sky-300/20 data-[state=on]:bg-sky-300/12 data-[state=on]:text-white">
+                      <ToggleGroupItem key={item} value={item} className="rounded-full border border-white/10 bg-white/5 px-4 text-xs font-medium uppercase tracking-[0.16em] text-white/64 data-[state=on]:border-sky-300/20 data-[state=on]:bg-sky-300/12 data-[state=on]:text-white">
                         {item}
                       </ToggleGroupItem>
                     ))}
@@ -830,7 +830,7 @@ export default function RankingsScreen() {
         {spotlightRows.length ? (
           <section className="grid gap-4 md:grid-cols-3">
             {spotlightRows.map((row, index) => (
-              <motion.div key={row.id} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, delay: index * 0.05 }}>
+              <motion.div key={row.id} initial={false} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.28, delay: index * 0.04 }}>
                 <Card className={index === 0 ? 'border-[#ffd57d]/20 bg-[linear-gradient(145deg,rgba(26,20,8,0.9),rgba(8,10,18,0.98))]' : 'border-white/10 bg-[rgba(11,15,24,0.92)]'}>
                   <CardContent className="space-y-4 p-5">
                     <div className="flex items-center justify-between">
@@ -838,13 +838,13 @@ export default function RankingsScreen() {
                       {index === 0 ? <Crown className="size-5 text-[#ffd57d]" /> : <Sparkles className="size-4 text-white/32" />}
                     </div>
                     <div>
-                      <p className="font-[family-name:var(--font-sora)] text-xl text-white">{row.displayName}</p>
+                      <p className="font-heading text-xl text-white">{row.displayName}</p>
                       <p className="mt-1 text-sm text-white/56">{row.allianceLabel || 'No alliance'}</p>
                     </div>
                     <div className="flex items-end justify-between gap-3">
                       <div>
                         <p className="text-[11px] uppercase tracking-[0.18em] text-white/38">{row.metricLabel}</p>
-                        <p className="mt-2 font-[family-name:var(--font-sora)] text-3xl text-white">{formatMetric(row.metricValue)}</p>
+                        <p className="mt-2 font-heading text-3xl text-white">{formatMetric(row.metricValue)}</p>
                       </div>
                       <StatusPill label={row.status} tone={statusTone(row.status)} />
                     </div>

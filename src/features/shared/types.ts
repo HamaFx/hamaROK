@@ -45,4 +45,6 @@ export interface SessionGateProps {
   children: ReactNode;
   loadingLabel?: string;
   notReadyLabel?: string;
+  onRetry?: () => void;
+  retryLabel?: string;
 }

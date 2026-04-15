@@ -1,7 +1,9 @@
 'use client';
 
+import { RefreshCcw } from 'lucide-react';
 import type { SessionGateProps } from '@/features/shared/types';
 import { EmptyState, Panel } from '@/components/ui/primitives';
+import { Button } from '@/components/ui/button';
 
 export function SessionGate({
   ready,
@@ -10,12 +12,35 @@ export function SessionGate({
   children,
   loadingLabel = 'Connecting workspace...',
   notReadyLabel = 'Workspace session is not ready yet.',
+  onRetry,
+  retryLabel = 'Retry Connection',
 }: SessionGateProps) {
   if (!ready) {
+    const message = loading ? loadingLabel : error || notReadyLabel;
+
     return (
-      <Panel className="mb-6" title="Workspace Session">
-        <p className="text-sm leading-6 text-white/58">{loading ? loadingLabel : error || notReadyLabel}</p>
-      </Panel>
+      <section className="grid min-h-[42svh] place-items-center">
+        <Panel
+          className="w-full max-w-2xl"
+          title="Workspace Session"
+          subtitle="A connected workspace is required before ranking and statboard surfaces can load."
+        >
+          <div className="space-y-4">
+            <p className="text-sm leading-6 text-white/62">{message}</p>
+            {!loading ? (
+              <div className="flex flex-wrap gap-2.5">
+                <Button
+                  onClick={onRetry ?? (() => window.location.reload())}
+                  className="rounded-full bg-[linear-gradient(135deg,#5a7fff,#7ce6ff)] text-black hover:opacity-95"
+                >
+                  <RefreshCcw data-icon="inline-start" />
+                  {retryLabel}
+                </Button>
+              </div>
+            ) : null}
+          </div>
+        </Panel>
+      </section>
     );
   }
 

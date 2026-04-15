@@ -159,7 +159,7 @@ function metricTone(status: ActivityRow['compliance']['contributionPoints']): 'g
 }
 
 export default function ActivityScreen() {
-  const { workspaceId, accessToken, ready, loading: sessionLoading, error: sessionError } = useWorkspaceSession();
+  const { workspaceId, accessToken, ready, loading: sessionLoading, error: sessionError, refreshSession } = useWorkspaceSession();
   const [weeks, setWeeks] = useState<WeekOption[]>([]);
   const [selectedWeekKey, setSelectedWeekKey] = useState<string>('');
   const [allianceFilter, setAllianceFilter] = useState<string>('');
@@ -436,7 +436,7 @@ export default function ActivityScreen() {
         sortable: true,
         render: (row: ActivityRow) => (
           <div className="space-y-2">
-            <strong className="font-[family-name:var(--font-sora)] text-base text-white">{row.governorName}</strong>
+            <strong className="font-heading text-base text-white">{row.governorName}</strong>
             <div className="flex flex-wrap gap-2">
               <StatusPill label={row.allianceTag} tone={row.allianceTag === 'GODt' ? 'warn' : row.allianceTag === 'V57' ? 'info' : 'neutral'} />
               <StatusPill label={`ID ${row.governorId}`} tone="neutral" />
@@ -451,7 +451,7 @@ export default function ActivityScreen() {
         className: 'text-right',
         render: (row: ActivityRow) => (
           <div className="flex flex-col items-end gap-2">
-            <span className="font-[family-name:var(--font-sora)] text-lg text-white">{formatMetric(row.contributionPoints)}</span>
+            <span className="font-heading text-lg text-white">{formatMetric(row.contributionPoints)}</span>
             <StatusPill label={row.compliance.contributionPoints} tone={metricTone(row.compliance.contributionPoints)} />
           </div>
         ),
@@ -463,7 +463,7 @@ export default function ActivityScreen() {
         className: 'text-right',
         render: (row: ActivityRow) => (
           <div className="flex flex-col items-end gap-2">
-            <span className="font-[family-name:var(--font-sora)] text-lg text-white">{formatMetric(row.fortDestroying)}</span>
+            <span className="font-heading text-lg text-white">{formatMetric(row.fortDestroying)}</span>
             <StatusPill label={row.compliance.fortDestroying} tone={metricTone(row.compliance.fortDestroying)} />
           </div>
         ),
@@ -475,7 +475,7 @@ export default function ActivityScreen() {
         className: 'text-right',
         render: (row: ActivityRow) => (
           <div className="flex flex-col items-end gap-2">
-            <span className="font-[family-name:var(--font-sora)] text-lg text-white">{row.powerGrowth != null ? formatMetric(row.powerGrowth) : 'N/A'}</span>
+            <span className="font-heading text-lg text-white">{row.powerGrowth != null ? formatMetric(row.powerGrowth) : 'N/A'}</span>
             <StatusPill label={row.compliance.powerGrowth} tone={metricTone(row.compliance.powerGrowth)} />
           </div>
         ),
@@ -487,7 +487,7 @@ export default function ActivityScreen() {
         className: 'text-right',
         render: (row: ActivityRow) => (
           <div className="flex flex-col items-end gap-2">
-            <span className="font-[family-name:var(--font-sora)] text-lg text-white">{row.killPointsGrowth != null ? formatMetric(row.killPointsGrowth) : 'N/A'}</span>
+            <span className="font-heading text-lg text-white">{row.killPointsGrowth != null ? formatMetric(row.killPointsGrowth) : 'N/A'}</span>
             <StatusPill label={row.compliance.killPointsGrowth} tone={metricTone(row.compliance.killPointsGrowth)} />
           </div>
         ),
@@ -526,13 +526,13 @@ export default function ActivityScreen() {
         }
       />
 
-      <SessionGate ready={ready} loading={sessionLoading} error={sessionError}>
+      <SessionGate ready={ready} loading={sessionLoading} error={sessionError} onRetry={() => void refreshSession()}>
         {error ? <InlineError message={error} /> : null}
 
         <Panel title="Weekly Filters" subtitle="Switch weeks, scope to one alliance, and preserve favorite views.">
-          <div className="space-y-3">
-            <div className="grid gap-3 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
-              <div className="rounded-[24px] border border-white/8 bg-black/18 p-3">
+          <div className="space-y-4">
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+              <div className="rounded-[22px] border border-white/10 bg-black/20 p-4">
                 <div className="grid gap-3 md:grid-cols-[auto_minmax(0,1fr)_auto]">
                   <Button variant="outline" className="w-full rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white md:w-auto" onClick={goPreviousWeek} disabled={currentWeekIndex >= weeks.length - 1 || loading}>
                     <ArrowLeft data-icon="inline-start" /> Older
@@ -551,7 +551,7 @@ export default function ActivityScreen() {
                 </div>
               </div>
 
-              <div className="rounded-[24px] border border-white/8 bg-black/18 p-3">
+              <div className="rounded-[22px] border border-white/10 bg-black/20 p-4">
                 <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
                   <Select value={allianceFilter || ALL_VALUE} onValueChange={(value) => setAllianceFilter(value === ALL_VALUE ? '' : value)}>
                     <SelectTrigger className="w-full min-w-0 rounded-full border-white/10 bg-white/4 text-white"><SelectValue placeholder="Alliance" /></SelectTrigger>
@@ -569,7 +569,7 @@ export default function ActivityScreen() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="mt-3 flex flex-wrap gap-2">
+                <div className="mt-3.5 flex flex-wrap gap-2.5">
                   <Button variant="outline" className="w-full rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white sm:w-auto" onClick={() => setDenseRows((prev) => !prev)}>
                     {denseRows ? 'Comfort spacing' : 'Compact rows'}
                   </Button>
@@ -577,8 +577,8 @@ export default function ActivityScreen() {
               </div>
             </div>
 
-            <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto]">
-              <div className="rounded-[24px] border border-white/8 bg-black/18 p-3">
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto]">
+              <div className="rounded-[22px] border border-white/10 bg-black/20 p-4">
                 <div className="flex flex-wrap gap-2">
                   {isHistoricalWeek ? <StatusPill label="Historical week" tone="neutral" /> : null}
                   {data?.event?.startsAt ? <StatusPill label={`Starts ${new Date(data.event.startsAt).toLocaleDateString()}`} tone="neutral" /> : null}
@@ -587,7 +587,7 @@ export default function ActivityScreen() {
                 </div>
               </div>
 
-              <div className="rounded-[24px] border border-white/8 bg-black/18 p-3 lg:min-w-[24rem]">
+              <div className="rounded-[22px] border border-white/10 bg-black/20 p-4 lg:min-w-[24rem]">
                 <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_11rem]">
                   <Select value={selectedPresetId || PRESET_NONE} onValueChange={(value) => applyPreset(value === PRESET_NONE ? '' : value)}>
                     <SelectTrigger className="w-full min-w-0 rounded-full border-white/10 bg-white/4 text-white"><SelectValue placeholder="Saved presets" /></SelectTrigger>
@@ -598,7 +598,7 @@ export default function ActivityScreen() {
                   </Select>
                   <input value={presetName} onChange={(event) => setPresetName(event.target.value)} placeholder="Preset name" className="h-10 w-full rounded-full border border-white/10 bg-white/4 px-4 text-sm text-white placeholder:text-white/28" />
                 </div>
-                <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                <div className="mt-3.5 grid gap-2.5 sm:grid-cols-3">
                   <Button variant="outline" className="w-full rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white sm:w-auto" onClick={savePreset}>Save Preset</Button>
                   <Button variant="outline" className="w-full rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white sm:w-auto" onClick={deleteSelectedPreset} disabled={!selectedPresetId}>Delete</Button>
                   <Button variant="outline" className="w-full rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white sm:w-auto" onClick={resetFilters}>Reset</Button>
@@ -630,7 +630,7 @@ export default function ActivityScreen() {
                         <CardContent className="space-y-4 p-5">
                           <div className="flex items-center justify-between gap-3">
                             <div>
-                              <p className="font-[family-name:var(--font-sora)] text-lg text-white">{alliance.allianceLabel}</p>
+                              <p className="font-heading text-lg text-white">{alliance.allianceLabel}</p>
                               <p className="mt-1 text-sm text-white/56">{alliance.members} tracked players</p>
                             </div>
                             <StatusPill label={`${passPercent}%`} tone={passPercent >= 70 ? 'good' : passPercent >= 45 ? 'warn' : 'bad'} />
@@ -662,7 +662,7 @@ export default function ActivityScreen() {
                     return (
                       <Card key={lane.title} className="border-white/10 bg-white/4">
                         <CardHeader>
-                          <CardTitle className="flex items-center gap-2 font-[family-name:var(--font-sora)] text-base text-white">
+                          <CardTitle className="flex items-center gap-2 font-heading text-base text-white">
                             <Icon className="size-4 text-white/68" /> {lane.title}
                           </CardTitle>
                         </CardHeader>
@@ -674,7 +674,7 @@ export default function ActivityScreen() {
                                 <p className="text-xs text-white/52">{row.allianceLabel}</p>
                               </div>
                               <div className="text-right">
-                                <p className="font-[family-name:var(--font-sora)] text-lg text-white">{formatMetric(row[lane.key])}</p>
+                                <p className="font-heading text-lg text-white">{formatMetric(row[lane.key])}</p>
                                 <p className="text-xs text-white/42">#{index + 1}</p>
                               </div>
                             </div>
@@ -692,10 +692,10 @@ export default function ActivityScreen() {
               subtitle={`${filteredRows.length} members • ${data.event.name}`}
               actions={
                 <ToggleGroup type="single" value={viewMode} onValueChange={(value) => value && setViewMode(value as ActivityViewMode)}>
-                  <ToggleGroupItem value="cards" className="rounded-full border border-white/10 bg-white/4 px-3 text-xs uppercase tracking-[0.18em] text-white/64 data-[state=on]:border-sky-300/20 data-[state=on]:bg-sky-300/12 data-[state=on]:text-white">
+                  <ToggleGroupItem value="cards" className="rounded-full border border-white/10 bg-white/5 px-4 text-xs uppercase tracking-[0.16em] text-white/64 data-[state=on]:border-sky-300/20 data-[state=on]:bg-sky-300/12 data-[state=on]:text-white">
                     Cards
                   </ToggleGroupItem>
-                  <ToggleGroupItem value="table" className="rounded-full border border-white/10 bg-white/4 px-3 text-xs uppercase tracking-[0.18em] text-white/64 data-[state=on]:border-sky-300/20 data-[state=on]:bg-sky-300/12 data-[state=on]:text-white">
+                  <ToggleGroupItem value="table" className="rounded-full border border-white/10 bg-white/5 px-4 text-xs uppercase tracking-[0.16em] text-white/64 data-[state=on]:border-sky-300/20 data-[state=on]:bg-sky-300/12 data-[state=on]:text-white">
                     <Table2 className="mr-2 size-4" /> Table
                   </ToggleGroupItem>
                 </ToggleGroup>
@@ -718,13 +718,13 @@ export default function ActivityScreen() {
                 ) : (
                   <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                     {sortedRows.map((row, index) => (
-                      <motion.article key={row.governorDbId} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.28, delay: Math.min(index * 0.02, 0.2) }} className="rounded-[26px] border border-white/10 bg-[rgba(11,15,24,0.92)] p-5 shadow-[0_18px_40px_rgba(0,0,0,0.24)]">
+                      <motion.article key={row.governorDbId} initial={false} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.24, delay: Math.min(index * 0.015, 0.16) }} className="rounded-[26px] border border-white/10 bg-[rgba(11,15,24,0.92)] p-5 shadow-[0_18px_40px_rgba(0,0,0,0.24)]">
                         <div className="flex items-center justify-between gap-3">
                           <StatusPill label={`#${index + 1}`} tone="neutral" />
                           <StatusPill label={row.compliance.overall} tone={overallTone(row.compliance.overall)} />
                         </div>
                         <div className="mt-4 space-y-2">
-                          <p className="font-[family-name:var(--font-sora)] text-xl text-white">{row.governorName}</p>
+                          <p className="font-heading text-xl text-white">{row.governorName}</p>
                           <div className="flex flex-wrap gap-2">
                             <StatusPill label={row.allianceTag} tone={row.allianceTag === 'GODt' ? 'warn' : row.allianceTag === 'V57' ? 'info' : 'neutral'} />
                             <StatusPill label={`ID ${row.governorId}`} tone="neutral" />
@@ -739,7 +739,7 @@ export default function ActivityScreen() {
                           ].map((metric) => (
                             <div key={`${row.governorDbId}-${metric.label}`} className="rounded-2xl border border-white/8 bg-white/4 p-3">
                               <p className="text-[11px] uppercase tracking-[0.18em] text-white/36">{metric.label}</p>
-                              <p className="mt-2 font-[family-name:var(--font-sora)] text-lg text-white">{metric.value != null ? formatMetric(metric.value) : 'N/A'}</p>
+                              <p className="mt-2 font-heading text-lg text-white">{metric.value != null ? formatMetric(metric.value) : 'N/A'}</p>
                               <div className="mt-2">
                                 <StatusPill label={metric.status} tone={metricTone(metric.status)} />
                               </div>

@@ -170,7 +170,7 @@ function topRowsForMetric(metric: SpotlightMetric, rows: WeeklyActivityRow[]) {
 }
 
 export default function HomeScreen() {
-  const { workspaceId, accessToken, ready, loading: sessionLoading, error: sessionError } = useWorkspaceSession();
+  const { workspaceId, accessToken, ready, loading: sessionLoading, error: sessionError, refreshSession } = useWorkspaceSession();
   const [events, setEvents] = useState<EventSummary[]>([]);
   const [governorCount, setGovernorCount] = useState(0);
   const [weeklyEvent, setWeeklyEvent] = useState<WeeklyEventInfo | null>(null);
@@ -365,6 +365,11 @@ export default function HomeScreen() {
   }, [recentWeeklyReports]);
 
   const spotlightRows = useMemo(() => topRowsForMetric(spotlightMetric, weeklyActivity?.rows || []), [spotlightMetric, weeklyActivity?.rows]);
+  const podiumRows = useMemo(() => {
+    const seeded: Array<WeeklyActivityRow | null> = [...spotlightRows];
+    while (seeded.length < 3) seeded.push(null);
+    return seeded.slice(0, 3);
+  }, [spotlightRows]);
 
   const featuredPlayer = useMemo<PlayerSpotlightModel | null>(() => {
     const leader = spotlightRows[0];
@@ -429,11 +434,11 @@ export default function HomeScreen() {
         }
       />
 
-      <SessionGate ready={ready} loading={sessionLoading} error={sessionError}>
+      <SessionGate ready={ready} loading={sessionLoading} error={sessionError} onRetry={() => void refreshSession()}>
         {error ? <InlineError message={error} /> : null}
 
         <div className="grid gap-6 xl:grid-cols-[1.4fr_1fr]">
-          <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
+          <motion.div initial={false} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}>
             <Panel
               title="Podium Spotlight"
               subtitle="Switch the board story to see who owns the current week."
@@ -452,8 +457,22 @@ export default function HomeScreen() {
               }
             >
               <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
-                <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
-                  {spotlightRows.map((row, index) => {
+                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                  {podiumRows.map((row, index) => {
+                    if (!row) {
+                      return (
+                        <Card key={`podium-empty-${index}`} className="h-full min-h-[220px] border-dashed border-white/14 bg-[rgba(11,15,24,0.6)]">
+                          <CardContent className="flex h-full flex-col justify-between gap-4 p-5">
+                            <StatusPill label={`#${index + 1}`} tone="neutral" />
+                            <div>
+                              <p className="font-heading text-lg text-white/80">Open Podium Slot</p>
+                              <p className="mt-2 text-sm text-white/52">Upload and score this week to populate additional leaderboard positions.</p>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      );
+                    }
+
                     const value =
                       spotlightMetric === 'contribution_points'
                         ? row.contributionPoints
@@ -462,13 +481,14 @@ export default function HomeScreen() {
                           : spotlightMetric === 'power_growth'
                             ? row.powerGrowth
                             : row.killPointsGrowth;
+
                     return (
                       <Card
                         key={row.governorDbId}
                         className={
                           index === 0
-                            ? 'border-[#ffd57d]/18 bg-[linear-gradient(145deg,rgba(29,21,7,0.86),rgba(10,12,18,0.96))]'
-                            : 'border-white/10 bg-[rgba(11,15,24,0.92)]'
+                            ? 'h-full min-h-[220px] border-[#ffd57d]/18 bg-[linear-gradient(145deg,rgba(29,21,7,0.86),rgba(10,12,18,0.96))]'
+                            : 'h-full min-h-[220px] border-white/10 bg-[rgba(11,15,24,0.92)]'
                         }
                       >
                         <CardContent className="flex h-full flex-col gap-4 p-5">
@@ -477,14 +497,14 @@ export default function HomeScreen() {
                             {index === 0 ? <Crown className="size-5 text-[#ffd57d]" /> : null}
                           </div>
                           <div>
-                            <p className="font-[family-name:var(--font-sora)] text-lg text-white">{row.governorName}</p>
+                            <p className="font-heading text-lg text-white">{row.governorName}</p>
                             <p className="mt-1 text-sm text-white/52">{row.allianceLabel}</p>
                           </div>
                           <div className="mt-auto">
                             <p className="text-[11px] uppercase tracking-[0.18em] text-white/38">
                               {METRIC_OPTIONS.find((option) => option.key === spotlightMetric)?.label}
                             </p>
-                            <p className="mt-2 font-[family-name:var(--font-sora)] text-2xl text-white">{formatMetric(value)}</p>
+                            <p className="mt-2 font-heading text-2xl text-white">{formatMetric(value)}</p>
                           </div>
                         </CardContent>
                       </Card>
@@ -494,14 +514,14 @@ export default function HomeScreen() {
 
                 <Card className="border-white/10 bg-[linear-gradient(145deg,rgba(14,18,30,0.98),rgba(8,11,19,0.98))]">
                   <CardHeader>
-                    <CardTitle className="font-[family-name:var(--font-sora)] text-white">Featured Player</CardTitle>
+                    <CardTitle className="font-heading text-white">Featured Player</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     {featuredPlayer ? (
                       <>
                         <div>
                           <p className="text-[11px] uppercase tracking-[0.18em] text-white/38">Current spotlight</p>
-                          <h2 className="mt-2 font-[family-name:var(--font-sora)] text-2xl text-white">{featuredPlayer.name}</h2>
+                          <h2 className="mt-2 font-heading text-2xl text-white">{featuredPlayer.name}</h2>
                           <p className="mt-1 text-sm text-white/56">{featuredPlayer.allianceLabel}</p>
                         </div>
                         <MetricStrip
@@ -517,11 +537,11 @@ export default function HomeScreen() {
                           ]}
                         />
                         <p className="text-sm leading-6 text-white/58">{featuredPlayer.note}</p>
-                        <div className="grid gap-2 sm:grid-cols-2">
+                        <div className="grid gap-2.5 sm:grid-cols-2">
                           {quickActions.map((action) => {
                             const Icon = action.icon;
                             return (
-                              <Button key={action.href} asChild variant="outline" className="justify-between rounded-2xl border-white/10 bg-white/4 text-white hover:bg-white/8 hover:text-white">
+                              <Button key={action.href} asChild variant="outline" className="h-11 justify-between rounded-2xl border-white/10 bg-white/4 text-white hover:bg-white/8 hover:text-white">
                                 <Link href={action.href}>
                                   <span className="flex items-center gap-2">
                                     <Icon className="size-4" />
@@ -543,9 +563,9 @@ export default function HomeScreen() {
             </Panel>
           </motion.div>
 
-          <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.05 }} className="space-y-6">
+          <motion.div initial={false} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, delay: 0.03 }} className="space-y-6">
             <Panel title="Week Pulse" subtitle="A compact read on the current board state.">
-              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
+              <div className="grid gap-4 sm:grid-cols-2">
                 <KpiCard label="Tracked Players" value={weeklyActivity?.summary.membersTracked ?? 0} hint="Rows in the active weekly board" tone="info" icon={<Users className="size-5" />} />
                 <KpiCard label="Pass Rate" value={weeklyInsights ? `${weeklyInsights.overallPassRate}%` : '—'} hint={`${weeklyInsights?.totalPass ?? 0} pass / ${weeklyInsights?.totalMembers ?? 0} scored`} tone="good" icon={<ShieldCheck className="size-5" />} animated={false} />
                 <KpiCard label="Total Contribution" value={weeklyInsights ? formatCompactNumber(weeklyInsights.totalContribution) : '—'} hint="Contribution captured this week" tone="warn" icon={<Sparkles className="size-5" />} animated={false} />
@@ -558,7 +578,7 @@ export default function HomeScreen() {
                 <div className="rounded-[26px] border border-white/10 bg-white/4 p-5">
                   <div className="flex items-center justify-between gap-4">
                     <div>
-                      <p className="font-[family-name:var(--font-sora)] text-xl text-white">{weeklyInsights.topAlliance.allianceLabel}</p>
+                      <p className="font-heading text-xl text-white">{weeklyInsights.topAlliance.allianceLabel}</p>
                       <p className="mt-1 text-sm text-white/54">{weeklyInsights.topAlliance.passCount} passing players out of {weeklyInsights.topAlliance.members}</p>
                     </div>
                     <StatusPill label={`${weeklyInsights.topAlliance.passRate}%`} tone="good" />
@@ -580,7 +600,7 @@ export default function HomeScreen() {
               <div className="grid gap-4 lg:grid-cols-2">
                 <Card className="border-emerald-400/16 bg-emerald-400/6">
                   <CardHeader>
-                    <CardTitle className="flex items-center gap-2 font-[family-name:var(--font-sora)] text-base text-white">
+                    <CardTitle className="flex items-center gap-2 font-heading text-base text-white">
                       <TrendingUp className="size-4 text-emerald-200" /> Top Risers
                     </CardTitle>
                   </CardHeader>
@@ -591,14 +611,14 @@ export default function HomeScreen() {
                           <p className="text-sm font-medium text-white">{row.governorName}</p>
                           <p className="text-xs text-white/52">{row.allianceLabel}</p>
                         </div>
-                        <p className="font-[family-name:var(--font-sora)] text-lg text-emerald-100">+{row.delta.toFixed(1)}</p>
+                        <p className="font-heading text-lg text-emerald-100">+{row.delta.toFixed(1)}</p>
                       </div>
                     ))}
                   </CardContent>
                 </Card>
                 <Card className="border-rose-400/16 bg-rose-400/6">
                   <CardHeader>
-                    <CardTitle className="flex items-center gap-2 font-[family-name:var(--font-sora)] text-base text-white">
+                    <CardTitle className="flex items-center gap-2 font-heading text-base text-white">
                       <TrendingDown className="size-4 text-rose-200" /> Top Fallers
                     </CardTitle>
                   </CardHeader>
@@ -609,14 +629,17 @@ export default function HomeScreen() {
                           <p className="text-sm font-medium text-white">{row.governorName}</p>
                           <p className="text-xs text-white/52">{row.allianceLabel}</p>
                         </div>
-                        <p className="font-[family-name:var(--font-sora)] text-lg text-rose-100">{row.delta.toFixed(1)}</p>
+                        <p className="font-heading text-lg text-rose-100">{row.delta.toFixed(1)}</p>
                       </div>
                     )) : <p className="text-sm text-white/56">No fallers were detected in the current comparison window.</p>}
                   </CardContent>
                 </Card>
               </div>
             ) : (
-              <p className="text-sm text-white/56">Score at least two weekly cycles to unlock movement tracking.</p>
+              <div className="rounded-[24px] border border-dashed border-white/12 bg-white/5 p-5">
+                <p className="font-heading text-lg text-white">Movement Tracking Locked</p>
+                <p className="mt-2 text-sm text-white/58">Score at least two weekly cycles to unlock risers and fallers with week-over-week deltas.</p>
+              </div>
             )}
           </Panel>
 
@@ -626,7 +649,7 @@ export default function HomeScreen() {
                 <CardContent className="flex items-center justify-between gap-4 p-5">
                   <div>
                     <p className="text-[11px] uppercase tracking-[0.18em] text-white/36">Weekly MVP</p>
-                    <p className="mt-2 font-[family-name:var(--font-sora)] text-xl text-white">{weeklyMvp?.row.governorName ?? 'Pending'}</p>
+                    <p className="mt-2 font-heading text-xl text-white">{weeklyMvp?.row.governorName ?? 'Pending'}</p>
                     <p className="mt-1 text-sm text-white/54">{weeklyMvp?.row.allianceLabel ?? 'No scored week yet'}</p>
                   </div>
                   {weeklyMvp ? <StatusPill label={`${weeklyMvp.score.toFixed(1)} pts`} tone="good" /> : null}
@@ -636,13 +659,13 @@ export default function HomeScreen() {
                 <Card className="border-white/10 bg-white/4">
                   <CardContent className="p-5">
                     <p className="text-[11px] uppercase tracking-[0.18em] text-white/36">Total Players</p>
-                    <p className="mt-2 font-[family-name:var(--font-sora)] text-2xl text-white">{governorCount.toLocaleString()}</p>
+                    <p className="mt-2 font-heading text-2xl text-white">{governorCount.toLocaleString()}</p>
                   </CardContent>
                 </Card>
                 <Card className="border-white/10 bg-white/4">
                   <CardContent className="p-5">
                     <p className="text-[11px] uppercase tracking-[0.18em] text-white/36">Snapshots Indexed</p>
-                    <p className="mt-2 font-[family-name:var(--font-sora)] text-2xl text-white">{totalSnapshots.toLocaleString()}</p>
+                    <p className="mt-2 font-heading text-2xl text-white">{totalSnapshots.toLocaleString()}</p>
                   </CardContent>
                 </Card>
               </div>

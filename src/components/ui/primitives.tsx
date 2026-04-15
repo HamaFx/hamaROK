@@ -1,7 +1,6 @@
 'use client';
 
 import { type CSSProperties, type ReactNode, useEffect, useState } from 'react';
-import { motion } from 'framer-motion';
 import { ArrowUpDown, ChevronDown, ChevronUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
@@ -64,34 +63,30 @@ export function PageHero({
   badges?: string[];
 }) {
   return (
-    <motion.section
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.35, ease: 'easeOut' }}
-      className="relative mb-6 overflow-hidden rounded-[32px] border border-white/10 bg-[linear-gradient(145deg,rgba(16,21,34,0.96),rgba(8,11,19,0.96))] p-5 shadow-[0_20px_70px_rgba(0,0,0,0.4)] sm:p-6 lg:p-8"
-    >
+    <section className="relative overflow-hidden rounded-[30px] border border-white/12 bg-[linear-gradient(145deg,rgba(16,22,36,0.97),rgba(8,11,19,0.98))] p-6 shadow-[0_18px_48px_rgba(0,0,0,0.32)] sm:p-8">
       <div className="absolute inset-x-0 top-0 h-px bg-[linear-gradient(90deg,transparent,rgba(133,187,255,0.48),transparent)]" />
-      <div className="absolute right-0 top-0 h-52 w-52 rounded-full bg-[radial-gradient(circle,rgba(91,155,255,0.2),transparent_60%)] blur-2xl" />
-      <div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-        <div className="max-w-3xl">
-          <p className="mb-3 text-[11px] font-medium uppercase tracking-[0.28em] text-white/42">Player-Facing Surface</p>
-          <h1 className="font-[family-name:var(--font-sora)] text-3xl font-semibold tracking-tight text-white sm:text-4xl lg:text-5xl">
+      <div className="absolute -right-10 -top-10 h-56 w-56 rounded-full bg-[radial-gradient(circle,rgba(91,155,255,0.22),transparent_65%)] blur-2xl" />
+      <div className="absolute -bottom-8 left-1/3 h-40 w-40 rounded-full bg-[radial-gradient(circle,rgba(124,226,255,0.12),transparent_65%)] blur-2xl" />
+      <div className="relative grid gap-6 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+        <div className="min-w-0">
+          <p className="mb-3 text-[11px] font-medium uppercase tracking-[0.26em] text-white/42">Player-Facing Surface</p>
+          <h1 className="font-heading text-3xl font-semibold tracking-tight text-white sm:text-4xl lg:text-[3.35rem]">
             {title}
           </h1>
           {subtitle ? (
-            <p className="mt-4 max-w-2xl text-sm leading-7 text-white/62 sm:text-base">{subtitle}</p>
+            <p className="mt-4 max-w-3xl text-sm leading-7 text-white/62 sm:text-base">{subtitle}</p>
           ) : null}
           {badges?.length ? (
-            <div className="mt-5 flex flex-wrap gap-2">
+            <div className="mt-6 flex flex-wrap gap-2.5">
               {badges.map((badge) => (
                 <StatusPill key={badge} label={badge} tone="neutral" />
               ))}
             </div>
           ) : null}
         </div>
-        {actions ? <div className="flex w-full flex-wrap gap-2 [&>*]:w-full sm:[&>*]:w-auto lg:w-auto">{actions}</div> : null}
+        {actions ? <div className="flex w-full flex-wrap gap-2.5 [&>*]:w-full sm:[&>*]:w-auto lg:w-auto">{actions}</div> : null}
       </div>
-    </motion.section>
+    </section>
   );
 }
 
@@ -109,17 +104,17 @@ export function Panel({
   className?: string;
 }) {
   return (
-    <Card className={cn('overflow-hidden border-white/10 bg-[rgba(12,16,27,0.92)] shadow-[0_18px_50px_rgba(0,0,0,0.32)]', className)}>
+    <Card className={cn('overflow-hidden border-white/12 bg-[linear-gradient(160deg,rgba(13,18,30,0.95),rgba(9,13,22,0.96))] shadow-[0_18px_48px_rgba(0,0,0,0.28)]', className)}>
       {title || subtitle || actions ? (
-        <CardHeader className="flex flex-col gap-4 border-b border-white/6 pb-5 sm:flex-row sm:items-end sm:justify-between">
-          <div className="space-y-1.5">
-            {title ? <CardTitle className="font-[family-name:var(--font-sora)] text-lg text-white">{title}</CardTitle> : null}
-            {subtitle ? <CardDescription className="text-sm text-white/56">{subtitle}</CardDescription> : null}
+        <CardHeader className="flex flex-col gap-4 border-b border-white/8 pb-4 text-left sm:flex-row sm:items-end sm:justify-between">
+          <div className="space-y-1.5 pr-2 text-left">
+            {title ? <CardTitle className="font-heading text-xl text-white">{title}</CardTitle> : null}
+            {subtitle ? <CardDescription className="text-sm text-white/58">{subtitle}</CardDescription> : null}
           </div>
           {actions ? <div className="flex flex-wrap gap-2">{actions}</div> : null}
         </CardHeader>
       ) : null}
-      <CardContent className="p-4 sm:p-6">{children}</CardContent>
+      <CardContent className="p-4 sm:p-5 lg:p-6">{children}</CardContent>
     </Card>
   );
 }
@@ -140,18 +135,18 @@ export function KpiCard({
   animated?: boolean;
 }) {
   return (
-    <Card className={cn('overflow-hidden border-white/10 bg-[rgba(11,15,24,0.92)] shadow-[0_18px_40px_rgba(0,0,0,0.28)]', toneClasses(tone))}>
-      <CardContent className="p-5">
+    <Card className={cn('overflow-hidden border-white/12 bg-[rgba(10,14,24,0.92)]', toneClasses(tone))}>
+      <CardContent className="p-5 sm:p-6">
         <div className="flex items-start justify-between gap-4">
-          <div className="space-y-3">
-            <p className="text-[11px] font-medium uppercase tracking-[0.22em] text-white/45">{label}</p>
-            <p className="font-[family-name:var(--font-sora)] text-3xl font-semibold tracking-tight text-white">
+          <div className="space-y-2">
+            <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-white/45">{label}</p>
+            <p className="font-heading text-3xl font-semibold tracking-tight text-white sm:text-[2rem]">
               {animated && typeof value === 'number' ? <AnimatedCounter value={value} /> : value}
             </p>
             {hint ? <p className="text-sm leading-6 text-white/58">{hint}</p> : null}
           </div>
           {icon ? (
-            <div className="rounded-2xl border border-white/10 bg-white/6 p-3 text-white/72">{icon}</div>
+            <div className="rounded-2xl border border-white/10 bg-white/8 p-3 text-white/72">{icon}</div>
           ) : null}
         </div>
       </CardContent>
@@ -172,9 +167,9 @@ export function MetricStrip({
   } as const;
 
   return (
-    <div className="grid gap-2 sm:flex sm:flex-wrap">
+    <div className="grid gap-2 sm:flex sm:flex-wrap sm:gap-2.5">
       {items.map((item) => (
-        <div key={item.label} className="flex w-full min-w-0 items-center justify-between gap-3 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/58 sm:inline-flex sm:w-auto sm:justify-start">
+        <div key={item.label} className="flex w-full min-w-0 items-center justify-between gap-3 rounded-full border border-white/10 bg-white/7 px-4 py-2 text-sm text-white/58 sm:inline-flex sm:w-auto sm:justify-start">
           <span className="shrink-0">{item.label}</span>
           <strong className={cn('min-w-0 truncate font-medium text-white', item.accent ? accentMap[item.accent] : null)}>{item.value}</strong>
         </div>
@@ -195,7 +190,7 @@ export function FilterBar({
   return (
     <div
       className={cn(
-        'flex flex-wrap items-center gap-2 rounded-[24px] border border-white/8 bg-white/4 p-3 [&>*]:min-w-0',
+        'flex flex-wrap items-center gap-2.5 rounded-[22px] border border-white/10 bg-white/5 p-3.5 [&>*]:min-w-0',
         className
       )}
       style={style}
@@ -215,7 +210,7 @@ export function ActionToolbar({
   style?: CSSProperties;
 }) {
   return (
-    <div className={cn('flex flex-wrap items-center gap-2', className)} style={style}>
+    <div className={cn('flex flex-wrap items-center gap-2.5', className)} style={style}>
       {children}
     </div>
   );
@@ -231,9 +226,9 @@ export function EmptyState({
   action?: ReactNode;
 }) {
   return (
-    <div className="flex flex-col items-center justify-center rounded-[28px] border border-dashed border-white/10 bg-white/3 px-6 py-12 text-center">
+    <div className="flex flex-col items-center justify-center rounded-[26px] border border-dashed border-white/12 bg-white/5 px-6 py-12 text-center">
       <div className="mb-4 size-12 rounded-full border border-white/10 bg-white/6" />
-      <h3 className="font-[family-name:var(--font-sora)] text-lg text-white">{title}</h3>
+      <h3 className="font-heading text-lg text-white">{title}</h3>
       {description ? <p className="mt-3 max-w-lg text-sm leading-6 text-white/56">{description}</p> : null}
       {action ? <div className="mt-5 flex flex-wrap justify-center gap-2">{action}</div> : null}
     </div>
@@ -258,7 +253,7 @@ export function StatusPill({
   tone?: 'neutral' | 'good' | 'warn' | 'bad' | 'info';
 }) {
   return (
-    <Badge className={cn('rounded-full border px-3 py-1 text-[11px] font-medium tracking-[0.12em] uppercase', toneClasses(tone))}>
+    <Badge className={cn('rounded-full border px-3 py-1 text-[10px] font-semibold tracking-[0.14em] uppercase', toneClasses(tone))}>
       {label}
     </Badge>
   );
@@ -305,7 +300,7 @@ export function DataTableLite<T>({
   };
 
   const tableContent = (
-    <div className="overflow-hidden rounded-[28px] border border-white/10 bg-[rgba(11,15,24,0.9)]">
+    <div className="overflow-hidden rounded-[26px] border border-white/12 bg-[rgba(11,15,24,0.9)]">
       <Table>
         <TableHeader>
           <TableRow className="border-white/8 hover:bg-transparent">
@@ -315,7 +310,7 @@ export function DataTableLite<T>({
                 <TableHead
                   key={column.key}
                   className={cn(
-                    'h-12 border-b border-white/8 bg-white/[0.03] text-[11px] font-medium uppercase tracking-[0.18em] text-white/45',
+                    'h-12 border-b border-white/8 bg-white/[0.03] px-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-white/45',
                     column.thClassName,
                     index === 0 && stickyFirst && 'sticky left-0 z-10 bg-[rgba(11,15,24,0.96)]'
                   )}
@@ -357,7 +352,7 @@ export function DataTableLite<T>({
                   <TableCell
                     key={`${rowKey(row, idx)}-${column.key}`}
                     className={cn(
-                      dense ? 'py-2.5' : 'py-4',
+                      dense ? 'px-3 py-3' : 'px-3 py-4',
                       'align-middle',
                       column.className,
                       colIdx === 0 && stickyFirst && 'sticky left-0 bg-[rgba(11,15,24,0.96)]'
@@ -383,7 +378,7 @@ export function DataTableLite<T>({
           <article
             key={rowKey(row, idx)}
             className={cn(
-              'rounded-[24px] border border-white/10 bg-[rgba(11,15,24,0.92)] p-4 shadow-[0_10px_26px_rgba(0,0,0,0.22)]',
+              'rounded-[24px] border border-white/10 bg-[rgba(11,15,24,0.92)] p-4 shadow-[0_12px_28px_rgba(0,0,0,0.22)]',
               rowClassName?.(row, idx)
             )}
           >

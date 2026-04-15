@@ -134,7 +134,7 @@ function tierOrderEntries(distribution: Record<string, number>) {
 
 export default function CompareScreen() {
   const searchParams = useSearchParams();
-  const { workspaceId, accessToken, ready, loading: sessionLoading, error: sessionError } = useWorkspaceSession();
+  const { workspaceId, accessToken, ready, loading: sessionLoading, error: sessionError, refreshSession } = useWorkspaceSession();
   const [events, setEvents] = useState<EventOption[]>([]);
   const [eventAId, setEventAId] = useState(searchParams.get('eventA') || '');
   const [eventBId, setEventBId] = useState(searchParams.get('eventB') || '');
@@ -355,7 +355,7 @@ export default function CompareScreen() {
         label: 'Player',
         render: (row: Comparison) => (
           <div className="space-y-2">
-            <strong className="font-[family-name:var(--font-sora)] text-base text-white">{row.governor.name}</strong>
+            <strong className="font-heading text-base text-white">{row.governor.name}</strong>
             <div className="flex flex-wrap gap-2">
               <StatusPill label={`ID ${row.governor.governorId}`} tone="neutral" />
               {row.warriorScore?.tier ? <StatusPill label={row.warriorScore.tier} tone={tierTone(row.warriorScore.tier)} /> : null}
@@ -445,7 +445,7 @@ export default function CompareScreen() {
         }
       />
 
-      <SessionGate ready={ready} loading={sessionLoading} error={sessionError}>
+      <SessionGate ready={ready} loading={sessionLoading} error={sessionError} onRetry={() => void refreshSession()}>
         {error ? <InlineError message={error} /> : null}
         {publishMessage ? <div className="rounded-2xl border border-emerald-300/18 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-100">{publishMessage}</div> : null}
 
@@ -533,12 +533,12 @@ export default function CompareScreen() {
                           <StatusPill label="Spotlight Player" tone="warn" />
                           {spotlight.top ? <StatusPill label={`${spotlight.top.score}% score`} tone={scoreTone(spotlight.top.score)} /> : null}
                         </div>
-                        <h2 className="mt-4 font-[family-name:var(--font-sora)] text-3xl text-white">{spotlight.top?.governorName || 'No matchup yet'}</h2>
+                        <h2 className="mt-4 font-heading text-3xl text-white">{spotlight.top?.governorName || 'No matchup yet'}</h2>
                         <p className="mt-3 max-w-2xl text-sm leading-6 text-white/56">Highest overall warrior score across the selected event pair. This is the fastest read on who converted the matchup into measurable output.</p>
                       </div>
                       <div className="rounded-[24px] border border-white/10 bg-white/4 px-5 py-4 text-right">
                         <p className="text-[11px] uppercase tracking-[0.22em] text-white/36">Actual DKP</p>
-                        <p className="mt-2 font-[family-name:var(--font-sora)] text-3xl text-white">{spotlight.top ? formatCompactNumber(spotlight.top.actualDkp) : '—'}</p>
+                        <p className="mt-2 font-heading text-3xl text-white">{spotlight.top ? formatCompactNumber(spotlight.top.actualDkp) : '—'}</p>
                         <p className="mt-2 text-sm text-white/48">Top contributor lane</p>
                       </div>
                     </div>
@@ -548,21 +548,21 @@ export default function CompareScreen() {
                     <Card className="border-white/10 bg-white/4">
                       <CardContent className="space-y-3 p-5">
                         <p className="text-[11px] uppercase tracking-[0.18em] text-white/36">Top KP Delta</p>
-                        <p className="font-[family-name:var(--font-sora)] text-xl text-white">{spotlight.topKills?.governorName || '—'}</p>
+                        <p className="font-heading text-xl text-white">{spotlight.topKills?.governorName || '—'}</p>
                         <p className="text-sm text-white/56">{spotlight.topKills ? formatCompactNumber(spotlight.topKills.killPointsDelta) : '—'} kill points gained</p>
                       </CardContent>
                     </Card>
                     <Card className="border-white/10 bg-white/4">
                       <CardContent className="space-y-3 p-5">
                         <p className="text-[11px] uppercase tracking-[0.18em] text-white/36">Top Deads Delta</p>
-                        <p className="font-[family-name:var(--font-sora)] text-xl text-white">{spotlight.topDeads?.governorName || '—'}</p>
+                        <p className="font-heading text-xl text-white">{spotlight.topDeads?.governorName || '—'}</p>
                         <p className="text-sm text-white/56">{spotlight.topDeads ? formatCompactNumber(spotlight.topDeads.deadsDelta) : '—'} deads recorded</p>
                       </CardContent>
                     </Card>
                     <Card className="border-white/10 bg-white/4">
                       <CardContent className="space-y-3 p-5">
                         <p className="text-[11px] uppercase tracking-[0.18em] text-white/36">Largest Power Swing</p>
-                        <p className="font-[family-name:var(--font-sora)] text-xl text-white">{spotlight.biggestPowerSwing?.governor.name || '—'}</p>
+                        <p className="font-heading text-xl text-white">{spotlight.biggestPowerSwing?.governor.name || '—'}</p>
                         <p className="text-sm text-white/56">{spotlight.biggestPowerSwing ? formatDelta(spotlight.biggestPowerSwing.deltas.power) : '—'} from baseline to current</p>
                       </CardContent>
                     </Card>
