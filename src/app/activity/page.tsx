@@ -655,6 +655,18 @@ export default function ActivityPage() {
               )}
             </select>
           </div>
+          <select
+            className="form-select"
+            style={{ minWidth: 158 }}
+            value={allianceFilter}
+            onChange={(event) => setAllianceFilter(event.target.value)}
+          >
+            {ALLIANCE_FILTER_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
           <button
             className="btn btn-secondary btn-sm"
             onClick={goNextWeek}
@@ -675,18 +687,6 @@ export default function ActivityPage() {
               />
             ) : null}
           </div>
-        </FilterBar>
-
-        <FilterBar style={{ marginTop: 8 }}>
-          {ALLIANCE_FILTER_OPTIONS.map((opt) => (
-            <button
-              key={opt.value}
-              className={`btn btn-sm ${allianceFilter === opt.value ? 'btn-primary' : 'btn-secondary'}`}
-              onClick={() => setAllianceFilter(opt.value)}
-            >
-              {opt.label}
-            </button>
-          ))}
         </FilterBar>
 
         <FilterBar className="ranking-advanced-strip" style={{ marginTop: 10 }}>

@@ -3560,6 +3560,78 @@ h6 {
     width: 100%;
   }
 
+  .ranking-controls-card .ranking-controls-top {
+    flex-wrap: nowrap;
+    align-items: center;
+    overflow-x: auto;
+    overflow-y: hidden;
+    gap: 6px;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .ranking-controls-card .ranking-controls-top::-webkit-scrollbar {
+    display: none;
+  }
+
+  .ranking-controls-card .ranking-controls-top > * {
+    width: auto;
+    flex: 0 0 auto;
+    margin: 0;
+  }
+
+  .ranking-controls-card .ranking-controls-top .search-bar {
+    width: auto;
+    min-width: 170px;
+    flex: 1 0 180px;
+  }
+
+  .ranking-controls-card .ranking-controls-top .form-group {
+    margin-bottom: 0;
+  }
+
+  .ranking-controls-card .ranking-controls-top .form-select {
+    min-width: 124px;
+  }
+
+  .ranking-controls-card .btn {
+    padding: 6px 8px;
+    font-size: 0.72rem;
+  }
+
+  .ranking-controls-card .btn svg {
+    width: 12px;
+    height: 12px;
+  }
+
+  .ranking-advanced-strip {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    gap: 6px;
+    padding-top: 8px;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .ranking-advanced-strip::-webkit-scrollbar {
+    display: none;
+  }
+
+  .ranking-advanced-strip > * {
+    width: auto;
+    flex: 0 0 auto;
+  }
+
+  .ranking-advanced-strip .form-input {
+    width: 150px;
+  }
+
+  .ranking-week-meta,
+  .ranking-week-alliance-quick {
+    display: none;
+  }
+
   .search-bar {
     width: 100%;
   }

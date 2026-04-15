@@ -476,7 +476,7 @@ export default function Dashboard() {
               <h1>Alliance and Player Overview</h1>
             </div>
           </div>
-          <p className="dashboard-hero-subtitle">Fast weekly visibility for alliance health, player momentum, and data readiness.</p>
+          <p className="dashboard-hero-subtitle">Weekly alliance and player stats, live and compact.</p>
           <div className="dashboard-chip-row">
             <span className="dashboard-chip">
               <CalendarClock size={13} /> Week {weeklyEvent?.weekKey || '—'}
@@ -526,7 +526,10 @@ export default function Dashboard() {
             <span>Total Governors</span>
           </div>
           <p className="dashboard-mosaic-value">{loading ? '—' : governorCount.toLocaleString()}</p>
-          <p className="dashboard-mosaic-note">Roster members linked in kingdom tracking.</p>
+          <div className="dashboard-mosaic-mini">
+            <span>{totalSnapshots.toLocaleString()} snapshots</span>
+            <span>{events.length} events</span>
+          </div>
         </article>
 
         <article className="dashboard-mosaic-card square tone-emerald">
@@ -539,7 +542,10 @@ export default function Dashboard() {
           <p className="dashboard-mosaic-value">
             {loading ? '—' : (weeklyActivity?.summary.membersTracked ?? 0).toLocaleString()}
           </p>
-          <p className="dashboard-mosaic-note">Scored players in the active weekly cycle.</p>
+          <div className="dashboard-mosaic-mini">
+            <span>{weeklyInsights?.totalPass ?? 0} pass</span>
+            <span>{weeklyInsights?.totalFail ?? 0} fail</span>
+          </div>
         </article>
 
         <article className="dashboard-mosaic-card square tone-gold">
@@ -550,11 +556,10 @@ export default function Dashboard() {
             <span>Alliance Pass Rate</span>
           </div>
           <p className="dashboard-mosaic-value">{loading ? '—' : `${weeklyInsights?.overallPassRate ?? 0}%`}</p>
-          <p className="dashboard-mosaic-note">
-            {loading
-              ? 'Calculating weekly scoring...'
-              : `${weeklyInsights?.totalPass ?? 0} pass / ${weeklyInsights?.totalMembers ?? 0} tracked`}
-          </p>
+          <div className="dashboard-mosaic-mini">
+            <span>{weeklyInsights?.totalPass ?? 0}/{weeklyInsights?.totalMembers ?? 0} scored</span>
+            <span>{weeklyInsights?.baselineCoverage ?? 0}% baseline</span>
+          </div>
         </article>
 
         <article className="dashboard-mosaic-card square tone-violet">
@@ -565,7 +570,10 @@ export default function Dashboard() {
             <span>Total Snapshots</span>
           </div>
           <p className="dashboard-mosaic-value">{loading ? '—' : totalSnapshots.toLocaleString()}</p>
-          <p className="dashboard-mosaic-note">Profile uploads stored across all event checkpoints.</p>
+          <div className="dashboard-mosaic-mini">
+            <span>{recentWeeklyReports.length} weekly reports</span>
+            <span>{weeklyActivity?.rows.length ?? 0} rows this week</span>
+          </div>
         </article>
 
         <article className="dashboard-mosaic-card square tone-royal">
@@ -576,13 +584,16 @@ export default function Dashboard() {
             <span>Top Alliance</span>
           </div>
           <p className="dashboard-mosaic-value">
-            {weeklyInsights?.topAlliance ? weeklyInsights.topAlliance.allianceLabel : '—'}
+            {weeklyInsights?.topAlliance ? `${weeklyInsights.topAlliance.passRate}%` : '—'}
           </p>
-          <p className="dashboard-mosaic-note">
-            {weeklyInsights?.topAlliance
-              ? `${weeklyInsights.topAlliance.passRate}% pass • ${weeklyInsights.topAlliance.passCount}/${weeklyInsights.topAlliance.members} members`
-              : 'Waiting for scored alliance activity.'}
-          </p>
+          <div className="dashboard-mosaic-mini">
+            <span>{weeklyInsights?.topAlliance?.allianceLabel || 'No alliance yet'}</span>
+            <span>
+              {weeklyInsights?.topAlliance
+                ? `${weeklyInsights.topAlliance.passCount}/${weeklyInsights.topAlliance.members}`
+                : '0/0'}
+            </span>
+          </div>
         </article>
 
         <article className="dashboard-mosaic-card square tone-platinum">
@@ -593,13 +604,14 @@ export default function Dashboard() {
             <span>Top Contributor</span>
           </div>
           <p className="dashboard-mosaic-value">
-            {weeklyInsights?.topContributor ? weeklyInsights.topContributor.governorName : '—'}
-          </p>
-          <p className="dashboard-mosaic-note">
             {weeklyInsights?.topContributor
-              ? `${formatBigInt(toSafeBigInt(weeklyInsights.topContributor.contributionPoints))} contribution points • ${weeklyInsights.topContributor.allianceLabel}`
-              : 'No contribution rows available yet.'}
+              ? formatBigInt(toSafeBigInt(weeklyInsights.topContributor.contributionPoints))
+              : '—'}
           </p>
+          <div className="dashboard-mosaic-mini">
+            <span>{weeklyInsights?.topContributor?.governorName || 'No leader yet'}</span>
+            <span>{weeklyInsights?.topContributor?.allianceLabel || '—'}</span>
+          </div>
         </article>
 
         <article className="dashboard-mosaic-card square tone-flame">
@@ -610,13 +622,14 @@ export default function Dashboard() {
             <span>Top Power Growth</span>
           </div>
           <p className="dashboard-mosaic-value">
-            {weeklyInsights?.topPowerGrowth ? weeklyInsights.topPowerGrowth.governorName : '—'}
-          </p>
-          <p className="dashboard-mosaic-note">
             {weeklyInsights?.topPowerGrowth?.powerGrowth
-              ? `${formatBigInt(toSafeBigInt(weeklyInsights.topPowerGrowth.powerGrowth))} weekly power gained • ${weeklyInsights.topPowerGrowth.allianceLabel}`
-              : 'Baseline data is still building for this week.'}
+              ? formatBigInt(toSafeBigInt(weeklyInsights.topPowerGrowth.powerGrowth))
+              : '—'}
           </p>
+          <div className="dashboard-mosaic-mini">
+            <span>{weeklyInsights?.topPowerGrowth?.governorName || 'No leader yet'}</span>
+            <span>{weeklyInsights?.topPowerGrowth?.allianceLabel || '—'}</span>
+          </div>
         </article>
 
         <article className="dashboard-mosaic-card square tone-data">
@@ -629,11 +642,12 @@ export default function Dashboard() {
           <p className="dashboard-mosaic-value">
             {weeklyInsights ? `${weeklyInsights.baselineCoverage}%` : '—'}
           </p>
-          <p className="dashboard-mosaic-note">
-            {weeklyInsights
-              ? `Baseline-ready ${weeklyInsights.powerBaselineReadyCount}/${weeklyActivity?.rows.length ?? 0} • Unlinked ${weeklyActivity?.summary.unresolvedIdentityCount ?? 0}`
-              : 'Waiting for weekly activity data.'}
-          </p>
+          <div className="dashboard-mosaic-mini">
+            <span>
+              Ready {weeklyInsights?.powerBaselineReadyCount ?? 0}/{weeklyActivity?.rows.length ?? 0}
+            </span>
+            <span>Unlinked {weeklyActivity?.summary.unresolvedIdentityCount ?? 0}</span>
+          </div>
         </article>
       </section>
 
@@ -644,7 +658,7 @@ export default function Dashboard() {
               <h2 className="dashboard-heading-icon">
                 <Castle size={15} /> Alliance Momentum
               </h2>
-              <p>Pass-rate trend for the last {Math.max(recentWeeklyReports.length, 1)} tracked weeks.</p>
+              <p>{Math.max(recentWeeklyReports.length, 1)} week trend</p>
             </div>
             <StatusPill label="Last 4 Weeks" tone="info" />
           </header>
@@ -700,7 +714,7 @@ export default function Dashboard() {
               <p>
                 {weekMovement
                   ? `${formatWeekShort(weekMovement.previousWeekKey)} -> ${formatWeekShort(weekMovement.currentWeekKey)}`
-                  : 'Week-over-week movement appears when at least 2 weeks are available.'}
+                  : 'Waiting for second week'}
               </p>
             </div>
             {weekMovement ? <StatusPill label={`${weekMovement.comparedCount} compared`} tone="info" /> : null}
@@ -759,7 +773,7 @@ export default function Dashboard() {
               <h2 className="dashboard-heading-icon">
                 <Star size={15} /> Weekly MVP
               </h2>
-              <p>Weighted score: contribution 45%, power growth 30%, fort 15%, kill points growth 10%.</p>
+              <p>Score blend: C45 / P30 / F15 / K10</p>
             </div>
             <StatusPill label="Performance Blend" tone="good" />
           </header>

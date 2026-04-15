@@ -859,7 +859,7 @@ export default function RankingsPage() {
             </div>
           </FilterBar>
 
-          <FilterBar style={{ marginTop: 10, flexWrap: 'wrap' }}>
+          <FilterBar className="ranking-week-meta" style={{ marginTop: 10, flexWrap: 'wrap' }}>
             <span className="text-sm text-muted">
               {weeklyEvent.weekKey || 'week key pending'}
               {weeklyEvent.startsAt
@@ -891,7 +891,7 @@ export default function RankingsPage() {
           </FilterBar>
 
           {weeklyActivity?.summary?.allianceSummary?.length ? (
-            <div className="ranking-mobile-meta-line" style={{ marginTop: 10, flexWrap: 'wrap' }}>
+            <div className="ranking-mobile-meta-line ranking-week-alliance-quick" style={{ marginTop: 10, flexWrap: 'wrap' }}>
               {weeklyActivity.summary.allianceSummary.map((alliance) => (
                 <span key={alliance.allianceTag}>
                   {alliance.allianceLabel}: {alliance.passCount}/{alliance.members} pass
@@ -942,26 +942,21 @@ export default function RankingsPage() {
               </option>
             ))}
           </select>
-          <button
-            className="btn btn-secondary"
-            onClick={runSearch}
-            disabled={loading || !workspaceReady}
-            style={{ padding: '0 16px' }}
+          <select
+            className="form-select"
+            value={allianceFilter}
+            onChange={(event) => setAllianceFilter(event.target.value)}
+            style={{ minWidth: 168 }}
           >
-            <Filter size={14} /> Search
+            {ALLIANCE_FILTERS.map((alliance) => (
+              <option key={alliance.value} value={alliance.value}>
+                {alliance.label}
+              </option>
+            ))}
+          </select>
+          <button className="btn btn-secondary btn-sm" onClick={runSearch} disabled={loading || !workspaceReady}>
+            <Filter size={14} /> Apply
           </button>
-        </FilterBar>
-
-        <FilterBar style={{ marginTop: 10 }}>
-          {ALLIANCE_FILTERS.map((alliance) => (
-            <button
-              key={alliance.value}
-              className={`btn btn-sm ${allianceFilter === alliance.value ? 'btn-primary' : 'btn-secondary'}`}
-              onClick={() => setAllianceFilter(alliance.value)}
-            >
-              {alliance.label}
-            </button>
-          ))}
         </FilterBar>
 
         <FilterBar className="ranking-advanced-strip" style={{ marginTop: 10 }}>
