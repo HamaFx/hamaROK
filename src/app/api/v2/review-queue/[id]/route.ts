@@ -276,15 +276,13 @@ export async function PATCH(
           const ensured = await ensureWeeklyEventForWorkspace(extraction.scanJob.workspaceId);
           targetEventId = ensured.event.id;
         } catch (error) {
-          if (!isWeeklyAutoCreateSafeError(error)) {
-            throw new ApiHttpError(
-              'VALIDATION_ERROR',
-              'Scan job is not linked to a weekly event. Open Upload once to initialize the active week, then retry approval.',
-              400
-            );
+          if (isWeeklyAutoCreateSafeError(error)) {
+            eventLinkWarning =
+              'Approved, but weekly event linking is deferred because the database schema is behind. Run latest migrations, then reprocess if needed.';
+          } else {
+            eventLinkWarning =
+              'Approved, but this scan could not be linked to the active weekly event yet. You can continue review now and relink after weekly events are available.';
           }
-          eventLinkWarning =
-            'Approved, but weekly event linking is deferred because the database schema is behind. Run latest migrations, then reprocess if needed.';
         }
       }
       if (!/^\d{6,12}$/.test(approvedPayload.governorId)) {
