@@ -35,6 +35,7 @@ import {
 import { invalidateServerCacheTags } from '@/lib/server-cache';
 import { scanJobCacheTag, workspaceCacheTags } from '@/lib/cache-scopes';
 import { splitGovernorNameAndAlliance } from '@/lib/alliances';
+import { ensureWeeklyEventForWorkspace } from '@/lib/weekly-events';
 
 const PROFILE_POWER_RANKING_TYPE = normalizeRankingType('governor_profile_power');
 const PROFILE_POWER_METRIC_KEY = normalizeMetricKey('power');
@@ -255,14 +256,20 @@ export async function PATCH(
     const rerunValues = applyRerunNormalized(parsedValues, body.rerun);
     const mergedValues = applyCorrections(rerunValues, body.corrected);
     let approvedPayload = toApprovedSnapshotPayload(mergedValues);
+    let targetEventId = extraction.scanJob.eventId;
 
     if (body.status === OcrExtractionStatus.APPROVED) {
-      if (!extraction.scanJob.eventId) {
-        throw new ApiHttpError(
-          'VALIDATION_ERROR',
-          'Scan job is not linked to an event. Cannot approve into snapshots.',
-          400
-        );
+      if (!targetEventId) {
+        try {
+          const ensured = await ensureWeeklyEventForWorkspace(extraction.scanJob.workspaceId);
+          targetEventId = ensured.event.id;
+        } catch {
+          throw new ApiHttpError(
+            'VALIDATION_ERROR',
+            'Scan job is not linked to a weekly event. Open Upload once to initialize the active week, then retry approval.',
+            400
+          );
+        }
       }
       if (!/^\d{6,12}$/.test(approvedPayload.governorId)) {
         const matchedGovernor = await prisma.governor.findFirst({
@@ -399,7 +406,14 @@ export async function PATCH(
 
       let snapshotId: string | null = null;
 
-      if (body.status === OcrExtractionStatus.APPROVED && extraction.scanJob.eventId) {
+      if (body.status === OcrExtractionStatus.APPROVED && targetEventId) {
+        if (extraction.scanJob.eventId !== targetEventId) {
+          await tx.scanJob.update({
+            where: { id: extraction.scanJobId },
+            data: { eventId: targetEventId },
+          });
+        }
+
         const allianceDetection = splitGovernorNameAndAlliance({
           governorNameRaw: approvedPayload.governorName,
           allianceRaw: extractAllianceFromExtraction(extraction),
@@ -429,7 +443,7 @@ export async function PATCH(
         const previous = await tx.snapshot.findUnique({
           where: {
             eventId_governorId: {
-              eventId: extraction.scanJob.eventId,
+              eventId: targetEventId,
               governorId: governor.id,
             },
           },
@@ -448,7 +462,7 @@ export async function PATCH(
         const snapshot = await tx.snapshot.upsert({
           where: {
             eventId_governorId: {
-              eventId: extraction.scanJob.eventId,
+              eventId: targetEventId,
               governorId: governor.id,
             },
           },
@@ -464,7 +478,7 @@ export async function PATCH(
               extraction.confidence <= 1 ? extraction.confidence * 100 : extraction.confidence,
           },
           create: {
-            eventId: extraction.scanJob.eventId,
+            eventId: targetEventId,
             governorId: governor.id,
             workspaceId: extraction.scanJob.workspaceId,
             power: approvedPayload.power,
@@ -526,7 +540,7 @@ export async function PATCH(
               workspaceId: extraction.scanJob.workspaceId,
               snapshotId: snapshot.id,
               governorId: governor.id,
-              eventAId: extraction.scanJob.eventId,
+              eventAId: targetEventId,
               code: anomaly.code,
               type: anomaly.type,
               message: anomaly.message,
@@ -553,7 +567,7 @@ export async function PATCH(
           where: {
             workspaceId_eventId_rankingType_identityKey: {
               workspaceId: extraction.scanJob.workspaceId,
-              eventId: extraction.scanJob.eventId,
+              eventId: targetEventId,
               rankingType: PROFILE_POWER_RANKING_TYPE,
               identityKey,
             },
@@ -592,14 +606,14 @@ export async function PATCH(
           where: {
             workspaceId_eventId_rankingType_identityKey: {
               workspaceId: extraction.scanJob.workspaceId,
-              eventId: extraction.scanJob.eventId,
+              eventId: targetEventId,
               rankingType: PROFILE_POWER_RANKING_TYPE,
               identityKey,
             },
           },
           create: {
             workspaceId: extraction.scanJob.workspaceId,
-            eventId: extraction.scanJob.eventId,
+            eventId: targetEventId,
             rankingType: PROFILE_POWER_RANKING_TYPE,
             metricKey: PROFILE_POWER_METRIC_KEY,
             identityKey,

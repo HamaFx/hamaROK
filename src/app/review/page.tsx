@@ -164,6 +164,7 @@ export default function ReviewQueuePage() {
   const [statusFilter, setStatusFilter] = useState('RAW,REVIEWED');
   const [drafts, setDrafts] = useState<Record<string, typeof defaultDraft>>({});
   const [actionBusy, setActionBusy] = useState<string | null>(null);
+  const [actionNotice, setActionNotice] = useState<string | null>(null);
   const [profiles, setProfiles] = useState<OcrRuntimeProfile[]>([]);
   const [rerunProfileByItem, setRerunProfileByItem] = useState<Record<string, string>>({});
   const [rerunPayloadByItem, setRerunPayloadByItem] = useState<Record<string, unknown>>({});
@@ -181,6 +182,7 @@ export default function ReviewQueuePage() {
     }
 
     setError(null);
+    setActionNotice(null);
     setLoading(true);
 
     const params = new URLSearchParams({
@@ -329,6 +331,37 @@ export default function ReviewQueuePage() {
     }));
   };
 
+  const requestReviewUpdate = useCallback(
+    async (id: string, status: ExtractionStatus) => {
+      if (!workspaceId || !accessToken) return;
+      const draft = drafts[id] || defaultDraft;
+      const res = await fetch(`/api/v2/review-queue/${id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-access-token': accessToken,
+        },
+        body: JSON.stringify({
+          status,
+          corrected: draft,
+          rerun: rerunPayloadByItem[id] || undefined,
+          reason:
+            status === 'APPROVED'
+              ? 'Approved from human review queue'
+              : status === 'REJECTED'
+                ? 'Rejected in review queue'
+                : 'Reviewed and pending final approval',
+        }),
+      });
+
+      const payload = await res.json();
+      if (!res.ok) {
+        throw new Error(payload?.error?.message || 'Failed to update review status.');
+      }
+    },
+    [workspaceId, accessToken, drafts, rerunPayloadByItem]
+  );
+
   const rerunOcr = async (item: QueueItem) => {
     if (!workspaceId || !accessToken) return;
     if (!item.artifact?.url) {
@@ -410,33 +443,10 @@ export default function ReviewQueuePage() {
 
     setActionBusy(id + status);
     setError(null);
+    setActionNotice(null);
 
     try {
-      const draft = drafts[id] || defaultDraft;
-      const res = await fetch(`/api/v2/review-queue/${id}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-access-token': accessToken,
-        },
-        body: JSON.stringify({
-          status,
-          corrected: draft,
-          rerun: rerunPayloadByItem[id] || undefined,
-          reason:
-            status === 'APPROVED'
-              ? 'Approved from human review queue'
-              : status === 'REJECTED'
-                ? 'Rejected in review queue'
-                : 'Reviewed and pending final approval',
-        }),
-      });
-
-      const payload = await res.json();
-      if (!res.ok) {
-        throw new Error(payload?.error?.message || 'Failed to update review status.');
-      }
-
+      await requestReviewUpdate(id, status);
       await loadQueue();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update review status.');
@@ -444,6 +454,51 @@ export default function ReviewQueuePage() {
       setActionBusy(null);
     }
   };
+
+  const submitReviewBulk = useCallback(
+    async (status: ExtractionStatus) => {
+      if (!workspaceId || !accessToken || items.length === 0) return;
+
+      const verb = status === 'APPROVED' ? 'approve' : status === 'REJECTED' ? 'reject' : 'update';
+      const confirmed = window.confirm(
+        `This will ${verb} ${items.length} visible row${items.length === 1 ? '' : 's'}. Continue?`
+      );
+      if (!confirmed) return;
+
+      setActionBusy(`bulk:${status}`);
+      setError(null);
+      setActionNotice(null);
+
+      let successCount = 0;
+      const failures: string[] = [];
+
+      for (const item of items) {
+        try {
+          await requestReviewUpdate(item.id, status);
+          successCount += 1;
+        } catch (err) {
+          const message = err instanceof Error ? err.message : 'Unknown error';
+          const label = item.values.governorName.value || item.id.slice(-6);
+          failures.push(`${label}: ${message}`);
+        }
+      }
+
+      await loadQueue();
+
+      if (failures.length > 0) {
+        setError(
+          `Bulk ${verb} finished: ${successCount} succeeded, ${failures.length} failed. ${failures[0]}`
+        );
+      } else {
+        setActionNotice(
+          `Bulk ${verb} completed for ${successCount} row${successCount === 1 ? '' : 's'}.`
+        );
+      }
+
+      setActionBusy(null);
+    },
+    [workspaceId, accessToken, items, requestReviewUpdate, loadQueue]
+  );
 
   const saveGoldenFixture = async (item: QueueItem) => {
     if (!workspaceId || !accessToken) return;
@@ -524,9 +579,24 @@ export default function ReviewQueuePage() {
         <button className="btn btn-primary" onClick={loadQueue} disabled={loading}>
           {loading ? 'Loading...' : 'Apply'}
         </button>
+        <button
+          className="btn btn-secondary"
+          onClick={() => submitReviewBulk('APPROVED')}
+          disabled={loading || Boolean(actionBusy) || items.length === 0}
+        >
+          <ShieldCheck size={14} /> {actionBusy === 'bulk:APPROVED' ? 'Approving...' : 'Accept All'}
+        </button>
+        <button
+          className="btn btn-danger"
+          onClick={() => submitReviewBulk('REJECTED')}
+          disabled={loading || Boolean(actionBusy) || items.length === 0}
+        >
+          <XCircle size={14} /> {actionBusy === 'bulk:REJECTED' ? 'Rejecting...' : 'Reject All'}
+        </button>
       </FilterBar>
 
       {error ? <div className="delta-negative mb-16">{error}</div> : null}
+      {actionNotice ? <div className="text-sm text-muted mb-16">{actionNotice}</div> : null}
 
       <div className="grid-4 mb-24">
         <KpiCard label="Queue Total" value={summary.total} hint="Rows in current queue filter" tone="info" />
