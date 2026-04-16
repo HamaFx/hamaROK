@@ -14,6 +14,7 @@ import {
   TrendingUp,
   Trophy,
   Users,
+  Target,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useWorkspaceSession } from '@/lib/workspace-session';
@@ -364,94 +365,126 @@ export default function HomeScreen() {
     };
   }, [recentWeeklyReports]);
 
-  const spotlightRows = useMemo(() => topRowsForMetric(spotlightMetric, weeklyActivity?.rows || []), [spotlightMetric, weeklyActivity?.rows]);
-  const podiumRows = useMemo(() => {
-    const seeded: Array<WeeklyActivityRow | null> = [...spotlightRows];
-    while (seeded.length < 3) seeded.push(null);
-    return seeded.slice(0, 3);
-  }, [spotlightRows]);
+  const topPowerGrowth = useMemo(() => {
+    if (!weeklyActivity?.rows?.length) return null;
+    return [...weeklyActivity.rows].filter(r => r.powerGrowth != null).sort((a, b) => Number(b.powerGrowth) - Number(a.powerGrowth))[0] || null;
+  }, [weeklyActivity]);
 
-  const featuredPlayer = useMemo<PlayerSpotlightModel | null>(() => {
-    const leader = spotlightRows[0];
-    if (!leader) return null;
+  const topContribution = useMemo(() => {
+    if (!weeklyActivity?.rows?.length) return null;
+    return [...weeklyActivity.rows].filter(r => r.contributionPoints != null).sort((a, b) => Number(b.contributionPoints) - Number(a.contributionPoints))[0] || null;
+  }, [weeklyActivity]);
 
-    const metricLabel = METRIC_OPTIONS.find((option) => option.key === spotlightMetric)?.label || 'Contribution';
-    const primaryValue =
-      spotlightMetric === 'contribution_points'
-        ? leader.contributionPoints
-        : spotlightMetric === 'fort_destroying'
-          ? leader.fortDestroying
-          : spotlightMetric === 'power_growth'
-            ? leader.powerGrowth
-            : leader.killPointsGrowth;
-
-    return {
-      id: leader.governorDbId,
-      name: leader.governorName,
-      governorId: null,
-      allianceLabel: leader.allianceLabel,
-      allianceTag: null,
-      primaryLabel: metricLabel,
-      primaryValue: formatMetric(primaryValue),
-      secondaryLabel: 'Weekly MVP Blend',
-      secondaryValue: weeklyMvp?.row.governorDbId === leader.governorDbId ? `${weeklyMvp.score.toFixed(1)} pts` : undefined,
-      note: 'Spotlight rotates across the active metric board so players can scan leaders by contribution, fort, power, and KP growth.',
-    };
-  }, [spotlightMetric, spotlightRows, weeklyMvp]);
-
-  const quickActions = [
-    { href: '/rankings', label: 'Open Rankings', icon: Trophy },
-    { href: '/governors', label: 'Browse Players', icon: Users },
-    { href: '/activity', label: 'Open Stats', icon: Activity },
-    { href: '/compare', label: 'Run Compare', icon: Swords },
-  ];
+  const topForts = useMemo(() => {
+    if (!weeklyActivity?.rows?.length) return null;
+    return [...weeklyActivity.rows].filter(r => r.fortDestroying != null).sort((a, b) => Number(b.fortDestroying) - Number(a.fortDestroying))[0] || null;
+  }, [weeklyActivity]);
 
   return (
-    <div className="space-y-4 lg:space-y-6">
+    <div className="space-y-6 lg:space-y-8">
       <SessionGate ready={ready} loading={sessionLoading} error={sessionError} onRetry={() => void refreshSession()}>
         {error ? <InlineError message={error} /> : null}
 
-        {/* 1. TOP KPI ROW */}
+        {/* 1. TOP KPI ROW - GAME FOCUSED */}
         <section className="grid gap-3 min-[390px]:gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <KpiCard label="Registered Governors" value={governorCount} icon={<Users className="size-5" />} tone="info" hint="Total across Kingdom" />
-          <KpiCard label="Tracked Members" value={weeklyActivity?.summary.membersTracked ?? 0} icon={<Activity className="size-5" />} tone="neutral" hint={"Week: " + (weeklyEvent?.weekKey || "N/A")} />
-          <KpiCard label="Active Events" value={events.length} icon={<Trophy className="size-5" />} tone="warn" hint="Indexed leaderboards" />
-          <KpiCard label="Global Compliance" value={weeklyInsights ? `${weeklyInsights.overallPassRate}%` : "—"} icon={<ShieldCheck className="size-5" />} tone="good" hint={`Total Pass: ${weeklyInsights?.totalPass ?? 0}`} animated={false} />
+          <KpiCard label="Kingdom Power Grown" value={weeklyInsights ? formatCompactNumber(weeklyInsights.totalPowerGrowth) : "—"} icon={<Sparkles className="size-5" />} tone="good" hint="Total positive growth captured" />
+          <KpiCard label="Total Combat DKP" value={weeklyInsights ? formatCompactNumber(weeklyInsights.totalContribution) : "—"} icon={<Activity className="size-5" />} tone="warn" hint="Total Contribution sum" />
+          <KpiCard label="Tracked Members" value={weeklyActivity?.summary.membersTracked ?? 0} icon={<Users className="size-5" />} tone="info" hint={`Week: ${weeklyEvent?.weekKey || "N/A"}`} />
+          <KpiCard label="Kingdom Activity Pass" value={weeklyInsights ? `${weeklyInsights.overallPassRate}%` : "—"} icon={<ShieldCheck className="size-5" />} tone="good" hint="Overall compliance threshold" animated={false} />
         </section>
 
-        {/* 2. MID DASHBOARD MATRIX */}
+        {/* 2. TOP MVPs - HORIZONTAL COLUMNS */}
+        <Panel title="Weekly MVP Operations" subtitle="Top performers isolated by statistical category.">
+          <div className="grid gap-4 sm:grid-cols-3">
+             {/* Power Growth MVP */}
+             <div className="rounded-[20px] bg-white/[0.02] border border-emerald-500/20 shadow-[0_0_20px_rgba(16,185,129,0.05)] p-5">
+                <div className="flex items-center gap-2 mb-3">
+                   <TrendingUp className="size-5 text-emerald-400" />
+                   <h3 className="font-heading text-lg font-bold text-tier-1">Top Power Growth</h3>
+                </div>
+                {topPowerGrowth ? (
+                   <div className="flex flex-col gap-3">
+                      <div className="flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-[14px] border-[1.5px] border-emerald-500/40 bg-[#1f2937]">
+                        <img src={`https://api.dicebear.com/9.x/adventurer/svg?seed=${topPowerGrowth.governorDbId}&backgroundColor=transparent`} alt="avatar" className="size-full object-cover scale-[1.15]" />
+                      </div>
+                      <div>
+                         <p className="text-xl font-bold text-tier-1 font-heading">{topPowerGrowth.governorName}</p>
+                         <p className="text-sm text-tier-3">{topPowerGrowth.allianceLabel}</p>
+                         <p className="mt-2 text-2xl font-mono font-bold text-emerald-400">+{formatMetric(topPowerGrowth.powerGrowth)}</p>
+                      </div>
+                   </div>
+                ) : <p className="text-sm text-tier-4 mt-6">Awaiting power board stats.</p>}
+             </div>
+
+             {/* Activity / Contribution MVP */}
+             <div className="rounded-[20px] bg-white/[0.02] border border-amber-500/20 shadow-[0_0_20px_rgba(245,158,11,0.05)] p-5">
+                <div className="flex items-center gap-2 mb-3">
+                   <Sparkles className="size-5 text-amber-400" />
+                   <h3 className="font-heading text-lg font-bold text-tier-1">Top Activity MVP</h3>
+                </div>
+                {topContribution ? (
+                   <div className="flex flex-col gap-3">
+                      <div className="flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-[14px] border-[1.5px] border-amber-500/40 bg-[#1f2937]">
+                        <img src={`https://api.dicebear.com/9.x/adventurer/svg?seed=${topContribution.governorDbId}&backgroundColor=transparent`} alt="avatar" className="size-full object-cover scale-[1.15]" />
+                      </div>
+                      <div>
+                         <p className="text-xl font-bold text-tier-1 font-heading">{topContribution.governorName}</p>
+                         <p className="text-sm text-tier-3">{topContribution.allianceLabel}</p>
+                         <p className="mt-2 text-2xl font-mono font-bold text-amber-400">{formatMetric(topContribution.contributionPoints)} DKP</p>
+                      </div>
+                   </div>
+                ) : <p className="text-sm text-tier-4 mt-6">Awaiting activity board stats.</p>}
+             </div>
+
+             {/* Fort Destroyer MVP */}
+             <div className="rounded-[20px] bg-white/[0.02] border border-rose-500/20 shadow-[0_0_20px_rgba(244,63,94,0.05)] p-5">
+                <div className="flex items-center gap-2 mb-3">
+                   <Target className="size-5 text-rose-400" />
+                   <h3 className="font-heading text-lg font-bold text-tier-1">Top Fort Destroyer</h3>
+                </div>
+                {topForts ? (
+                   <div className="flex flex-col gap-3">
+                      <div className="flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-[14px] border-[1.5px] border-rose-500/40 bg-[#1f2937]">
+                        <img src={`https://api.dicebear.com/9.x/adventurer/svg?seed=${topForts.governorDbId}&backgroundColor=transparent`} alt="avatar" className="size-full object-cover scale-[1.15]" />
+                      </div>
+                      <div>
+                         <p className="text-xl font-bold text-tier-1 font-heading">{topForts.governorName}</p>
+                         <p className="text-sm text-tier-3">{topForts.allianceLabel}</p>
+                         <p className="mt-2 text-2xl font-mono font-bold text-rose-400">{formatMetric(topForts.fortDestroying)} Forts</p>
+                      </div>
+                   </div>
+                ) : <p className="text-sm text-tier-4 mt-6">Awaiting fort board stats.</p>}
+             </div>
+          </div>
+        </Panel>
+
+        {/* 3. COMBAT ACTIVITY MATRIX */}
         <div className="grid gap-5 xl:grid-cols-[1.3fr_0.7fr]">
-          <Panel title="Alliance Compliance Matrix" subtitle="Aggregated completion rates across active operational alliances.">
-            <div className="flex flex-col gap-4">
+          <Panel title="Alliance Combat Readiness" subtitle="Percentage of members meeting minimum weekly Combat and Growth thresholds.">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-2 gap-4">
               {alliancePulse.length === 0 ? (
                 <p className="text-sm text-tier-3">No compliance data available for the active week.</p>
               ) : (
                 alliancePulse.map((alliance) => {
                   const percentPass = alliance.members > 0 ? (alliance.passCount / alliance.members) * 100 : 0;
-                  const percentPartial = alliance.members > 0 && alliance.partialCount ? (alliance.partialCount / alliance.members) * 100 : 0;
-                  const percentFail = 100 - percentPass - percentPartial;
+                  const percentFail = 100 - percentPass;
                   
                   return (
-                    <div key={alliance.allianceTag} className="flex flex-col gap-3 rounded-[18px] bg-[color:var(--surface-3)] p-5 border border-[color:var(--stroke-soft)]">
+                    <div key={alliance.allianceTag} className="flex flex-col gap-3 rounded-[16px] bg-white/[0.015] p-4 border border-white/[0.04]">
                       <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2.5">
-                          <span className="font-heading text-lg font-bold text-tier-1">{alliance.allianceLabel}</span>
-                          <span className="flex h-6 items-center rounded-full bg-white/5 border border-white/10 px-2.5 text-[11px] font-medium text-tier-3">{alliance.members} members</span>
+                        <div className="flex items-center gap-2">
+                          <span className="font-heading text-base font-bold text-tier-1 drop-shadow-sm">{alliance.allianceLabel}</span>
                         </div>
-                        <span className="text-lg font-mono font-bold text-tier-1">{Math.round(percentPass)}% <span className="text-sm font-sans font-medium text-tier-4">Pass</span></span>
+                        <span className="text-base font-mono font-bold text-tier-1">{Math.round(percentPass)}% <span className="text-xs font-sans font-medium text-tier-4">Pass</span></span>
                       </div>
                       
-                      {/* Gradient Stacked Bar */}
-                      <div className="h-2.5 w-full flex overflow-hidden rounded-full bg-white/[0.04] shadow-inner">
-                        <div style={{ width: `${percentPass}%` }} className="bg-emerald-500 shadow-[0_0_12px_rgba(16,185,129,0.4)] transition-all" />
-                        <div style={{ width: `${percentPartial}%` }} className="bg-amber-500 shadow-[0_0_12px_rgba(245,158,11,0.4)] transition-all" />
-                        {percentFail > 0 && <div style={{ width: `${percentFail}%` }} className="bg-rose-500 shadow-[0_0_12px_rgba(244,63,94,0.4)] transition-all" />}
+                      <div className="h-2 w-full flex overflow-hidden rounded-full bg-white/[0.04] shadow-inner">
+                        <div style={{ width: `${percentPass}%` }} className="bg-emerald-500 shadow-[0_0_12px_rgba(16,185,129,0.3)] transition-all" />
+                        {percentFail > 0 && <div style={{ width: `${percentFail}%` }} className="bg-rose-500 shadow-[0_0_12px_rgba(244,63,94,0.3)] transition-all" />}
                       </div>
                       
-                      <div className="mt-0.5 flex gap-5 text-[11px] text-tier-3 font-semibold uppercase tracking-wider">
-                        <span className="flex items-center gap-1.5"><span className="size-2 rounded-full bg-emerald-500" /> {alliance.passCount} Pass</span>
-                        {!!alliance.partialCount && <span className="flex items-center gap-1.5"><span className="size-2 rounded-full bg-amber-500" /> {alliance.partialCount} Partial</span>}
-                        <span className="flex items-center gap-1.5"><span className="size-2 rounded-full bg-rose-500" /> {alliance.failCount} Fail</span>
+                      <div className="flex justify-between text-[11px] text-tier-3 font-semibold uppercase tracking-wider">
+                         <span>{alliance.members} Members Tracked</span>
                       </div>
                     </div>
                   );
@@ -460,55 +493,39 @@ export default function HomeScreen() {
             </div>
           </Panel>
 
-          <Panel title="Top Performers Podium" subtitle="Highest statistical MVPs.">
-            <div className="flex flex-col gap-3">
-                {podiumRows.filter(Boolean).map((row, index) => {
-                  if (!row) return null;
-                  return (
-                    <div key={row.governorDbId} className="group/row flex flex-wrap items-center gap-3 rounded-2xl bg-[color:var(--surface-3)] p-3 border border-[color:var(--stroke-soft)] transition-colors hover:bg-white/[0.04]">
-                      <div className="flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-[12px] border-[1.5px] border-[color:var(--rank-gold)] bg-[#1f2937] shadow-[0_0_12px_rgba(216,184,120,0.15)] ring-1 ring-black/50">
-                        <img src={`https://api.dicebear.com/9.x/adventurer/svg?seed=${row.governorDbId}&backgroundColor=transparent`} alt="avatar" className="size-full object-cover scale-[1.15]" />
+          <Panel title="Risers & Fallers" subtitle="Movement in combat efficiency since last week.">
+            {weekMovement ? (
+              <div className="flex flex-col gap-3">
+                <div className="rounded-2xl bg-[color:var(--surface-3)] p-4 border border-[color:var(--stroke-soft)]">
+                  <h3 className="font-heading text-sm text-tier-2 flex items-center gap-2 mb-3"><TrendingUp className="size-4 text-emerald-400" /> Top Weekly Risers</h3>
+                  <div className="grid gap-2.5">
+                    {weekMovement.risers.map((row) => (
+                      <div key={`riser-${row.governorDbId}`} className="flex items-center justify-between text-sm">
+                        <span className="truncate text-tier-1 pr-4 font-medium">{row.governorName}</span>
+                        <span className="font-mono text-emerald-300 font-bold">+{row.delta.toFixed(1)}</span>
                       </div>
-                      <div className="flex-1 min-w-0 flex flex-col justify-center">
-                        <p className="truncate text-[15px] font-bold text-tier-1 drop-shadow-sm">{row.governorName}</p>
-                        <p className="text-[11px] text-tier-3 font-medium mt-0.5">{row.allianceLabel}</p>
+                    ))}
+                    {weekMovement.risers.length === 0 && <p className="text-xs text-tier-3">No positive movement tracked.</p>}
+                  </div>
+                </div>
+                <div className="rounded-2xl bg-[color:var(--surface-3)] p-4 border border-[color:var(--stroke-soft)]">
+                  <h3 className="font-heading text-sm text-tier-2 flex items-center gap-2 mb-3"><TrendingDown className="size-4 text-rose-400" /> Steeper Falls</h3>
+                  <div className="grid gap-2.5">
+                    {weekMovement.fallers.map((row) => (
+                      <div key={`faller-${row.governorDbId}`} className="flex items-center justify-between text-sm">
+                        <span className="truncate text-tier-1 pr-4 font-medium">{row.governorName}</span>
+                        <span className="font-mono text-rose-400 font-bold">{row.delta.toFixed(1)}</span>
                       </div>
-                      <div className="flex flex-col items-end gap-1.5 shrink-0">
-                        <StatusPill label={`Rank ${index + 1}`} tone={index === 0 ? "warn" : "neutral"} />
-                        <span className="text-[13px] font-mono font-bold text-tier-2">{formatMetric(row.contributionPoints)} pt</span>
-                      </div>
-                    </div>
-                  );
-                })}
-                {podiumRows.filter(Boolean).length === 0 && (
-                   <p className="text-sm text-tier-3 mt-4">Run weekly scoring to populate podium positions.</p>
-                )}
-            </div>
+                    ))}
+                    {weekMovement.fallers.length === 0 && <p className="text-xs text-tier-3">No negative movement tracked.</p>}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-tier-3 mt-4">Movement data requires at least two scored weeks of activity.</p>
+            )}
           </Panel>
         </div>
-
-        {/* 3. RECENT OPERATIONS LOG */}
-        <Panel title="Recent Operations Log" subtitle="Historical snapshots of kingdom events and operations.">
-          <div className="flex snap-x overflow-x-auto pb-4 gap-4 no-scrollbar">
-             {recentWeeklyReports.length === 0 ? (
-               <p className="text-sm text-tier-3">No recent logs generated.</p>
-             ) : (
-               recentWeeklyReports.map(({ weekKey, report }) => (
-                 <div key={weekKey} className="snap-start shrink-0 w-[260px] rounded-[18px] bg-[color:var(--surface-3)] p-4 border border-[color:var(--stroke-soft)] hover:border-white/20 transition-colors">
-                   <div className="flex items-start justify-between">
-                     <h4 className="font-heading text-[15px] leading-tight text-tier-1 line-clamp-2 pr-2">{report.event.name}</h4>
-                     <CalendarClock className="size-4 shrink-0 text-tier-4" />
-                   </div>
-                   <p className="text-[11px] font-mono text-tier-3 mt-2">{weekKey}</p>
-                   <div className="mt-5 grid grid-cols-2 gap-3 text-sm text-tier-2 border-t border-white/5 pt-3">
-                     <div className="flex flex-col gap-0.5"><span className="text-[10px] uppercase tracking-wider text-tier-4">Tracked</span><span className="font-mono font-bold">{report.summary.membersTracked}</span></div>
-                     <div className="flex flex-col gap-0.5"><span className="text-[10px] uppercase tracking-wider text-tier-4">Issues</span><span className={`font-mono font-bold ${report.summary.unresolvedIdentityCount > 0 ? "text-rose-300" : "text-tier-3"}`}>{report.summary.unresolvedIdentityCount}</span></div>
-                   </div>
-                 </div>
-               ))
-             )}
-          </div>
-        </Panel>
 
       </SessionGate>
     </div>

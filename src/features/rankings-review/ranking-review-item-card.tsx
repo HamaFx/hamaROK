@@ -195,37 +195,7 @@ export function RankingReviewItemCard({
         )}
       </header>
 
-      <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,0.88fr)_minmax(0,1.12fr)]">
-        <section className="space-y-3 rounded-2xl border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] p-3.5">
-          {row.run.artifact?.url ? (
-            <>
-              <a
-                href={row.run.artifact.url}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[color:var(--stroke-soft)] bg-black/20 px-3.5 text-sm text-tier-2 hover:bg-black/30"
-              >
-                <ExternalLink className="size-4" />
-                Open Screenshot
-              </a>
-              <div className="overflow-hidden rounded-2xl border border-[color:var(--stroke-soft)] bg-black/20">
-                <Image
-                  src={row.run.artifact.url}
-                  alt={`Ranking screenshot for ${row.governorNameRaw}`}
-                  width={920}
-                  height={520}
-                  unoptimized
-                  className="h-auto w-full"
-                />
-              </div>
-            </>
-          ) : (
-            <div className="rounded-2xl border border-dashed border-[color:var(--stroke-soft)] bg-black/20 px-4 py-8 text-center text-sm text-tier-3">
-              Screenshot artifact is missing for this ranking row.
-            </div>
-          )}
-        </section>
-
+      <div className="mt-4">
         <section className="space-y-3">
           <div className="hidden md:block">{correctionFields}</div>
 
