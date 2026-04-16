@@ -26,6 +26,15 @@ export interface ReviewRow {
     metricKey: string;
     status: string;
     headerText: string | null;
+    diagnostics?: {
+      classificationConfidence: number | null;
+      droppedRowCount: number | null;
+      guardFailures: string[];
+      detectedBoardTokens: string[];
+      uniformity?: Record<string, unknown> | null;
+      worker?: string | null;
+      ocrDurationMs?: number | null;
+    } | null;
     createdAt: string;
     artifact?: {
       id: string;
@@ -63,6 +72,10 @@ export interface RerunHint {
   matchedConfidence: number | null;
   lowConfidence: boolean;
   failureReasons: string[];
+  classificationConfidence?: number | null;
+  droppedRowCount?: number | null;
+  guardFailures?: string[];
+  detectedBoardTokens?: string[];
 }
 
 export const defaultRankingReviewDraft: RankingReviewDraft = {

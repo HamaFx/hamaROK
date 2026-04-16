@@ -105,7 +105,7 @@ export function sanitizeAllianceDisplay(value: string): string {
 }
 
 function detectByBracketTag(value: string): TrackedAlliance | null {
-  const match = String(value || '').match(/\[([A-Za-z0-9]{2,6})\]/);
+  const match = String(value || '').match(/[\[\(]([^\]\)]{2,12})[\]\)]?/);
   if (!match) return null;
   const normalized = normalizeAllianceToken(match[1]);
   return TAG_LOOKUP.get(normalized) || null;
@@ -214,15 +214,39 @@ function stripKnownAlliancePrefix(value: string): string {
   const text = sanitizeGovernorNameForAlliance(value);
   if (!text) return '';
 
-  const bracketPrefix = text.match(/^\[([A-Za-z0-9]{2,6})\]\s*(.+)$/);
+  const normalizedLeading = text.replace(/^[^A-Za-z0-9\[\(]+/, '');
+  const bracketPrefix = normalizedLeading.match(
+    /^[\[\(]\s*([A-Za-z0-9][A-Za-z0-9 ._-]{1,11})\s*[\]\)]?\s*(.+)$/
+  );
   if (bracketPrefix) {
     const tag = normalizeAllianceToken(bracketPrefix[1]);
     if (TAG_LOOKUP.has(tag)) {
-      return sanitizeGovernorNameForAlliance(bracketPrefix[2]);
+      return sanitizeGovernorNameForAlliance(
+        String(bracketPrefix[2] || '').replace(/^[\s._\-:|/\\]+/, '')
+      );
     }
   }
 
-  return text;
+  // Handle OCR-noisy tag prefixes like "V 57 Monkey", "GODt: Player", "P57R|Name".
+  for (const tagToken of TAG_LOOKUP.keys()) {
+    const looseTag = [...tagToken]
+      .map((char) => {
+        if (char === 'O') return '[O0]';
+        if (char === 'I') return '[I1]';
+        if (char === 'S') return '[S5]';
+        return char;
+      })
+      .join('[^A-Za-z0-9]*');
+
+    const loosePrefix = normalizedLeading.match(
+      new RegExp(`^${looseTag}[\\s._\\-:|/\\\\]+(.+)$`, 'i')
+    );
+    if (loosePrefix?.[1]) {
+      return sanitizeGovernorNameForAlliance(loosePrefix[1]);
+    }
+  }
+
+  return normalizedLeading;
 }
 
 export function splitGovernorNameAndAlliance(args: {

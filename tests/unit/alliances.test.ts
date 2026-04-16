@@ -46,6 +46,17 @@ describe('alliance detection helpers', () => {
     expect(split.allianceRaw).toBe('[P57R] PHOENIX RISING 4057');
   });
 
+  it('strips OCR-noisy tracked alliance prefixes from governor names', () => {
+    const split = splitGovernorNameAndAlliance({
+      governorNameRaw: '[V 57] : Monkey D Luffy',
+      allianceRaw: null,
+    });
+
+    expect(split.governorNameRaw).toBe('Monkey D Luffy');
+    expect(split.allianceTag).toBe('V57');
+    expect(split.allianceRaw).toBe('[V57] Legacy of Velmora');
+  });
+
   it('normalizes alliance query filters with tracked aliases', () => {
     const filters = resolveAllianceQueryFilters(['god of thunder', '[V57]', 'P57R']);
     expect(filters).toEqual([

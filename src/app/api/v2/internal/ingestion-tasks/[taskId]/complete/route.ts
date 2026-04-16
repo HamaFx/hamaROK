@@ -20,7 +20,11 @@ import { prisma } from '@/lib/prisma';
 import { invalidateServerCacheTags } from '@/lib/server-cache';
 import { scanJobCacheTag, workspaceCacheTags } from '@/lib/cache-scopes';
 import { splitGovernorNameAndAlliance } from '@/lib/alliances';
-import { validateStrictRankingTypeMetricPair } from '@/lib/rankings/normalize';
+import {
+  normalizeGovernorAlias,
+  normalizeOcrNumericDigits,
+  validateStrictRankingTypeMetricPair,
+} from '@/lib/rankings/normalize';
 
 const rowSchema = z.object({
   sourceRank: z.number().int().min(1).max(5000).optional().nullable(),
@@ -60,6 +64,8 @@ const rankingPayloadSchema = z.object({
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
+type RankingPayload = z.infer<typeof rankingPayloadSchema>;
+
 const completeSchema = z.object({
   ingestionDomain: z.nativeEnum(IngestionDomain).optional(),
   screenArchetype: z.string().max(80).optional(),
@@ -69,6 +75,281 @@ const completeSchema = z.object({
   ranking: rankingPayloadSchema.optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
+
+interface RankingGuardRule {
+  minMetricDigits: number;
+  minRows: number;
+  uniformDominanceRatio: number;
+  uniformDominanceMinCount: number;
+}
+
+const RANKING_GUARD_RULES: Record<string, RankingGuardRule> = {
+  individual_power: {
+    minMetricDigits: 5,
+    minRows: 3,
+    uniformDominanceRatio: 0.8,
+    uniformDominanceMinCount: 4,
+  },
+  mad_scientist: {
+    minMetricDigits: 2,
+    minRows: 3,
+    uniformDominanceRatio: 0.8,
+    uniformDominanceMinCount: 4,
+  },
+  fort_destroyer: {
+    minMetricDigits: 1,
+    minRows: 3,
+    uniformDominanceRatio: 0.8,
+    uniformDominanceMinCount: 4,
+  },
+  kill_point: {
+    minMetricDigits: 4,
+    minRows: 3,
+    uniformDominanceRatio: 0.8,
+    uniformDominanceMinCount: 4,
+  },
+};
+
+const RANKING_NAME_HEADER_TOKENS = new Set([
+  'NAME',
+  'RANK',
+  'RANKING',
+  'RANKINGS',
+  'POWER',
+  'CONTRIBUTION',
+  'CONTRIBUTIONPOINTS',
+  'FORT',
+  'FORTS',
+  'FORTDESTROYED',
+  'FORTSDESTROYED',
+  'KILLPOINT',
+  'KILLPOINTS',
+  'METRIC',
+  'GOVERNORPROFILE',
+]);
+
+const RANKING_METRIC_HEADER_TOKENS: Record<string, string[]> = {
+  power: ['POWER'],
+  contribution_points: ['CONTRIBUTION', 'CONTRIBUTIONPOINTS', 'TECHCONTRIBUTION'],
+  fort_destroying: ['FORT', 'FORTDESTROYED', 'FORTSDESTROYED', 'FORTDESTROYING'],
+  kill_points: ['KILLPOINT', 'KILLPOINTS'],
+};
+
+function normalizeArtifactToken(value: string): string {
+  return String(value || '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '');
+}
+
+function isRankingHeaderNameToken(value: string): boolean {
+  const token = normalizeArtifactToken(value);
+  if (!token) return true;
+  return RANKING_NAME_HEADER_TOKENS.has(token);
+}
+
+function detectBoardTokens(value: string): string[] {
+  const normalized = String(value || '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9 ]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!normalized) return [];
+  const compact = normalized.replace(/\s+/g, '');
+  const known = [
+    'INDIVIDUAL POWER',
+    'MAD SCIENTIST',
+    'FORT DESTROYER',
+    'KILL POINT',
+    'KILL POINTS',
+  ];
+  const detected = known.filter((token) => {
+    const compactToken = token.replace(/\s+/g, '');
+    return normalized.includes(token) || compact.includes(compactToken);
+  });
+  return [...new Set(detected)];
+}
+
+function isMetricHeaderArtifact(metricRaw: string, metricKey: string, headerText?: string | null): boolean {
+  const rawToken = normalizeArtifactToken(metricRaw);
+  if (!rawToken) return true;
+
+  const expectedTokens = RANKING_METRIC_HEADER_TOKENS[metricKey] || [];
+  if (expectedTokens.includes(rawToken)) return true;
+  if (expectedTokens.some((token) => token.includes(rawToken) || rawToken.includes(token))) {
+    return true;
+  }
+
+  const headerToken = normalizeArtifactToken(headerText || '');
+  if (headerToken && (headerToken.includes(rawToken) || rawToken.includes(headerToken))) {
+    return true;
+  }
+
+  return RANKING_NAME_HEADER_TOKENS.has(rawToken);
+}
+
+function evaluateMetricUniformity(
+  metricValues: string[],
+  rule: RankingGuardRule
+): {
+  suspicious: boolean;
+  dominantValue: string | null;
+  dominantCount: number;
+  dominantRatio: number;
+} {
+  const cleaned = metricValues.map((value) => String(value || '').trim()).filter(Boolean);
+  if (cleaned.length === 0) {
+    return {
+      suspicious: false,
+      dominantValue: null,
+      dominantCount: 0,
+      dominantRatio: 0,
+    };
+  }
+
+  const counts = new Map<string, number>();
+  for (const value of cleaned) {
+    counts.set(value, (counts.get(value) || 0) + 1);
+  }
+  const [dominantValue, dominantCount] = [...counts.entries()].sort((a, b) => b[1] - a[1])[0];
+  const dominantRatio = dominantCount / cleaned.length;
+  const suspicious =
+    cleaned.length >= rule.uniformDominanceMinCount &&
+    dominantCount >= rule.uniformDominanceMinCount &&
+    dominantRatio >= rule.uniformDominanceRatio;
+
+  return {
+    suspicious,
+    dominantValue,
+    dominantCount,
+    dominantRatio,
+  };
+}
+
+function sanitizeRankingPayload(args: {
+  ranking: RankingPayload;
+  rankingType: string;
+  metricKey: string;
+}) {
+  const rule =
+    RANKING_GUARD_RULES[args.rankingType] || {
+      minMetricDigits: 1,
+      minRows: 3,
+      uniformDominanceRatio: 0.8,
+      uniformDominanceMinCount: 4,
+    };
+  const rows: Array<z.infer<typeof rowSchema>> = [];
+  const dedupe = new Set<string>();
+  const droppedReasonCount: Record<string, number> = {};
+  let droppedRowCount = 0;
+
+  for (const row of args.ranking.rows) {
+    const split = splitGovernorNameAndAlliance({
+      governorNameRaw: row.governorNameRaw,
+      allianceRaw: row.allianceRaw || null,
+      subtitleRaw: row.titleRaw || null,
+    });
+    const governorNameRaw = String(split.governorNameRaw || row.governorNameRaw || '')
+      .replace(/[^\x20-\x7E]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 80);
+    const governorNameNormalized = normalizeGovernorAlias(governorNameRaw);
+
+    const metricRaw = String(row.metricRaw ?? row.metricValue ?? '')
+      .replace(/[^\x20-\x7E]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 80);
+    const hasRawDigit = /[0-9]/.test(metricRaw);
+    const metricValueFromRaw = hasRawDigit ? normalizeOcrNumericDigits(metricRaw) : '';
+    const metricValue =
+      metricValueFromRaw ||
+      (hasRawDigit ? normalizeOcrNumericDigits(row.metricValue) : '');
+    const metricHeaderArtifact =
+      !hasRawDigit && isMetricHeaderArtifact(metricRaw, args.metricKey, args.ranking.headerText);
+
+    let dropReason: string | null = null;
+    if (!governorNameRaw || !governorNameNormalized || isRankingHeaderNameToken(governorNameRaw)) {
+      dropReason = 'header-row-artifact';
+    } else if (!hasRawDigit) {
+      dropReason = metricHeaderArtifact ? 'header-row-artifact' : 'metric-no-raw-digit';
+    } else if (!metricValue || metricValue.length < rule.minMetricDigits) {
+      dropReason = 'metric-too-short';
+    }
+
+    if (dropReason) {
+      droppedRowCount += 1;
+      droppedReasonCount[dropReason] = (droppedReasonCount[dropReason] || 0) + 1;
+      continue;
+    }
+
+    const sourceRank =
+      typeof row.sourceRank === 'number' && Number.isFinite(row.sourceRank)
+        ? Math.max(1, Math.min(5000, Math.floor(row.sourceRank)))
+        : null;
+    const dedupeKey = `${sourceRank || 0}:${governorNameNormalized}:${metricValue}`;
+    if (dedupe.has(dedupeKey)) {
+      droppedRowCount += 1;
+      droppedReasonCount.duplicate = (droppedReasonCount.duplicate || 0) + 1;
+      continue;
+    }
+    dedupe.add(dedupeKey);
+
+    rows.push({
+      sourceRank,
+      governorNameRaw,
+      allianceRaw: split.allianceRaw || row.allianceRaw || null,
+      titleRaw: row.titleRaw || null,
+      metricRaw: metricRaw || metricValue,
+      metricValue,
+      confidence:
+        typeof row.confidence === 'number' && Number.isFinite(row.confidence)
+          ? Math.max(0, Math.min(100, row.confidence))
+          : undefined,
+      ocrTrace: row.ocrTrace,
+      candidates: row.candidates,
+    });
+  }
+
+  const guardFailures = new Set<string>();
+  if (rows.length < rule.minRows) {
+    guardFailures.add('insufficient-valid-rows');
+    if ((droppedReasonCount['header-row-artifact'] || 0) > 0) {
+      guardFailures.add('header-row-artifact');
+    }
+  }
+
+  const uniformity = evaluateMetricUniformity(
+    rows.map((row) => normalizeOcrNumericDigits(row.metricValue)),
+    rule
+  );
+  if (rows.length >= rule.minRows && uniformity.suspicious) {
+    guardFailures.add('uniform-metric-suspect');
+  }
+
+  const metadataRecord =
+    args.ranking.metadata && typeof args.ranking.metadata === 'object'
+      ? ({ ...args.ranking.metadata } as Record<string, unknown>)
+      : {};
+  const classificationConfidence =
+    typeof metadataRecord.classificationConfidence === 'number' &&
+    Number.isFinite(metadataRecord.classificationConfidence)
+      ? metadataRecord.classificationConfidence
+      : null;
+  const detectedBoardTokens = detectBoardTokens(args.ranking.headerText || '');
+
+  return {
+    rows,
+    diagnostics: {
+      classificationConfidence,
+      droppedRowCount,
+      droppedReasonCount,
+      guardFailures: [...guardFailures],
+      detectedBoardTokens,
+      uniformity,
+    },
+  };
+}
 
 type ProfilePayload = z.infer<typeof profilePayloadSchema>;
 
@@ -387,9 +668,10 @@ export async function POST(
     if (!strictPair.ok) {
       return fail(
         'VALIDATION_ERROR',
-        strictPair.reason || 'Unsupported rankingType/metricKey pair.',
+        `unsupported-header: ${strictPair.reason || 'Unsupported rankingType/metricKey pair.'}`,
         400,
         {
+          guardFailures: ['unsupported-header'],
           rankingType: strictPair.rankingType,
           metricKey: strictPair.metricKey,
           expectedMetricKey: strictPair.expectedMetricKey,
@@ -397,31 +679,45 @@ export async function POST(
       );
     }
 
-    const enrichedRankingRows = ranking.rows.map((row) => {
-      const split = splitGovernorNameAndAlliance({
-        governorNameRaw: row.governorNameRaw,
-        allianceRaw: row.allianceRaw || null,
-        subtitleRaw: row.titleRaw || null,
-      });
-
-      return {
-        ...row,
-        governorNameRaw: split.governorNameRaw || row.governorNameRaw,
-        allianceRaw: split.allianceRaw || row.allianceRaw || null,
-      };
+    const sanitizedRanking = sanitizeRankingPayload({
+      ranking,
+      rankingType: strictPair.rankingType,
+      metricKey: strictPair.metricKey,
     });
+    if (sanitizedRanking.diagnostics.guardFailures.length > 0) {
+      return fail(
+        'VALIDATION_ERROR',
+        `ranking-guard-failure: ${sanitizedRanking.diagnostics.guardFailures.join(', ')}`,
+        400,
+        {
+          rankingType: strictPair.rankingType,
+          metricKey: strictPair.metricKey,
+          guardFailures: sanitizedRanking.diagnostics.guardFailures,
+          droppedRowCount: sanitizedRanking.diagnostics.droppedRowCount,
+          droppedReasonCount: sanitizedRanking.diagnostics.droppedReasonCount,
+          detectedBoardTokens: sanitizedRanking.diagnostics.detectedBoardTokens,
+          uniformity: sanitizedRanking.diagnostics.uniformity,
+        }
+      );
+    }
 
     const rankingRun = await createRankingRunWithRows({
       workspaceId: task.workspaceId,
       eventId: task.eventId || task.scanJob.eventId || null,
       source: task.scanJob.source,
       domain: IngestionDomain.RANKING_CAPTURE,
-      rankingType: ranking.rankingType,
-      metricKey: ranking.metricKey,
+      rankingType: strictPair.rankingType,
+      metricKey: strictPair.metricKey,
       headerText: ranking.headerText,
       artifactId: task.artifactId,
       metadata: {
         ...(ranking.metadata || {}),
+        classificationConfidence: sanitizedRanking.diagnostics.classificationConfidence,
+        droppedRowCount: sanitizedRanking.diagnostics.droppedRowCount,
+        guardFailures: sanitizedRanking.diagnostics.guardFailures,
+        detectedBoardTokens: sanitizedRanking.diagnostics.detectedBoardTokens,
+        droppedReasonCount: sanitizedRanking.diagnostics.droppedReasonCount,
+        uniformity: sanitizedRanking.diagnostics.uniformity,
         ...(body.metadata || {}),
         taskId: task.id,
         screenArchetype: body.screenArchetype || 'ranking_board',
@@ -429,7 +725,7 @@ export async function POST(
       } as Prisma.InputJsonValue,
       notes: `Ingestion task completion ${task.id}`,
       idempotencyKey: `ingestion-task:${task.id}:ranking-run`,
-      rows: enrichedRankingRows,
+      rows: sanitizedRanking.rows,
     });
 
     const result = await prisma.$transaction(async (tx) => {
@@ -458,16 +754,22 @@ export async function POST(
             ...(body.metadata || {}),
             workerId: body.workerId || undefined,
             screenArchetype: body.screenArchetype || undefined,
-              ingestionDomain: inferredDomain,
-              rankingRunId: rankingRun.id,
-              rankingType: rankingRun.rankingType,
-              metricKey: rankingRun.metricKey,
-              duplicateWarning: rankingRun.deduped ? true : undefined,
-              ...(duplicateMetadata || {}),
-            }),
-          },
-          include: {
-            artifact: {
+            ingestionDomain: inferredDomain,
+            rankingRunId: rankingRun.id,
+            rankingType: rankingRun.rankingType,
+            metricKey: rankingRun.metricKey,
+            droppedRowCount: sanitizedRanking.diagnostics.droppedRowCount,
+            guardFailures:
+              sanitizedRanking.diagnostics.guardFailures.length > 0
+                ? sanitizedRanking.diagnostics.guardFailures
+                : undefined,
+            detectedBoardTokens: sanitizedRanking.diagnostics.detectedBoardTokens,
+            duplicateWarning: rankingRun.deduped ? true : undefined,
+            ...(duplicateMetadata || {}),
+          }),
+        },
+        include: {
+          artifact: {
             select: {
               id: true,
               type: true,

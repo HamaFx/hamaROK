@@ -113,6 +113,70 @@ function toJsonValue(value: unknown): Prisma.InputJsonValue | undefined {
   return value as Prisma.InputJsonValue;
 }
 
+function parseRunDiagnostics(metadata: Prisma.JsonValue | null | undefined) {
+  const record =
+    metadata && typeof metadata === 'object' && !Array.isArray(metadata)
+      ? (metadata as Record<string, unknown>)
+      : null;
+  if (!record) return null;
+
+  const classificationConfidenceRaw = record.classificationConfidence;
+  const droppedRowCountRaw = record.droppedRowCount;
+  const guardFailuresRaw = record.guardFailures;
+  const detectedBoardTokensRaw = record.detectedBoardTokens;
+  const uniformityRaw = record.uniformity;
+  const workerRaw = record.worker;
+  const ocrDurationMsRaw = record.ocrDurationMs;
+
+  const classificationConfidence =
+    typeof classificationConfidenceRaw === 'number' && Number.isFinite(classificationConfidenceRaw)
+      ? classificationConfidenceRaw
+      : null;
+  const droppedRowCount =
+    typeof droppedRowCountRaw === 'number' && Number.isFinite(droppedRowCountRaw)
+      ? Math.max(0, Math.floor(droppedRowCountRaw))
+      : null;
+  const guardFailures = Array.isArray(guardFailuresRaw)
+    ? guardFailuresRaw
+        .filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
+        .slice(0, 12)
+    : [];
+  const detectedBoardTokens = Array.isArray(detectedBoardTokensRaw)
+    ? detectedBoardTokensRaw
+        .filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
+        .slice(0, 12)
+    : [];
+  const uniformity =
+    uniformityRaw && typeof uniformityRaw === 'object' && !Array.isArray(uniformityRaw)
+      ? (uniformityRaw as Record<string, unknown>)
+      : null;
+  const worker = typeof workerRaw === 'string' ? workerRaw : null;
+  const ocrDurationMs =
+    typeof ocrDurationMsRaw === 'number' && Number.isFinite(ocrDurationMsRaw)
+      ? Math.max(0, Math.floor(ocrDurationMsRaw))
+      : null;
+
+  const hasDiagnostics =
+    classificationConfidence != null ||
+    droppedRowCount != null ||
+    guardFailures.length > 0 ||
+    detectedBoardTokens.length > 0 ||
+    uniformity != null ||
+    worker != null ||
+    ocrDurationMs != null;
+  if (!hasDiagnostics) return null;
+
+  return {
+    classificationConfidence,
+    droppedRowCount,
+    guardFailures,
+    detectedBoardTokens,
+    uniformity,
+    worker,
+    ocrDurationMs,
+  };
+}
+
 function mapIdentityToSnapshotStatus(identityStatus: RankingIdentityStatus): RankingSnapshotStatus {
   if (identityStatus === RankingIdentityStatus.REJECTED) {
     return RankingSnapshotStatus.REJECTED;
@@ -1604,6 +1668,7 @@ export async function listRankingReviewRows(args: {
             metricKey: true,
             status: true,
             headerText: true,
+            metadata: true,
             createdAt: true,
             artifact: {
               select: {
@@ -1646,6 +1711,7 @@ export async function listRankingReviewRows(args: {
         metricKey: row.run.metricKey,
         status: row.run.status,
         headerText: row.run.headerText,
+        diagnostics: parseRunDiagnostics(row.run.metadata),
         createdAt: row.run.createdAt.toISOString(),
         artifact: row.run.artifact
           ? {

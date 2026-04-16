@@ -78,6 +78,9 @@ export function RankingReviewItemCard({
   const boardLabel = getRankingTypeDisplayName(row.run.rankingType);
   const metricLabel = getMetricDisplayName(row.run.metricKey);
   const supportedBoard = getSupportedBoardForPair(row.run.rankingType, row.run.metricKey);
+  const runDiagnostics = row.run.diagnostics || null;
+  const runGuardFailures = runDiagnostics?.guardFailures || [];
+  const runBoardTokens = runDiagnostics?.detectedBoardTokens || [];
   const rerunMismatch =
     rerunHint &&
     (rerunHint.detectedRankingType !== row.run.rankingType ||
@@ -152,6 +155,18 @@ export function RankingReviewItemCard({
           <StatusPill label={metricLabel} tone="neutral" />
           <StatusPill label={`Rank ${row.sourceRank ?? '—'}`} tone="neutral" />
           <StatusPill label={`Metric ${row.metricValue || '—'}`} tone="neutral" />
+          {runDiagnostics?.classificationConfidence != null ? (
+            <StatusPill
+              label={`Classify ${Math.round(runDiagnostics.classificationConfidence)}%`}
+              tone={runDiagnostics.classificationConfidence >= 75 ? 'good' : 'warn'}
+            />
+          ) : null}
+          {runDiagnostics?.droppedRowCount != null ? (
+            <StatusPill
+              label={`Dropped ${runDiagnostics.droppedRowCount}`}
+              tone={runDiagnostics.droppedRowCount > 0 ? 'warn' : 'info'}
+            />
+          ) : null}
         </div>
 
         {row.run.headerText ? (
@@ -165,9 +180,17 @@ export function RankingReviewItemCard({
         {candidatePreview.length > 0 ? (
           <p className="text-sm text-tier-3">Candidates: {candidatePreview.join(' • ')}</p>
         ) : null}
+        {runBoardTokens.length > 0 ? (
+          <p className="text-sm text-tier-3">Detected board tokens: {runBoardTokens.join(' • ')}</p>
+        ) : null}
         {!supportedBoard ? (
           <div className="rounded-2xl border border-rose-300/16 bg-rose-400/10 px-3 py-2.5 text-xs text-rose-100">
             Unsupported ranking type/metric pair. Validate OCR header classification before approving.
+          </div>
+        ) : null}
+        {runGuardFailures.length > 0 ? (
+          <div className="rounded-2xl border border-rose-300/16 bg-rose-400/10 px-3 py-2.5 text-xs text-rose-100">
+            Guard failures: {runGuardFailures.join(' • ')}
           </div>
         ) : null}
       </header>
@@ -292,6 +315,18 @@ export function RankingReviewItemCard({
                   label={`Detected: ${getRankingTypeDisplayName(rerunHint.detectedRankingType)} / ${getMetricDisplayName(rerunHint.detectedMetricKey)}`}
                   tone={rerunMismatch ? 'bad' : 'good'}
                 />
+                {rerunHint.classificationConfidence != null ? (
+                  <StatusPill
+                    label={`Classify ${Math.round(rerunHint.classificationConfidence)}%`}
+                    tone={rerunHint.classificationConfidence >= 75 ? 'good' : 'warn'}
+                  />
+                ) : null}
+                {rerunHint.droppedRowCount != null ? (
+                  <StatusPill
+                    label={`Dropped ${rerunHint.droppedRowCount}`}
+                    tone={rerunHint.droppedRowCount > 0 ? 'warn' : 'info'}
+                  />
+                ) : null}
                 {rerunHint.matchedSourceRank != null ? (
                   <StatusPill label={`Matched Rank ${rerunHint.matchedSourceRank}`} tone="info" />
                 ) : null}
@@ -312,6 +347,17 @@ export function RankingReviewItemCard({
                 <p className="mt-2 text-amber-100">
                   <AlertTriangle className="mr-1 inline size-4" />
                   Re-run OCR marked this result as low confidence.
+                </p>
+              ) : null}
+              {Array.isArray(rerunHint.guardFailures) && rerunHint.guardFailures.length > 0 ? (
+                <p className="mt-2 text-rose-100">
+                  <ShieldAlert className="mr-1 inline size-4" />
+                  Guard failures: {rerunHint.guardFailures.join(' • ')}
+                </p>
+              ) : null}
+              {Array.isArray(rerunHint.detectedBoardTokens) && rerunHint.detectedBoardTokens.length > 0 ? (
+                <p className="mt-2 text-tier-3">
+                  Board tokens: {rerunHint.detectedBoardTokens.join(' • ')}
                 </p>
               ) : null}
               {rerunHint.failureReasons.length > 0 ? (

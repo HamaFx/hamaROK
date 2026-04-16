@@ -46,6 +46,14 @@ const extractionSchema = z.object({
   averageConfidence: z.number().optional(),
   lowConfidence: z.boolean().optional(),
   failureReasons: z.array(z.string()).optional(),
+  metadata: z
+    .object({
+      classificationConfidence: z.number().optional(),
+      droppedRowCount: z.number().int().min(0).optional(),
+      guardFailures: z.array(z.string()).optional(),
+      detectedBoardTokens: z.array(z.string()).optional(),
+    })
+    .optional(),
   governorId: fieldSchema.optional(),
   governorName: fieldSchema.optional(),
   power: fieldSchema.optional(),
@@ -163,10 +171,17 @@ export async function POST(request: NextRequest) {
       const lowConfidenceRows = normalizedRows.filter(
         (row) => row.confidence < 70 || row.failureReasons.length > 0
       );
+      const guardFailures = Array.isArray(body.extraction.metadata?.guardFailures)
+        ? body.extraction.metadata?.guardFailures.filter((entry) => typeof entry === 'string')
+        : [];
+      const detectedBoardTokens = Array.isArray(body.extraction.metadata?.detectedBoardTokens)
+        ? body.extraction.metadata?.detectedBoardTokens.filter((entry) => typeof entry === 'string')
+        : [];
       const lowConfidence =
         body.extraction.lowConfidence ||
         normalizedRows.length === 0 ||
-        lowConfidenceRows.length > 0;
+        lowConfidenceRows.length > 0 ||
+        guardFailures.length > 0;
 
       return ok({
         engineVersion: body.extraction.engineVersion || 'ocr-v3',
@@ -186,12 +201,29 @@ export async function POST(request: NextRequest) {
         rows: normalizedRows,
         lowConfidence,
         lowConfidenceFields: lowConfidenceRows.map((row) => `row:${row.rowIndex}`),
+        guardFailures,
+        detectedBoardTokens,
         failureReasons: [
           ...(body.extraction.failureReasons || []),
+          ...guardFailures,
           ...lowConfidenceRows
             .flatMap((row) => row.failureReasons)
             .slice(0, 80),
         ],
+        metadata: {
+          classificationConfidence:
+            typeof body.extraction.metadata?.classificationConfidence === 'number' &&
+            Number.isFinite(body.extraction.metadata.classificationConfidence)
+              ? body.extraction.metadata.classificationConfidence
+              : null,
+          droppedRowCount:
+            typeof body.extraction.metadata?.droppedRowCount === 'number' &&
+            Number.isFinite(body.extraction.metadata.droppedRowCount)
+              ? body.extraction.metadata.droppedRowCount
+              : null,
+          guardFailures,
+          detectedBoardTokens,
+        },
         preprocessingTrace: body.extraction.preprocessingTrace || {},
         rowCandidates: body.extraction.rowCandidates || {},
         passthrough: {

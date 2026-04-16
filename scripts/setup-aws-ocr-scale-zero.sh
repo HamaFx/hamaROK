@@ -322,7 +322,7 @@ TRACKED_ALLIANCES = [
     {
         'tag': 'V57',
         'name': 'Legacy of Velmora',
-        'aliases': ['V57', '[V57]', 'LEGACY OF VELMORA', 'VELMORA'],
+        'aliases': ['V57', '[V57]', '[V 57]', 'LEGACY OF VELMORA', 'VELMORA'],
     },
     {
         'tag': 'P57R',
@@ -350,7 +350,7 @@ def _detect_tracked_alliance(text: str) -> Optional[Dict[str, Any]]:
     if not raw:
         return None
 
-    match = re.search(r'\[([A-Za-z0-9]{2,6})\]', raw)
+    match = re.search(r'[\[\(]([^\]\)]{2,12})[\]\)]?', raw)
     if match:
         bracket = _normalize_alliance_token(match.group(1))
         if bracket in TRACKED_TAG_MAP:
@@ -370,6 +370,46 @@ def _detect_tracked_alliance(text: str) -> Optional[Dict[str, Any]]:
 
     return None
 
+def _strip_known_alliance_prefix(value: str) -> str:
+    text = _sanitize_printable(value, 64)
+    if not text:
+        return ''
+
+    normalized = re.sub(r'^[^A-Za-z0-9\[\(]+', '', text)
+    bracket_match = re.match(
+        r'^[\[\(]\s*([A-Za-z0-9][A-Za-z0-9 ._-]{1,11})\s*[\]\)]?\s*(.+)$',
+        normalized,
+    )
+    if bracket_match:
+        tag = _normalize_alliance_token(bracket_match.group(1))
+        if tag in TRACKED_TAG_MAP:
+            return _sanitize_printable(
+                re.sub(r'^[\s._\-:|/\\]+', '', str(bracket_match.group(2) or '')),
+                64,
+            )
+
+    for tag in TRACKED_TAG_MAP.keys():
+        loose_parts = []
+        for char in tag:
+            if char == 'O':
+                loose_parts.append('[O0]')
+            elif char == 'I':
+                loose_parts.append('[I1]')
+            elif char == 'S':
+                loose_parts.append('[S5]')
+            else:
+                loose_parts.append(char)
+        loose_tag = r'[^A-Za-z0-9]*'.join(loose_parts)
+        loose_prefix = re.match(
+            rf'^{loose_tag}[\s._\-:|/\\]+(.+)$',
+            normalized,
+            flags=re.IGNORECASE,
+        )
+        if loose_prefix and loose_prefix.group(1):
+            return _sanitize_printable(loose_prefix.group(1), 64)
+
+    return normalized
+
 def _sanitize_printable(value: str, max_len: int = 80) -> str:
     cleaned = re.sub(r'[^\x20-\x7E]', ' ', str(value or ''))
     cleaned = re.sub(r'\s+', ' ', cleaned).strip()
@@ -380,10 +420,7 @@ def _split_name_and_alliance(governor_name_raw: str, alliance_hint: str = '') ->
     hint = _sanitize_printable(alliance_hint, 80)
 
     detected = _detect_tracked_alliance(name) or _detect_tracked_alliance(hint)
-    stripped = name
-    tag_match = re.match(r'^\[([A-Za-z0-9]{2,6})\]\s*(.+)$', name)
-    if tag_match and _normalize_alliance_token(tag_match.group(1)) in TRACKED_TAG_MAP:
-        stripped = _sanitize_printable(tag_match.group(2), 64)
+    stripped = _strip_known_alliance_prefix(name)
 
     if detected:
         return {
@@ -657,18 +694,77 @@ def _merge_lines(variants: List[np.ndarray]) -> Tuple[List[Dict[str, Any]], Dict
         'enablePaddle': ENABLE_PADDLE_OCR,
     }
 
-def _detect_archetype(lines: List[Dict[str, Any]], hint) -> str:
-    text = ' '.join(line['text'] for line in lines[:30]).upper()
+def _line_in_region(
+    line: Dict[str, Any],
+    width: int,
+    height: int,
+    region: Tuple[float, float, float, float],
+) -> bool:
+    x, y, w, h = region
+    x0 = width * x
+    y0 = height * y
+    x1 = width * (x + w)
+    y1 = height * (y + h)
+    return (
+        float(line.get('cx') or 0.0) >= x0
+        and float(line.get('cx') or 0.0) <= x1
+        and float(line.get('cy') or 0.0) >= y0
+        and float(line.get('cy') or 0.0) <= y1
+    )
+
+def _collect_region_text(
+    lines: List[Dict[str, Any]],
+    width: int,
+    height: int,
+    regions: List[Tuple[float, float, float, float]],
+    limit: int = 40,
+) -> str:
+    selected: List[Dict[str, Any]] = []
+    for line in lines:
+        if any(_line_in_region(line, width, height, region) for region in regions):
+            selected.append(line)
+    selected.sort(key=lambda item: (float(item.get('cy') or 0.0), float(item.get('cx') or 0.0)))
+    return ' '.join(str(item.get('text') or '') for item in selected[:limit]).upper()
+
+def _detect_archetype(lines: List[Dict[str, Any]], hint, width: int, height: int) -> str:
     hint_text = (hint or '').upper()
     if 'PROFILE' in hint_text:
         return 'governor_profile'
     if 'RANKING' in hint_text:
         return 'ranking_board'
-    if 'GOVERNOR PROFILE' in text or 'GOVERNOR(ID' in text or 'GOVERNOR (ID' in text:
+
+    header_regions = [
+        (0.19, 0.006, 0.62, 0.11),
+        (0.24, 0.012, 0.52, 0.09),
+    ]
+    dialog_regions = [
+        (0.16, 0.08, 0.70, 0.24),
+    ]
+    focused_text = _collect_region_text(lines, width, height, header_regions + dialog_regions, limit=60)
+    fallback_text = ' '.join(str(line.get('text') or '') for line in lines[:40]).upper()
+    text = f'{focused_text} {fallback_text}'
+    compact = re.sub(r'\s+', '', text)
+
+    if (
+        'GOVERNOR PROFILE' in text
+        or 'GOVERNOR(ID' in compact
+        or 'GOVERNOR(ID:' in compact
+        or 'GOVERNORPROFILE' in compact
+    ):
         return 'governor_profile'
-    if 'RANKINGS' in text:
+    if (
+        'RANKINGS' in text
+        or 'MAD SCIENTIST' in text
+        or 'FORT DESTROYER' in text
+        or 'INDIVIDUAL POWER' in text
+        or 'KILL POINT' in text
+        or 'MADSCIENTIST' in compact
+        or 'FORTDESTROYER' in compact
+        or 'INDIVIDUALPOWER' in compact
+        or 'KILLPOINT' in compact
+    ):
         return 'ranking_board'
-    return 'governor_profile'
+    return 'unknown'
 
 def _clean_digits(value: str, max_len: int = 18) -> str:
     normalized = str(value or '').upper()
@@ -1023,6 +1119,142 @@ STRICT_RANKING_HEADER_MAP: List[Tuple[str, str, str]] = [
     ('KILL POINT', 'kill_point', 'kill_points'),
 ]
 
+RANKING_ROW_RULES: Dict[str, Dict[str, float]] = {
+    'individual_power': {
+        'minMetricDigits': 5,
+        'minRows': 3,
+        'uniformDominanceRatio': 0.8,
+        'uniformDominanceMinCount': 4,
+    },
+    'mad_scientist': {
+        'minMetricDigits': 2,
+        'minRows': 3,
+        'uniformDominanceRatio': 0.8,
+        'uniformDominanceMinCount': 4,
+    },
+    'fort_destroyer': {
+        'minMetricDigits': 1,
+        'minRows': 3,
+        'uniformDominanceRatio': 0.8,
+        'uniformDominanceMinCount': 4,
+    },
+    'kill_point': {
+        'minMetricDigits': 4,
+        'minRows': 3,
+        'uniformDominanceRatio': 0.8,
+        'uniformDominanceMinCount': 4,
+    },
+}
+
+RANKING_NAME_HEADER_TOKENS = {
+    'NAME',
+    'RANK',
+    'RANKING',
+    'RANKINGS',
+    'POWER',
+    'CONTRIBUTION',
+    'CONTRIBUTIONPOINTS',
+    'FORT',
+    'FORTS',
+    'FORTDESTROYED',
+    'FORTSDESTROYED',
+    'KILLPOINT',
+    'KILLPOINTS',
+    'METRIC',
+    'GOVERNORPROFILE',
+}
+
+RANKING_METRIC_HEADER_TOKENS: Dict[str, List[str]] = {
+    'power': ['POWER'],
+    'contribution_points': ['CONTRIBUTION', 'CONTRIBUTIONPOINTS', 'TECHCONTRIBUTION'],
+    'fort_destroying': ['FORT', 'FORTDESTROYED', 'FORTSDESTROYED', 'FORTDESTROYING'],
+    'kill_points': ['KILLPOINT', 'KILLPOINTS'],
+}
+
+def _detect_board_tokens(header_text: str) -> List[str]:
+    normalized = re.sub(r'[^A-Z0-9 ]', ' ', str(header_text or '').upper())
+    normalized = re.sub(r'\s+', ' ', normalized).strip()
+    compact = normalized.replace(' ', '')
+    tokens: List[str] = []
+    for token in ['INDIVIDUAL POWER', 'MAD SCIENTIST', 'FORT DESTROYER', 'KILL POINT', 'KILL POINTS']:
+        if token in normalized or token.replace(' ', '') in compact:
+            tokens.append(token)
+    return list(dict.fromkeys(tokens))
+
+def _is_ranking_header_name_token(value: str) -> bool:
+    token = _normalize_token(value)
+    if not token:
+        return True
+    return token in RANKING_NAME_HEADER_TOKENS
+
+def _is_metric_header_artifact(metric_raw: str, metric_key: str, metric_header_text: str, header_text: str) -> bool:
+    metric_token = _normalize_token(metric_raw)
+    if not metric_token:
+        return True
+
+    expected_tokens = RANKING_METRIC_HEADER_TOKENS.get(metric_key, [])
+    if metric_token in expected_tokens:
+        return True
+    if any(token in metric_token or metric_token in token for token in expected_tokens):
+        return True
+
+    header_token = _normalize_token(metric_header_text or header_text)
+    if header_token and (metric_token in header_token or header_token in metric_token):
+        return True
+
+    return metric_token in RANKING_NAME_HEADER_TOKENS
+
+def _metric_header_matches_key(metric_header_text: str, metric_key: str) -> bool:
+    token = _normalize_token(metric_header_text)
+    if not token:
+        return True
+    expected_tokens = RANKING_METRIC_HEADER_TOKENS.get(metric_key, [])
+    if not expected_tokens:
+        return False
+    return any(expected in token or token in expected for expected in expected_tokens)
+
+def _extract_metric_header_text(lines: List[Dict[str, Any]], width: int, height: int) -> str:
+    candidates = [
+        line['text']
+        for line in lines
+        if line['cy'] >= height * 0.11
+        and line['cy'] <= height * 0.26
+        and line['cx'] >= width * 0.54
+        and line['cx'] <= width * 0.92
+        and re.search(r'[A-Za-z]', line['text'])
+        and not re.search(r'[0-9]', line['text'])
+    ]
+    text = ' '.join(candidates)
+    text = re.sub(r'\s+', ' ', text).strip()
+    return text[:120]
+
+def _evaluate_metric_uniformity(metric_values: List[str], rule: Dict[str, float]) -> Dict[str, Any]:
+    cleaned = [str(value or '').strip() for value in metric_values if str(value or '').strip()]
+    if not cleaned:
+        return {
+            'suspicious': False,
+            'dominantValue': None,
+            'dominantCount': 0,
+            'dominantRatio': 0.0,
+        }
+
+    counts: Dict[str, int] = {}
+    for value in cleaned:
+        counts[value] = counts.get(value, 0) + 1
+    dominant_value, dominant_count = sorted(counts.items(), key=lambda item: item[1], reverse=True)[0]
+    dominant_ratio = dominant_count / max(1, len(cleaned))
+    suspicious = (
+        len(cleaned) >= int(rule.get('uniformDominanceMinCount', 4))
+        and dominant_count >= int(rule.get('uniformDominanceMinCount', 4))
+        and dominant_ratio >= float(rule.get('uniformDominanceRatio', 0.8))
+    )
+    return {
+        'suspicious': suspicious,
+        'dominantValue': dominant_value,
+        'dominantCount': dominant_count,
+        'dominantRatio': dominant_ratio,
+    }
+
 def _classify_ranking_header(header_text: str) -> Tuple[Optional[str], Optional[str], str]:
     cleaned = re.sub(r'[^A-Z0-9 ]', ' ', str(header_text or '').upper())
     cleaned = re.sub(r'\s+', ' ', cleaned).strip()
@@ -1037,21 +1269,54 @@ def _classify_ranking_header(header_text: str) -> Tuple[Optional[str], Optional[
     return None, None, without_rank_suffix
 
 def _extract_ranking(lines: List[Dict[str, Any]], width: int, height: int) -> Dict[str, Any]:
-    header_lines = [line for line in lines if line['cy'] < height * 0.2]
+    header_lines = [
+        line for line in lines
+        if line['cy'] < height * 0.22 and line['cx'] > width * 0.12 and line['cx'] < width * 0.88
+    ]
     header_text = ' '.join(line['text'] for line in header_lines)
     ranking_type, metric_key, normalized_header = _classify_ranking_header(header_text)
+    detected_board_tokens = _detect_board_tokens(normalized_header or header_text)
+    metric_header_text = _extract_metric_header_text(lines, width, height)
+    metric_header_token = _normalize_token(metric_header_text)
+    metric_header_mismatch = (
+        bool(metric_key)
+        and len(metric_header_token) >= 4
+        and not _metric_header_matches_key(metric_header_text, metric_key or '')
+    )
+    rule = RANKING_ROW_RULES.get(
+        ranking_type or '',
+        {
+            'minMetricDigits': 1,
+            'minRows': 3,
+            'uniformDominanceRatio': 0.8,
+            'uniformDominanceMinCount': 4,
+        },
+    )
+    classification_confidence = (
+        (sum(float(line['confidence']) for line in header_lines) / len(header_lines))
+        if header_lines
+        else 0.0
+    )
 
     metric_anchors = [
         line for line in lines
         if line['cy'] > height * 0.2
         and line['cy'] < height * 0.95
         and line['cx'] > width * 0.6
-        and len(_clean_digits(line['text'])) >= 2
+        and re.search(r'[0-9]', line['text'])
+        and len(_clean_digits(line['text'])) >= 1
     ]
     metric_anchors.sort(key=lambda item: item['cy'])
 
     rows: List[Dict[str, Any]] = []
     seen = set()
+    dropped_row_count = 0
+    dropped_reason_count: Dict[str, int] = {}
+
+    def _drop(reason: str):
+        nonlocal dropped_row_count
+        dropped_row_count += 1
+        dropped_reason_count[reason] = dropped_reason_count.get(reason, 0) + 1
 
     for metric_line in metric_anchors:
         y = metric_line['cy']
@@ -1079,6 +1344,7 @@ def _extract_ranking(lines: List[Dict[str, Any]], width: int, height: int) -> Di
         ]
 
         if not name_candidates:
+            _drop('name-missing')
             continue
 
         name_line = max(
@@ -1086,9 +1352,22 @@ def _extract_ranking(lines: List[Dict[str, Any]], width: int, height: int) -> Di
             key=lambda item: (item['confidence'] - (abs(item['cy'] - y) / max(1.0, height)))
         )
         metric_raw = metric_line['text']
+        has_raw_digit = bool(re.search(r'[0-9]', str(metric_raw or '')))
         metric_value = _clean_digits(metric_raw)
-
-        if not metric_value:
+        metric_header_artifact = (not has_raw_digit) and _is_metric_header_artifact(
+            metric_raw,
+            metric_key or '',
+            metric_header_text,
+            normalized_header or header_text,
+        )
+        if not has_raw_digit:
+            _drop('header-row-artifact' if metric_header_artifact else 'metric-no-raw-digit')
+            continue
+        if metric_header_artifact:
+            _drop('header-row-artifact')
+            continue
+        if not metric_value or len(metric_value) < int(rule.get('minMetricDigits', 1)):
+            _drop('metric-too-short')
             continue
 
         subtitle_line = None
@@ -1104,6 +1383,9 @@ def _extract_ranking(lines: List[Dict[str, Any]], width: int, height: int) -> Di
 
         split = _split_name_and_alliance(name_line['text'], subtitle_raw)
         governor_name_raw = _sanitize_printable(split['governorNameRaw'], 80)
+        if _is_ranking_header_name_token(governor_name_raw):
+            _drop('header-row-artifact')
+            continue
 
         source_rank = None
         rank_line = None
@@ -1116,6 +1398,7 @@ def _extract_ranking(lines: List[Dict[str, Any]], width: int, height: int) -> Di
         name_normalized = re.sub(r'[^A-Za-z0-9]+', '', governor_name_raw).lower()
         dedupe_key = f'{round(y / 6)}::{name_normalized}::{metric_value}'
         if dedupe_key in seen:
+            _drop('duplicate')
             continue
         seen.add(dedupe_key)
 
@@ -1154,11 +1437,26 @@ def _extract_ranking(lines: List[Dict[str, Any]], width: int, height: int) -> Di
     )
 
     avg_conf = sum(row['confidence'] for row in rows) / len(rows) if rows else 0.0
+    guard_failures: List[str] = []
+    if len(rows) < int(rule.get('minRows', 3)):
+        guard_failures.append('insufficient-valid-rows')
+        if dropped_reason_count.get('header-row-artifact', 0) > 0:
+            guard_failures.append('header-row-artifact')
+    uniformity = _evaluate_metric_uniformity([str(row.get('metricValue') or '') for row in rows], rule)
+    if len(rows) >= int(rule.get('minRows', 3)) and uniformity.get('suspicious'):
+        guard_failures.append('uniform-metric-suspect')
+
     classification_error = None
     if not ranking_type or not metric_key:
         classification_error = (
-            f'Unsupported ranking header "{(normalized_header or header_text or "unknown")[:120]}".'
+            f'unsupported-header: Unsupported ranking header "{(normalized_header or header_text or "unknown")[:120]}".'
         )
+    elif metric_header_mismatch:
+        classification_error = (
+            f'unsupported-header: metric-header-mismatch "{metric_header_text[:120] or "unknown"}".'
+        )
+    elif guard_failures:
+        classification_error = f'ranking-guard-failure: {", ".join(sorted(set(guard_failures)))}'
 
     return {
         'rankingType': ranking_type or 'unknown',
@@ -1169,6 +1467,14 @@ def _extract_ranking(lines: List[Dict[str, Any]], width: int, height: int) -> Di
             'lineCount': len(lines),
             'detectedRows': len(rows),
             'averageConfidence': avg_conf,
+            'classificationConfidence': max(0.0, min(100.0, classification_confidence * 100)),
+            'droppedRowCount': dropped_row_count,
+            'guardFailures': sorted(set(guard_failures)),
+            'detectedBoardTokens': detected_board_tokens,
+            'droppedReasonCount': dropped_reason_count,
+            'uniformity': uniformity,
+            'metricHeaderText': metric_header_text[:120],
+            'metricHeaderMismatch': bool(metric_header_mismatch),
             'kingdomNumber': PRIMARY_KINGDOM_NUMBER,
             'trackedAlliances': [item['tag'] for item in TRACKED_ALLIANCES],
             'normalizedHeader': normalized_header[:120],
@@ -1205,10 +1511,12 @@ def _handle_ingestion_message(msg: Dict[str, Any]) -> bool:
 
         started = time.time()
         image = _download_image(artifact_url)
+        base_height, base_width = image.shape[:2]
         variants = _preprocess_variants(image)
         lines, ocr_trace = _merge_lines(variants)
-        archetype = _detect_archetype(lines, hint)
-        base_height, base_width = image.shape[:2]
+        archetype = _detect_archetype(lines, hint, int(base_width), int(base_height))
+        if archetype == 'unknown':
+            raise RuntimeError('unknown-board: unable to classify screenshot archetype')
         width = int(base_width)
         height = int(base_height)
         if lines:
@@ -1266,6 +1574,13 @@ def _handle_ingestion_message(msg: Dict[str, Any]) -> bool:
     except Exception as exc:
         terminal = receive_count >= MAX_RECEIVE_COUNT
         error_text = f'{type(exc).__name__}: {str(exc)}'
+        error_token = str(exc).split(':', 1)[0].strip().lower().replace(' ', '-')
+        known_error_codes = {
+            'unknown-board',
+            'unsupported-header',
+            'ranking-guard-failure',
+        }
+        error_code = error_token if error_token in known_error_codes else 'worker-runtime-error'
         logging.error('failed ingestion task id=%s attempt=%s terminal=%s error=%s', task_id, attempt, terminal, error_text)
         logging.debug('traceback=%s', traceback.format_exc())
         try:
@@ -1276,7 +1591,10 @@ def _handle_ingestion_message(msg: Dict[str, Any]) -> bool:
                     'terminal': terminal,
                     'workerId': WORKER_ID,
                     'error': error_text[:400],
-                    'metadata': {'queueMessageId': message_id},
+                    'metadata': {
+                        'queueMessageId': message_id,
+                        'errorCode': error_code,
+                    },
                 },
             )
         except Exception as fail_exc:

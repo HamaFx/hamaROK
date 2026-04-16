@@ -239,6 +239,63 @@ function sanitizeApprovedGovernorName(raw: string): string {
   return cleaned.slice(0, 64);
 }
 
+async function seedGovernorAliasConflictSafeTx(
+  tx: Prisma.TransactionClient,
+  args: {
+    workspaceId: string;
+    governorDbId: string;
+    aliasRaw: string;
+  }
+): Promise<'seeded' | 'conflict' | 'skipped'> {
+  const aliasRaw = sanitizeApprovedGovernorName(args.aliasRaw);
+  const aliasNormalized = normalizeGovernorAlias(aliasRaw);
+  if (!aliasRaw || !aliasNormalized || aliasNormalized === 'unknown') {
+    return 'skipped';
+  }
+
+  const existing = await tx.governorAlias.findUnique({
+    where: {
+      workspaceId_aliasNormalized: {
+        workspaceId: args.workspaceId,
+        aliasNormalized,
+      },
+    },
+    select: {
+      id: true,
+      governorId: true,
+    },
+  });
+
+  if (existing && existing.governorId !== args.governorDbId) {
+    return 'conflict';
+  }
+
+  await tx.governorAlias.upsert({
+    where: {
+      workspaceId_aliasNormalized: {
+        workspaceId: args.workspaceId,
+        aliasNormalized,
+      },
+    },
+    create: {
+      workspaceId: args.workspaceId,
+      governorId: args.governorDbId,
+      aliasRaw,
+      aliasNormalized,
+      confidence: 1,
+      source: 'profile-approval',
+    },
+    update: {
+      governorId: args.governorDbId,
+      aliasRaw,
+      confidence: 1,
+      source: 'profile-approval',
+    },
+  });
+
+  return 'seeded';
+}
+
 function normalizeOptionalCombatMetrics(args: {
   payload: ReturnType<typeof toApprovedSnapshotPayload>;
   values: ReturnType<typeof parseExtractionValues>;
@@ -609,6 +666,24 @@ export async function PATCH(
             alliance: allianceDetection.allianceRaw || '',
           },
         });
+
+        const aliasCandidates = [approvedGovernorName];
+        if (allianceDetection.trackedAlliance && allianceDetection.allianceTag) {
+          aliasCandidates.push(`[${allianceDetection.allianceTag}] ${approvedGovernorName}`);
+        }
+        const seenAlias = new Set<string>();
+        for (const aliasCandidate of aliasCandidates) {
+          const normalizedAlias = normalizeGovernorAlias(aliasCandidate);
+          if (!normalizedAlias || normalizedAlias === 'unknown' || seenAlias.has(normalizedAlias)) {
+            continue;
+          }
+          seenAlias.add(normalizedAlias);
+          await seedGovernorAliasConflictSafeTx(tx, {
+            workspaceId: extraction.scanJob.workspaceId,
+            governorDbId: governor.id,
+            aliasRaw: aliasCandidate,
+          });
+        }
 
         let shouldSyncProfileMetrics = profileMetricAssessment.shouldSync;
         let syncSkipReason = profileMetricAssessment.shouldSync

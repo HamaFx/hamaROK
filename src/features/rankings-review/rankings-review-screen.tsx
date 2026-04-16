@@ -276,6 +276,34 @@ export default function RankingReviewPage() {
 
       const diagnosticsPayload = await diagnosticsRes.json();
       const diagnostics = diagnosticsPayload?.data || {};
+      const diagnosticsMetadata =
+        diagnostics && typeof diagnostics.metadata === 'object' && diagnostics.metadata
+          ? (diagnostics.metadata as Record<string, unknown>)
+          : {};
+      const hintGuardFailures = Array.isArray(diagnostics.guardFailures)
+        ? diagnostics.guardFailures.filter((entry: unknown): entry is string => typeof entry === 'string')
+        : Array.isArray(diagnosticsMetadata.guardFailures)
+          ? diagnosticsMetadata.guardFailures.filter(
+              (entry: unknown): entry is string => typeof entry === 'string'
+            )
+          : [];
+      const hintDetectedTokens = Array.isArray(diagnostics.detectedBoardTokens)
+        ? diagnostics.detectedBoardTokens.filter((entry: unknown): entry is string => typeof entry === 'string')
+        : Array.isArray(diagnosticsMetadata.detectedBoardTokens)
+          ? diagnosticsMetadata.detectedBoardTokens.filter(
+              (entry: unknown): entry is string => typeof entry === 'string'
+            )
+          : [];
+      const hintClassificationConfidence =
+        typeof diagnosticsMetadata.classificationConfidence === 'number' &&
+        Number.isFinite(diagnosticsMetadata.classificationConfidence)
+          ? diagnosticsMetadata.classificationConfidence
+          : result.metadata?.classificationConfidence ?? null;
+      const hintDroppedRowCount =
+        typeof diagnosticsMetadata.droppedRowCount === 'number' &&
+        Number.isFinite(diagnosticsMetadata.droppedRowCount)
+          ? diagnosticsMetadata.droppedRowCount
+          : result.metadata?.droppedRowCount ?? null;
 
       setRerunHints((prev) => ({
         ...prev,
@@ -293,10 +321,43 @@ export default function RankingReviewPage() {
           failureReasons: Array.isArray(diagnostics.failureReasons)
             ? diagnostics.failureReasons.slice(0, 6)
             : [],
+          classificationConfidence: hintClassificationConfidence,
+          droppedRowCount: hintDroppedRowCount,
+          guardFailures: hintGuardFailures.slice(0, 8),
+          detectedBoardTokens: hintDetectedTokens.slice(0, 8),
         },
       }));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to rerun ranking OCR.');
+      const message = err instanceof Error ? err.message : 'Failed to rerun ranking OCR.';
+      const normalized = message.trim().toLowerCase();
+      const parsedGuardFailures =
+        normalized.includes('ranking-guard-failure:')
+          ? normalized
+              .split('ranking-guard-failure:')[1]
+              ?.split(',')
+              .map((entry) => entry.trim())
+              .filter(Boolean) || []
+          : [];
+
+      setRerunHints((prev) => ({
+        ...prev,
+        [row.id]: {
+          profileId: null,
+          templateId: null,
+          detectedRankingType: row.run.rankingType,
+          detectedMetricKey: row.run.metricKey,
+          matchedRowIndex: null,
+          matchedSourceRank: null,
+          matchedConfidence: null,
+          lowConfidence: true,
+          failureReasons: [message],
+          classificationConfidence: null,
+          droppedRowCount: null,
+          guardFailures: parsedGuardFailures,
+          detectedBoardTokens: [],
+        },
+      }));
+      setError(message);
     } finally {
       setBusyRow(null);
     }

@@ -161,6 +161,12 @@ export interface RankingScreenshotResult {
   profileSelection: ReturnType<typeof selectBestRuntimeProfile>;
   preprocessingTrace: Record<string, unknown>;
   rowCandidates: Record<string, unknown>;
+  metadata?: {
+    classificationConfidence: number;
+    droppedRowCount: number;
+    guardFailures: string[];
+    detectedBoardTokens: string[];
+  };
   totalDurationMs: number;
 }
 
@@ -356,29 +362,33 @@ async function detectScreenshotArchetype(
   img: HTMLImageElement
 ): Promise<ScreenArchetype | undefined> {
   try {
-    const header = cropRegion(img, {
-      x: 0.26,
-      y: 0.02,
-      width: 0.48,
-      height: 0.1,
-    });
-    const processed = await preprocessForOCR(header, {
-      variantId: 'archetype-header',
-      useOpenCv: false,
-      scale: 2.2,
-      threshold: 132,
-      contrast: 1.35,
-      invert: true,
-    });
-    const w = await initializeWorker();
-    await w.setParameters({
-      tessedit_pageseg_mode: PSM.SINGLE_LINE,
-      tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ ',
-      preserve_interword_spaces: '1',
-      user_defined_dpi: '300',
-    });
-    const { data } = await w.recognize(processed.canvas);
-    const text = String(data.text || '').toUpperCase().replace(/\s+/g, ' ').trim();
+    const headerRegions = [
+      { x: 0.19, y: 0.006, width: 0.62, height: 0.11 },
+      { x: 0.24, y: 0.012, width: 0.52, height: 0.09 },
+    ];
+    const headerReads = await Promise.all(
+      headerRegions.map(async (region, index) => {
+        const header = cropRegion(img, region);
+        const processed = await preprocessForOCR(header, {
+          variantId: `archetype-header-${index}`,
+          useOpenCv: false,
+          scale: 2.2,
+          threshold: 132,
+          contrast: 1.35,
+          invert: true,
+        });
+        const recognized = await recognizeGenericWithPass(processed.canvas, {
+          psm: '7',
+          whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ 0123456789',
+        });
+        return {
+          text: String(recognized.rawText || '').toUpperCase().replace(/\s+/g, ' ').trim(),
+          confidence: recognized.confidence,
+        };
+      })
+    );
+    headerReads.sort((a, b) => b.confidence - a.confidence);
+    const text = [headerReads[0]?.text, headerReads[1]?.text].filter(Boolean).join(' ');
     const compact = text.replace(/\s+/g, '');
     if (text.includes('GOVERNOR PROFILE') || text.includes('PROFILE')) {
       return 'governor-profile';
@@ -414,6 +424,58 @@ const RANKING_TYPE_HEADER_MAP: Record<string, string> = {
   'killpoint': 'kill_point',
   'kill points': 'kill_point',
   'killpoints': 'kill_point',
+};
+
+const RANKING_NAME_HEADER_TOKENS = new Set([
+  'NAME',
+  'RANK',
+  'RANKING',
+  'RANKINGS',
+  'POWER',
+  'CONTRIBUTION',
+  'CONTRIBUTIONPOINTS',
+  'FORT',
+  'FORTS',
+  'FORTDESTROYED',
+  'FORTSDESTROYED',
+  'KILLPOINT',
+  'KILLPOINTS',
+  'METRIC',
+  'GOVERNORPROFILE',
+]);
+
+interface RankingRowRule {
+  minMetricDigits: number;
+  minRows: number;
+  uniformDominanceRatio: number;
+  uniformDominanceMinCount: number;
+}
+
+const RANKING_ROW_RULES: Record<string, RankingRowRule> = {
+  individual_power: {
+    minMetricDigits: 5,
+    minRows: 3,
+    uniformDominanceRatio: 0.8,
+    uniformDominanceMinCount: 4,
+  },
+  mad_scientist: {
+    minMetricDigits: 2,
+    minRows: 3,
+    uniformDominanceRatio: 0.8,
+    uniformDominanceMinCount: 4,
+  },
+  fort_destroyer: {
+    minMetricDigits: 1,
+    minRows: 3,
+    uniformDominanceRatio: 0.8,
+    uniformDominanceMinCount: 4,
+  },
+  kill_point: {
+    minMetricDigits: 4,
+    minRows: 3,
+    uniformDominanceRatio: 0.8,
+    uniformDominanceMinCount: 4,
+  },
 };
 
 export function normalizeRankingTypeLabel(value: string): string {
@@ -518,6 +580,125 @@ function normalizeMetricDigits(value: string): string {
     .replace(/Z/g, '2')
     .replace(/[^0-9]/g, '')
     .slice(0, 14);
+}
+
+function normalizeArtifactToken(value: string): string {
+  return String(value || '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '');
+}
+
+export function isRankingHeaderNameToken(value: string): boolean {
+  const token = normalizeArtifactToken(value);
+  if (!token) return true;
+  return RANKING_NAME_HEADER_TOKENS.has(token);
+}
+
+export function extractRankingMetricDigits(value: string): {
+  digits: string;
+  hasRawDigit: boolean;
+} {
+  const raw = String(value || '');
+  const hasRawDigit = /[0-9]/.test(raw);
+  if (!hasRawDigit) {
+    return {
+      digits: '',
+      hasRawDigit: false,
+    };
+  }
+  return {
+    digits: normalizeMetricDigits(raw),
+    hasRawDigit: true,
+  };
+}
+
+function detectBoardTokens(value: string): string[] {
+  const normalized = String(value || '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9 ]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!normalized) return [];
+  const compact = normalized.replace(/\s+/g, '');
+
+  const tokens: string[] = [];
+  for (const pattern of Object.keys(RANKING_TYPE_HEADER_MAP)) {
+    if (pattern.includes('profile')) continue;
+    const p = pattern.toUpperCase();
+    const pCompact = p.replace(/\s+/g, '');
+    if (normalized.includes(p) || compact.includes(pCompact)) {
+      tokens.push(p);
+    }
+  }
+  return [...new Set(tokens)];
+}
+
+function isMetricHeaderArtifact(rawMetricText: string, metricHeaderText: string): boolean {
+  const rawToken = normalizeArtifactToken(rawMetricText);
+  if (!rawToken) return true;
+
+  const metricToken = normalizeArtifactToken(metricHeaderText);
+  if (metricToken && (rawToken === metricToken || metricToken.includes(rawToken))) {
+    return true;
+  }
+
+  return [
+    'POWER',
+    'CONTRIBUTION',
+    'CONTRIBUTIONPOINTS',
+    'FORT',
+    'FORTDESTROYED',
+    'FORTSDESTROYED',
+    'KILLPOINT',
+    'KILLPOINTS',
+    'NAME',
+    'METRIC',
+  ].includes(rawToken);
+}
+
+export function evaluateRankingMetricUniformity(
+  metricValues: string[],
+  options?: {
+    dominanceRatio?: number;
+    dominanceMinCount?: number;
+  }
+): {
+  suspicious: boolean;
+  dominantValue: string | null;
+  dominantCount: number;
+  dominantRatio: number;
+} {
+  const cleaned = metricValues.map((value) => String(value || '').trim()).filter(Boolean);
+  if (cleaned.length === 0) {
+    return {
+      suspicious: false,
+      dominantValue: null,
+      dominantCount: 0,
+      dominantRatio: 0,
+    };
+  }
+
+  const counts = new Map<string, number>();
+  for (const value of cleaned) {
+    counts.set(value, (counts.get(value) || 0) + 1);
+  }
+  const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+  const [dominantValue, dominantCount] = sorted[0];
+  const dominantRatio = dominantCount / cleaned.length;
+  const dominanceRatioThreshold =
+    typeof options?.dominanceRatio === 'number' ? options.dominanceRatio : 0.8;
+  const dominanceMinCount =
+    typeof options?.dominanceMinCount === 'number' ? options.dominanceMinCount : 4;
+
+  return {
+    suspicious:
+      cleaned.length >= dominanceMinCount &&
+      dominantCount >= dominanceMinCount &&
+      dominantRatio >= dominanceRatioThreshold,
+    dominantValue,
+    dominantCount,
+    dominantRatio,
+  };
 }
 
 async function recognizeGenericWithPass(
@@ -1326,6 +1507,7 @@ export async function processRankingScreenshot(
       headerTextCandidates.find((value) => value.includes('RANK')) ||
       [...headerTextCandidates].sort((a, b) => b.length - a.length)[0] ||
       'RANKINGS';
+    const detectedBoardTokens = detectBoardTokens(headerText);
     const rankingType = normalizeRankingTypeLabel(headerText);
 
     const metricHeaderRegions = [
@@ -1347,15 +1529,31 @@ export async function processRankingScreenshot(
     const strictPair = validateStrictRankingTypeMetricPair(rankingType, metricKey);
     if (!strictPair.ok) {
       throw new Error(
-        strictPair.reason ||
+        `unsupported-header: ${
+          strictPair.reason ||
           `Unsupported ranking header/metric combination (${rankingType} / ${metricKey}).`
+        }`
       );
     }
+    const rowRule = RANKING_ROW_RULES[rankingType] || {
+      minMetricDigits: 1,
+      minRows: 3,
+      uniformDominanceRatio: 0.8,
+      uniformDominanceMinCount: 4,
+    };
+    const classificationConfidence =
+      (headerReads.reduce((sum, item) => sum + item.selectedConfidence, 0) /
+        Math.max(1, headerReads.length)) *
+        0.65 +
+      (metricHeaderReads.reduce((sum, item) => sum + item.selectedConfidence, 0) /
+        Math.max(1, metricHeaderReads.length)) *
+        0.35;
 
     const layoutSelection = await selectBestRankingLayout(img);
     const layout = layoutSelection.selected;
 
     const rows: RankingRowOcrResult[] = [];
+    let droppedRowCount = 0;
     const preprocessingTrace: Record<string, unknown> = {
       header: headerReads.map((read) => read.traces),
       metricHeader: metricHeaderReads.map((read) => read.traces),
@@ -1368,6 +1566,8 @@ export async function processRankingScreenshot(
         rowStep: layout.rowStep,
         rowHeight: layout.rowHeight,
       },
+      classificationConfidence,
+      detectedBoardTokens,
     };
     const rowCandidates: Record<string, unknown> = {};
 
@@ -1426,17 +1626,32 @@ export async function processRankingScreenshot(
       const governorNameRaw = normalizeRankingName(
         allianceSplit.governorNameRaw || governorNameSource
       );
+      const invalidNameToken = isRankingHeaderNameToken(governorNameRaw);
       const governorNameNormalized = governorNameRaw
         .toLowerCase()
         .replace(/[^a-z0-9]/g, '');
-      const metricRaw = metricField.selectedValue;
-      const metricValue = normalizeMetricDigits(metricRaw);
+      const metricRaw = String(metricField.selectedRaw || metricField.selectedValue || '').trim();
+      const metricEvidence = extractRankingMetricDigits(metricRaw);
+      const metricValue = metricEvidence.digits;
+      const metricHeaderArtifact =
+        !metricEvidence.hasRawDigit &&
+        isMetricHeaderArtifact(metricRaw, metricHeaderText || headerText);
 
       const lowSignal =
         !governorNameRaw &&
         !metricValue &&
         (nameMainField.selectedConfidence + metricField.selectedConfidence) / 2 < 55;
       if (lowSignal) continue;
+
+      if (
+        invalidNameToken ||
+        !metricEvidence.hasRawDigit ||
+        metricHeaderArtifact ||
+        metricValue.length < rowRule.minMetricDigits
+      ) {
+        droppedRowCount += 1;
+        continue;
+      }
 
       const dedupeKey = `${sourceRank || 0}:${governorNameNormalized}:${metricValue}`;
       if (dedupeKeys.has(dedupeKey)) continue;
@@ -1447,6 +1662,12 @@ export async function processRankingScreenshot(
         ...nameMainField.failureReasons.map((reason) => `name:${reason}`),
         ...metricField.failureReasons.map((reason) => `metric:${reason}`),
       ];
+      if (invalidNameToken) failureReasons.push('name:header-token');
+      if (!metricEvidence.hasRawDigit) failureReasons.push('metric:no-raw-digit');
+      if (metricHeaderArtifact) failureReasons.push('metric:header-label-artifact');
+      if (metricValue.length < rowRule.minMetricDigits) {
+        failureReasons.push('metric:metric-too-short');
+      }
 
       const confidence =
         (rankField.selectedConfidence +
@@ -1462,7 +1683,7 @@ export async function processRankingScreenshot(
         governorNameNormalized,
         allianceRaw: allianceSplit.allianceRaw || subtitleParts.allianceRaw,
         titleRaw: subtitleParts.titleRaw,
-        metricRaw: metricValue || metricRaw,
+        metricRaw: metricRaw || metricValue,
         metricValue,
         confidence,
         identityStatus: 'UNRESOLVED',
@@ -1494,6 +1715,18 @@ export async function processRankingScreenshot(
       preprocessingTrace[`row-${rowIndex}`] = row.ocrTrace;
     }
 
+    const guardFailures: string[] = [];
+    if (rows.length < rowRule.minRows) {
+      guardFailures.push('insufficient-valid-rows');
+    }
+    const uniformity = evaluateRankingMetricUniformity(rows.map((row) => row.metricValue), {
+      dominanceRatio: rowRule.uniformDominanceRatio,
+      dominanceMinCount: rowRule.uniformDominanceMinCount,
+    });
+    if (rows.length >= rowRule.minRows && uniformity.suspicious) {
+      guardFailures.push('uniform-metric-suspect');
+    }
+
     const averageConfidence =
       rows.length > 0
         ? rows.reduce((sum, row) => sum + row.confidence, 0) / rows.length
@@ -1501,7 +1734,16 @@ export async function processRankingScreenshot(
     const lowConfidence =
       rows.length === 0 ||
       averageConfidence < 72 ||
-      rows.some((row) => row.failureReasons.length > 0);
+      rows.some((row) => row.failureReasons.length > 0) ||
+      guardFailures.length > 0;
+
+    preprocessingTrace.guardFailures = guardFailures;
+    preprocessingTrace.droppedRowCount = droppedRowCount;
+    preprocessingTrace.uniformity = uniformity;
+
+    if (guardFailures.length > 0) {
+      throw new Error(`ranking-guard-failure: ${guardFailures.join(', ')}`);
+    }
 
     return {
       screenArchetype: 'rankboard',
@@ -1517,6 +1759,12 @@ export async function processRankingScreenshot(
       profileSelection,
       preprocessingTrace,
       rowCandidates,
+      metadata: {
+        classificationConfidence,
+        droppedRowCount,
+        guardFailures,
+        detectedBoardTokens,
+      },
       totalDurationMs: performance.now() - runStarted,
     };
   } finally {
