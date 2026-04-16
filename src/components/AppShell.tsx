@@ -35,7 +35,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { ScrollArea } from '@/components/ui/scroll-area';
+
 
 function BrandLockup() {
   return (
@@ -173,8 +173,8 @@ function MobileMoreNav() {
             Compare boards first, then jump into operational tools.
           </DrawerDescription>
         </DrawerHeader>
-        <ScrollArea className="max-h-[60svh] px-4">
-          <div className="grid gap-3 pb-4">
+        <div className="overflow-y-auto overscroll-contain px-4 pb-4 max-h-[60svh]">
+          <div className="grid gap-3">
             {MOBILE_MORE_NAV.map((item, index) => {
               const Icon = item.icon;
               const active = isActivePath(pathname, item.href);
@@ -184,14 +184,15 @@ function MobileMoreNav() {
                   <Link
                     href={item.href}
                     className={cn(
-                      'group flex items-start gap-3 rounded-2xl border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] p-4 transition-colors hover:bg-[color:var(--surface-4)]',
-                      active && 'border-[color:color-mix(in_oklab,var(--tone-teal)_40%,transparent)] bg-[color:var(--tone-teal-soft)]'
+                      'group flex items-start gap-3 rounded-2xl border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] p-4 transition-all hover:bg-white/5 hover:border-white/20',
+                      active && 'border-[color:color-mix(in_oklab,var(--primary)_40%,transparent)] bg-[color:color-mix(in_oklab,var(--primary)_15%,transparent)] text-tier-1 shadow-[0_0_12px_color-mix(in_oklab,var(--primary)_20%,transparent)]'
                     )}
                   >
                     <span
                       className={cn(
-                        'rounded-2xl border border-[color:var(--stroke-soft)] bg-[color:var(--surface-4)] p-2.5 text-tier-2',
-                        isCompare && 'border-[color:color-mix(in_oklab,var(--rank-gold)_38%,transparent)] bg-[color:color-mix(in_oklab,var(--rank-gold)_16%,transparent)] text-[color:var(--rank-gold)]'
+                        'rounded-2xl border border-[color:var(--stroke-soft)] bg-[color:var(--surface-4)] p-2.5 text-tier-2 transition-colors',
+                        isCompare && !active && 'border-[color:color-mix(in_oklab,var(--rank-gold)_38%,transparent)] bg-[color:color-mix(in_oklab,var(--rank-gold)_16%,transparent)] text-[color:var(--rank-gold)]',
+                        active && 'text-[color:var(--primary)] border-[color:var(--primary)]'
                       )}
                     >
                       <Icon className="size-4" />
@@ -205,8 +206,8 @@ function MobileMoreNav() {
               );
             })}
           </div>
-        </ScrollArea>
-        <DrawerFooter className="pb-[calc(env(safe-area-inset-bottom)+0.75rem)]">
+        </div>
+        <DrawerFooter className="pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-0">
           <DrawerClose asChild>
             <Button variant="outline" className="border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1">
               Close
