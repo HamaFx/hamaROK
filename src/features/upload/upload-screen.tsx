@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useWorkspaceSession } from '@/lib/workspace-session';
+import { InlineError, SessionGate } from '@/components/app/session-gate';
 import { PageHero } from '@/components/ui/primitives';
 import {
   type AwsOcrControlStatus,
@@ -536,64 +537,68 @@ export default function UploadPage() {
   ).length;
 
   return (
-    <div className="page-container">
+    <div className="space-y-5 sm:space-y-6">
       <PageHero
-        title="Upload Queue"
+        title="Upload"
         subtitle="Upload weekly screenshots. OCR runs in the background and fills the review queues."
       />
 
-      <UploadStatusStrip
-        queuedCount={queuedCount}
-        processingCount={processingCount}
-        completedCount={completedCount}
-        duplicateCount={duplicateCount}
-        failedCount={failedCount}
-      />
+      <SessionGate ready={workspaceReady} loading={sessionLoading} error={sessionError} onRetry={() => void refreshSession()}>
+        {submitMessage?.type === 'error' ? <InlineError message={submitMessage.text} /> : null}
 
-      <UploadWorkerPanel
-        workspaceReady={workspaceReady}
-        workspaceName={workspaceName}
-        sessionLoading={sessionLoading}
-        sessionError={sessionError}
-        weeklyEvent={weeklyEvent}
-        workerLabel={workerLabel}
-        workerTone={workerTone}
-        awsOcrControl={awsOcrControl}
-        awsControlBusy={awsControlBusy}
-        awsControlMessage={awsControlMessage}
-        onStartWorker={() => triggerAwsOcrControl('START', 'manual', true)}
-        onStopWorker={() => triggerAwsOcrControl('STOP', 'manual', false)}
-      />
+        <UploadStatusStrip
+          queuedCount={queuedCount}
+          processingCount={processingCount}
+          completedCount={completedCount}
+          duplicateCount={duplicateCount}
+          failedCount={failedCount}
+        />
 
-      <UploadDropZonePanel
-        isDragging={isDragging}
-        isUploading={isUploading}
-        scanJobId={scanJobId}
-        scanJobState={scanJobState}
-        entryCount={entries.length}
-        fileInputRef={fileInputRef}
-        onDragOver={onDragOver}
-        onDragLeave={onDragLeave}
-        onDrop={onDrop}
-        onFileChange={(event) => {
-          const files = Array.from(event.target.files || []);
-          void handleFiles(files);
-          event.target.value = '';
-        }}
-      />
+        <UploadWorkerPanel
+          workspaceReady={workspaceReady}
+          workspaceName={workspaceName}
+          sessionLoading={sessionLoading}
+          sessionError={sessionError}
+          weeklyEvent={weeklyEvent}
+          workerLabel={workerLabel}
+          workerTone={workerTone}
+          awsOcrControl={awsOcrControl}
+          awsControlBusy={awsControlBusy}
+          awsControlMessage={awsControlMessage}
+          onStartWorker={() => triggerAwsOcrControl('START', 'manual', true)}
+          onStopWorker={() => triggerAwsOcrControl('STOP', 'manual', false)}
+        />
 
-      <UploadProcessingPanel
-        scanJobState={scanJobState}
-        entries={entries}
-        completedProfileRows={completedProfileRows}
-        completedRankingRows={completedRankingRows}
-        onOpenReview={() => router.push('/review')}
-        onOpenRankingReview={() => router.push('/rankings/review')}
-      />
+        <UploadDropZonePanel
+          isDragging={isDragging}
+          isUploading={isUploading}
+          scanJobId={scanJobId}
+          scanJobState={scanJobState}
+          entryCount={entries.length}
+          fileInputRef={fileInputRef}
+          onDragOver={onDragOver}
+          onDragLeave={onDragLeave}
+          onDrop={onDrop}
+          onFileChange={(event) => {
+            const files = Array.from(event.target.files || []);
+            void handleFiles(files);
+            event.target.value = '';
+          }}
+        />
 
-      <UploadQueueTable entries={entries} onClear={clearRows} />
+        <UploadProcessingPanel
+          scanJobState={scanJobState}
+          entries={entries}
+          completedProfileRows={completedProfileRows}
+          completedRankingRows={completedRankingRows}
+          onOpenReview={() => router.push('/review')}
+          onOpenRankingReview={() => router.push('/rankings/review')}
+        />
 
-      <UploadSubmitNotice submitMessage={submitMessage} />
+        <UploadQueueTable entries={entries} onClear={clearRows} />
+
+        <UploadSubmitNotice submitMessage={submitMessage?.type === 'success' ? submitMessage : null} />
+      </SessionGate>
     </div>
   );
 }

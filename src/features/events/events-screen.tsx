@@ -5,7 +5,26 @@ import Link from 'next/link';
 import { CalendarPlus, Search, Trash2, Upload } from 'lucide-react';
 import { useWorkspaceSession } from '@/lib/workspace-session';
 import { formatDate, EVENT_TYPE_LABELS } from '@/lib/utils';
+import { InlineError, SessionGate } from '@/components/app/session-gate';
+import { Button } from '@/components/ui/button';
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  ActionFooter,
   EmptyState,
   FilterBar,
   KpiCard,
@@ -169,161 +188,211 @@ export default function EventsPage() {
   }, [events, search, typeFilter]);
 
   return (
-    <div className="page-container">
+    <div className="space-y-5 sm:space-y-6">
       <PageHero
         title="Events"
         subtitle="Manage event checkpoints for compare, insights, and ranking workflows."
         actions={
           <>
-            <Link href="/upload" className="btn btn-secondary">
-              <Upload size={14} /> Upload
-            </Link>
-            <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
-              <CalendarPlus size={14} /> Create Event
-            </button>
+            <Button
+              asChild
+              variant="outline"
+              className="rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white"
+            >
+              <Link href="/upload">
+                <Upload data-icon="inline-start" />
+                Upload
+              </Link>
+            </Button>
+            <Button
+              className="rounded-full bg-[linear-gradient(135deg,#5a7fff,#7ce6ff)] text-black hover:opacity-95"
+              onClick={() => setShowCreate(true)}
+            >
+              <CalendarPlus data-icon="inline-start" />
+              Create Event
+            </Button>
           </>
         }
       />
 
-      {!workspaceReady ? (
-        <div className="card mb-24">
-          <div className="text-sm text-muted">
-            {sessionLoading ? 'Connecting workspace...' : sessionError || 'Workspace session is not ready yet.'}
-          </div>
-        </div>
-      ) : null}
+      <SessionGate ready={workspaceReady} loading={sessionLoading} error={sessionError} onRetry={() => void fetchEvents()}>
+        {error ? <InlineError message={error} /> : null}
 
-      {error ? <div className="delta-negative mb-16">{error}</div> : null}
-
-      <div className="grid-3 mb-24">
-        <KpiCard label="Total Events" value={events.length} hint="Tracked event checkpoints" tone="info" />
-        <KpiCard label="KvK Events" value={kvkCount} hint="Events tagged with KvK type" tone="warn" />
-        <KpiCard
-          label="Snapshots Indexed"
-          value={events.reduce((sum, event) => sum + event.snapshotCount, 0)}
-          hint="Profile rows across all events"
-          tone="good"
-        />
-      </div>
-
-      <Panel
-        title="Event Registry"
-        subtitle="Search, filter, and manage event snapshots"
-        actions={
-          <FilterBar>
-            <div className="search-bar" style={{ minWidth: 220 }}>
-              <Search size={14} className="search-icon" />
-              <input
-                placeholder="Search events..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-            </div>
-            <div className="form-group" style={{ marginBottom: 0, minWidth: 180 }}>
-              <label className="form-label">Type</label>
-              <select className="form-select" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
-                {eventTypeOptions.map((option) => (
-                  <option key={option} value={option}>
-                    {option === 'ALL' ? 'All Types' : EVENT_TYPE_LABELS[option] || option}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <StatusPill label={`${filteredEvents.length} visible`} tone="info" />
-          </FilterBar>
-        }
-      >
-        {loading ? (
-          <SkeletonSet rows={4} />
-        ) : filteredEvents.length === 0 ? (
-          <EmptyState
-            title={events.length === 0 ? 'No events yet' : 'No matching events'}
-            description={
-              events.length === 0
-                ? 'Create your first event to start collecting snapshots.'
-                : 'Try a different search or type filter.'
-            }
-            action={
-              <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
-                Create Event
-              </button>
-            }
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <KpiCard label="Total Events" value={events.length} hint="Tracked event checkpoints" tone="info" />
+          <KpiCard label="KvK Events" value={kvkCount} hint="Events tagged with KvK type" tone="warn" />
+          <KpiCard
+            label="Snapshots Indexed"
+            value={events.reduce((sum, event) => sum + event.snapshotCount, 0)}
+            hint="Profile rows across all events"
+            tone="good"
           />
-        ) : (
-          filteredEvents.map((event) => (
-            <div key={event.id} className="event-card">
-              <div className="event-card-info">
-                <div className="event-card-name">{event.name}</div>
-                <div className="event-card-meta">
-                  <StatusPill
-                    label={EVENT_TYPE_LABELS[event.eventType] || event.eventType}
-                    tone={event.eventType.includes('KVK') ? 'warn' : 'info'}
-                  />
-                  <span>{event.snapshotCount} governors</span>
-                  <span>{formatDate(event.createdAt)}</span>
-                </div>
-                {event.description ? <div className="text-sm text-muted mt-4">{event.description}</div> : null}
-              </div>
-              <FilterBar className="event-card-actions">
-                <Link href={`/events/${event.id}`} className="btn btn-secondary btn-sm">
-                  View
-                </Link>
-                <Link href={`/compare?eventA=${event.id}`} className="btn btn-secondary btn-sm">
-                  Compare
-                </Link>
-                <button className="btn btn-danger btn-sm" onClick={() => deleteEvent(event.id)}>
-                  <Trash2 size={13} /> Delete
-                </button>
-              </FilterBar>
-            </div>
-          ))
-        )}
-      </Panel>
+        </div>
 
-      {showCreate ? (
-        <div className="modal-overlay" onClick={() => setShowCreate(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h2>Create Event</h2>
-            <div className="form-group">
-              <label className="form-label">Event Name</label>
-              <input
-                className="form-input"
+        <Panel
+          title="Event Registry"
+          subtitle="Search, filter, and manage event snapshots."
+          actions={
+            <FilterBar className="w-full items-stretch gap-2.5 sm:items-center">
+              <div className="relative min-w-0 w-full flex-1 sm:min-w-[220px]">
+                <Search className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-white/34" />
+                <Input
+                  placeholder="Search events..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="rounded-full border-white/10 bg-white/4 pl-11 text-white placeholder:text-white/28 max-[390px]:h-9"
+                />
+              </div>
+              <Select value={typeFilter} onValueChange={setTypeFilter}>
+                <SelectTrigger className="w-full min-w-0 rounded-full border-white/10 bg-white/4 text-white sm:min-w-44">
+                  <SelectValue placeholder="Type" />
+                </SelectTrigger>
+                <SelectContent className="border-white/10 bg-[rgba(8,10,16,0.98)] text-white">
+                  {eventTypeOptions.map((option) => (
+                    <SelectItem key={option} value={option}>
+                      {option === 'ALL' ? 'All Types' : EVENT_TYPE_LABELS[option] || option}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <StatusPill label={`${filteredEvents.length} visible`} tone="info" />
+            </FilterBar>
+          }
+        >
+          {loading ? (
+            <SkeletonSet rows={4} />
+          ) : filteredEvents.length === 0 ? (
+            <EmptyState
+              title={events.length === 0 ? 'No events yet' : 'No matching events'}
+              description={
+                events.length === 0
+                  ? 'Create your first event to start collecting snapshots.'
+                  : 'Try a different search or type filter.'
+              }
+              action={
+                <Button
+                  className="rounded-full bg-[linear-gradient(135deg,#5a7fff,#7ce6ff)] text-black hover:opacity-95"
+                  onClick={() => setShowCreate(true)}
+                >
+                  Create Event
+                </Button>
+              }
+            />
+          ) : (
+            <div className="grid gap-3">
+              {filteredEvents.map((event) => (
+                <article
+                  key={event.id}
+                  className="rounded-[24px] border border-white/10 bg-[linear-gradient(160deg,rgba(16,22,36,0.74),rgba(11,15,24,0.9))] p-4 shadow-[0_14px_40px_rgba(0,0,0,0.26)] max-[390px]:rounded-[20px] max-[390px]:p-3.5"
+                >
+                  <div className="space-y-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <StatusPill
+                        label={EVENT_TYPE_LABELS[event.eventType] || event.eventType}
+                        tone={event.eventType.includes('KVK') ? 'warn' : 'info'}
+                      />
+                      <StatusPill label={`${event.snapshotCount} governors`} tone="neutral" />
+                      <StatusPill label={formatDate(event.createdAt)} tone="neutral" />
+                    </div>
+                    <div>
+                      <p className="font-heading text-lg text-white max-[390px]:text-base sm:text-xl">{event.name}</p>
+                      {event.description ? (
+                        <p className="mt-1.5 text-sm text-white/56 max-[390px]:text-xs">{event.description}</p>
+                      ) : null}
+                    </div>
+                  </div>
+                  <ActionFooter>
+                    <Button
+                      asChild
+                      variant="outline"
+                      className="h-11 rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white"
+                    >
+                      <Link href={`/events/${event.id}`}>View</Link>
+                    </Button>
+                    <Button
+                      asChild
+                      variant="outline"
+                      className="h-11 rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white"
+                    >
+                      <Link href={`/compare?eventA=${event.id}`}>Compare</Link>
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      className="h-11 rounded-full"
+                      onClick={() => deleteEvent(event.id)}
+                    >
+                      <Trash2 data-icon="inline-start" />
+                      Delete
+                    </Button>
+                  </ActionFooter>
+                </article>
+              ))}
+            </div>
+          )}
+        </Panel>
+      </SessionGate>
+
+      <Dialog open={showCreate} onOpenChange={setShowCreate}>
+        <DialogContent className="border-white/10 bg-[rgba(8,10,16,0.98)] text-white sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="font-heading text-xl text-white">Create Event</DialogTitle>
+            <DialogDescription className="text-white/55">
+              Add a new event checkpoint for rankings and compare surfaces.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-2">
+            <div className="space-y-2">
+              <label className="text-[11px] uppercase tracking-[0.18em] text-white/45">Event Name</label>
+              <Input
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
                 placeholder="e.g., KvK S3 - Start"
                 autoFocus
+                className="rounded-2xl border-white/10 bg-white/4 text-white placeholder:text-white/30"
               />
             </div>
-            <div className="form-group">
-              <label className="form-label">Event Type</label>
-              <select className="form-select" value={newType} onChange={(e) => setNewType(e.target.value)}>
-                {Object.entries(EVENT_TYPE_LABELS).map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </select>
+            <div className="space-y-2">
+              <label className="text-[11px] uppercase tracking-[0.18em] text-white/45">Event Type</label>
+              <Select value={newType} onValueChange={setNewType}>
+                <SelectTrigger className="rounded-2xl border-white/10 bg-white/4 text-white">
+                  <SelectValue placeholder="Choose type" />
+                </SelectTrigger>
+                <SelectContent className="border-white/10 bg-[rgba(8,10,16,0.98)] text-white">
+                  {Object.entries(EVENT_TYPE_LABELS).map(([value, label]) => (
+                    <SelectItem key={value} value={value}>
+                      {label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-            <div className="form-group">
-              <label className="form-label">Description</label>
-              <input
-                className="form-input"
+            <div className="space-y-2">
+              <label className="text-[11px] uppercase tracking-[0.18em] text-white/45">Description</label>
+              <Input
                 value={newDesc}
                 onChange={(e) => setNewDesc(e.target.value)}
                 placeholder="Optional notes"
+                className="rounded-2xl border-white/10 bg-white/4 text-white placeholder:text-white/30"
               />
             </div>
-            <div className="modal-actions">
-              <button className="btn btn-secondary" onClick={() => setShowCreate(false)}>
-                Cancel
-              </button>
-              <button className="btn btn-primary" onClick={createEvent}>
-                Create Event
-              </button>
-            </div>
           </div>
-        </div>
-      ) : null}
+          <DialogFooter className="gap-2 sm:justify-end">
+            <Button
+              variant="outline"
+              className="rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white"
+              onClick={() => setShowCreate(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="rounded-full bg-[linear-gradient(135deg,#5a7fff,#7ce6ff)] text-black hover:opacity-95"
+              onClick={createEvent}
+            >
+              Create Event
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

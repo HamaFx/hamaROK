@@ -9,7 +9,13 @@ import {
   Square,
   Trash2,
 } from 'lucide-react';
-import { FilterBar, Panel, StatusPill } from '@/components/ui/primitives';
+import { Button } from '@/components/ui/button';
+import {
+  DataTableLite,
+  FilterBar,
+  Panel,
+  StatusPill,
+} from '@/components/ui/primitives';
 import {
   type AwsOcrControlStatus,
   type ScanJobResponse,
@@ -33,7 +39,7 @@ export function UploadStatusStrip({
   failedCount: number;
 }) {
   return (
-    <FilterBar className="mb-24">
+    <FilterBar>
       <StatusPill label={`Queued ${queuedCount}`} tone="warn" />
       <StatusPill label={`Processing ${processingCount}`} tone="info" />
       <StatusPill label={`Completed ${completedCount}`} tone="good" />
@@ -74,18 +80,18 @@ export function UploadWorkerPanel({
     workspaceName?.replace(/command center/gi, 'workspace') || 'your kingdom workspace';
 
   return (
-    <Panel title="Weekly Window + Worker" className="mb-24">
-      <div className="mb-12 text-sm text-muted">
+    <Panel title="Weekly Window + Worker">
+      <p className="mb-3 text-sm text-white/56">
         {workspaceReady
           ? `Connected to ${workspaceLabel}.`
           : sessionLoading
             ? 'Connecting workspace...'
             : sessionError || 'Workspace session is not ready yet.'}
-      </div>
-      <div className="grid-2" style={{ gap: 12 }}>
-        <div className="card" style={{ padding: 12 }}>
-          <strong>{weeklyEvent?.name || 'Preparing current weekly event...'}</strong>
-          <div className="mt-8 text-sm text-muted">
+      </p>
+      <div className="grid gap-3 md:grid-cols-2">
+        <div className="rounded-[22px] border border-white/10 bg-white/4 p-3.5">
+          <p className="font-heading text-base text-white">{weeklyEvent?.name || 'Preparing current weekly event...'}</p>
+          <p className="mt-2 text-sm text-white/56">
             {weeklyEvent?.weekKey || 'week key pending'}
             {weeklyEvent?.startsAt
               ? ` • ${new Date(weeklyEvent.startsAt).toLocaleDateString(undefined, {
@@ -94,38 +100,39 @@ export function UploadWorkerPanel({
                   day: 'numeric',
                 })}`
               : ''}
-          </div>
+          </p>
           {weeklyEvent?.isClosed ? (
-            <div className="mt-8 text-sm delta-negative">
+            <p className="mt-2 text-sm text-rose-200">
               This week is marked closed. Re-open or switch week before official activity review.
-            </div>
+            </p>
           ) : null}
         </div>
 
-        <div className="card" style={{ padding: 12 }}>
-          <div className="flex items-center gap-8" style={{ marginBottom: 8 }}>
-            <ShieldCheck size={14} />
-            <strong>AWS OCR Worker</strong>
+        <div className="rounded-[22px] border border-white/10 bg-white/4 p-3.5">
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <ShieldCheck className="size-4" />
+            <strong className="text-sm text-white">AWS OCR Worker</strong>
             <StatusPill label={workerLabel} tone={workerTone} />
           </div>
-          <div className="text-sm text-muted">Queue-driven auto-start. Use Start Worker to warm up before uploads.</div>
-          <FilterBar className="mt-12" style={{ gap: 8 }}>
-            <button
-              className="btn btn-primary btn-sm"
+          <p className="text-sm text-white/56">Queue-driven auto-start. Use Start Worker to warm up before uploads.</p>
+          <FilterBar className="mt-3">
+            <Button
               onClick={onStartWorker}
               disabled={!awsOcrControl?.enabled || awsControlBusy === 'START'}
+              className="rounded-full bg-[linear-gradient(135deg,#5a7fff,#7ce6ff)] text-black hover:opacity-95"
             >
-              <Play size={14} /> {awsControlBusy === 'START' ? 'Starting...' : 'Start Worker'}
-            </button>
-            <button
-              className="btn btn-secondary btn-sm"
+              <Play data-icon="inline-start" /> {awsControlBusy === 'START' ? 'Starting...' : 'Start Worker'}
+            </Button>
+            <Button
+              variant="outline"
+              className="rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white"
               onClick={onStopWorker}
               disabled={!awsOcrControl?.enabled || awsControlBusy === 'STOP'}
             >
-              <Square size={14} /> {awsControlBusy === 'STOP' ? 'Stopping...' : 'Stop'}
-            </button>
+              <Square data-icon="inline-start" /> {awsControlBusy === 'STOP' ? 'Stopping...' : 'Stop'}
+            </Button>
           </FilterBar>
-          {awsControlMessage ? <div className="mt-8 text-sm text-muted">{awsControlMessage}</div> : null}
+          {awsControlMessage ? <p className="mt-2 text-sm text-white/56">{awsControlMessage}</p> : null}
         </div>
       </div>
     </Panel>
@@ -156,38 +163,44 @@ export function UploadDropZonePanel({
   onFileChange: ChangeEventHandler<HTMLInputElement>;
 }) {
   return (
-    <Panel title="Drop Screenshots" className="mb-24">
+    <Panel title="Drop Screenshots">
       <div
-        className={`drop-zone ${isDragging ? 'dragging' : ''}`}
+        className={`cursor-pointer rounded-[24px] border border-dashed px-5 py-10 text-center transition-colors ${
+          isDragging
+            ? 'border-sky-300/35 bg-sky-300/10'
+            : 'border-white/18 bg-white/4 hover:border-white/28 hover:bg-white/6'
+        }`}
         onDragOver={onDragOver}
         onDragLeave={onDragLeave}
         onDrop={onDrop}
         onClick={() => fileInputRef.current?.click()}
       >
-        <div className="drop-icon">
-          <ImageUp size={28} />
+        <div className="mx-auto mb-3 grid size-12 place-items-center rounded-2xl border border-white/12 bg-white/8 text-white/80">
+          <ImageUp className="size-6" />
         </div>
-        <div className="drop-text">{isDragging ? 'Release to queue uploads' : 'Drop screenshots here'}</div>
-        <div className="drop-hint">PNG, JPG, WEBP • Queue-first processing (no browser OCR freeze)</div>
+        <p className="font-heading text-lg text-white">
+          {isDragging ? 'Release to queue uploads' : 'Drop screenshots here'}
+        </p>
+        <p className="mt-2 text-sm text-white/56">PNG, JPG, WEBP • Queue-first processing (no browser OCR freeze)</p>
         <input
           ref={fileInputRef}
           type="file"
           accept="image/png,image/jpeg,image/webp"
           multiple
-          style={{ display: 'none' }}
+          className="hidden"
           onChange={onFileChange}
         />
       </div>
 
       {isUploading ? (
-        <div className="mt-12 flex items-center gap-8 text-sm text-muted">
-          <Clock3 size={14} /> Uploading and queueing screenshots...
+        <div className="mt-3 flex items-center gap-2 text-sm text-white/58">
+          <Clock3 className="size-4" /> Uploading and queueing screenshots...
         </div>
       ) : null}
       {scanJobId ? (
-        <div className="mt-12 text-sm text-muted">
+        <div className="mt-3 text-sm text-white/56">
           Current job: {scanJobState?.processedFiles || 0}/{scanJobState?.totalFiles || entryCount} processed •{' '}
-          <strong>{scanJobState?.status || 'PROCESSING'}</strong>
+          <strong className="text-white">{scanJobState?.status || 'PROCESSING'}</strong>
         </div>
       ) : null}
     </Panel>
@@ -221,23 +234,30 @@ export function UploadProcessingPanel({
           ? 'OCR processing is complete. Continue in the review queues.'
           : 'Some rows failed. Review completed rows and retry failed screenshots.'
       }
-      className="mb-24"
       actions={
         <FilterBar>
-          <button className="btn btn-secondary btn-sm" onClick={onOpenReview}>
+          <Button
+            variant="outline"
+            className="rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white"
+            onClick={onOpenReview}
+          >
             OCR Review ({completedProfileRows})
-          </button>
-          <button className="btn btn-secondary btn-sm" onClick={onOpenRankingReview}>
+          </Button>
+          <Button
+            variant="outline"
+            className="rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white"
+            onClick={onOpenRankingReview}
+          >
             Ranking Review ({completedRankingRows})
-          </button>
+          </Button>
         </FilterBar>
       }
     >
-      <div className="text-sm text-muted">
+      <p className="text-sm text-white/56">
         Completed: {entries.filter((entry) => entry.status === 'completed').length} • Duplicate warnings:{' '}
         {entries.filter((entry) => entry.status === 'duplicate').length} • Failed:{' '}
         {entries.filter((entry) => entry.status === 'failed').length}
-      </div>
+      </p>
     </Panel>
   );
 }
@@ -258,39 +278,47 @@ export function UploadQueueTable({
       title={`Upload Queue Rows (${entries.length})`}
       actions={
         <FilterBar>
-          <button className="btn btn-danger btn-sm" onClick={onClear}>
-            <Trash2 size={14} /> Clear List
-          </button>
+          <Button variant="destructive" className="rounded-full" onClick={onClear}>
+            <Trash2 data-icon="inline-start" /> Clear List
+          </Button>
         </FilterBar>
       }
     >
-      <div className="data-table-wrap">
-        <table className="data-table data-table-dense">
-          <thead>
-            <tr>
-              <th>File</th>
-              <th>Status</th>
-              <th>Size</th>
-              <th>Updated</th>
-            </tr>
-          </thead>
-          <tbody>
-            {entries.map((entry) => (
-              <tr key={entry.id}>
-                <td>
-                  <strong>{entry.fileName}</strong>
-                  {entry.error ? <div className="text-sm delta-negative">{entry.error}</div> : null}
-                </td>
-                <td>
-                  <StatusPill label={entry.status.toUpperCase()} tone={statusToneForRow(entry.status)} />
-                </td>
-                <td>{formatBytes(entry.sizeBytes)}</td>
-                <td>{new Date(entry.updatedAt).toLocaleTimeString()}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <DataTableLite
+        rows={entries}
+        rowKey={(entry) => entry.id}
+        columns={[
+          {
+            key: 'file',
+            label: 'File',
+            render: (entry) => (
+              <div>
+                <strong>{entry.fileName}</strong>
+                {entry.error ? <div className="mt-1 text-sm text-rose-200">{entry.error}</div> : null}
+              </div>
+            ),
+          },
+          {
+            key: 'status',
+            label: 'Status',
+            render: (entry) => (
+              <StatusPill label={entry.status.toUpperCase()} tone={statusToneForRow(entry.status)} />
+            ),
+          },
+          {
+            key: 'size',
+            label: 'Size',
+            className: 'num',
+            render: (entry) => formatBytes(entry.sizeBytes),
+          },
+          {
+            key: 'updated',
+            label: 'Updated',
+            className: 'num',
+            render: (entry) => new Date(entry.updatedAt).toLocaleTimeString(),
+          },
+        ]}
+      />
     </Panel>
   );
 }
@@ -305,14 +333,16 @@ export function UploadSubmitNotice({
   }
 
   return (
-    <div className={`card mt-16 ${submitMessage.type === 'error' ? 'delta-negative' : ''}`}>
-      <div className="flex items-center gap-8">
-        {submitMessage.type === 'success' ? (
-          <CheckCircle2 size={15} color="#72f5c7" />
-        ) : (
-          <CircleAlert size={15} color="#ff9cad" />
-        )}
-        <span className="text-sm">{submitMessage.text}</span>
+    <div
+      className={`rounded-2xl border px-4 py-3 ${
+        submitMessage.type === 'success'
+          ? 'border-emerald-300/18 bg-emerald-400/10 text-emerald-100'
+          : 'border-rose-300/18 bg-rose-400/10 text-rose-100'
+      }`}
+    >
+      <div className="flex items-center gap-2.5 text-sm">
+        {submitMessage.type === 'success' ? <CheckCircle2 className="size-4" /> : <CircleAlert className="size-4" />}
+        <span>{submitMessage.text}</span>
       </div>
     </div>
   );

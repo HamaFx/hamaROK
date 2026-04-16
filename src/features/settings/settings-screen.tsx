@@ -3,6 +3,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Save, Settings2, Shield, Webhook } from 'lucide-react';
 import { useWorkspaceSession } from '@/lib/workspace-session';
+import { InlineError, SessionGate } from '@/components/app/session-gate';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { FilterBar, KpiCard, PageHero, Panel, StatusPill } from '@/components/ui/primitives';
 
 interface SettingsConfig {
@@ -326,261 +329,300 @@ export default function SettingsPage() {
   }, [standards]);
 
   return (
-    <div className="page-container">
+    <div className="space-y-5 sm:space-y-6">
       <PageHero
-        title="Kingdom Settings"
+        title="Settings"
         subtitle="Configure combat scoring, weekly standards, and Discord delivery."
         actions={
-          <button className="btn btn-primary" onClick={saveAll} disabled={saving || loading}>
-            <Save size={14} /> {saving ? 'Saving...' : 'Save All'}
-          </button>
+          <Button
+            className="rounded-full bg-[linear-gradient(135deg,#5a7fff,#7ce6ff)] text-black hover:opacity-95"
+            onClick={saveAll}
+            disabled={saving || loading}
+          >
+            <Save data-icon="inline-start" />
+            {saving ? 'Saving...' : 'Save All'}
+          </Button>
         }
       />
 
-      {!workspaceReady ? (
-        <div className="card mb-24">
-          <div className="text-sm text-muted">
-            {sessionLoading ? 'Connecting workspace...' : sessionError || 'Workspace session is not ready yet.'}
-          </div>
+      <SessionGate ready={workspaceReady} loading={sessionLoading} error={sessionError}>
+        {message && message.type === 'error' ? <InlineError message={message.text} /> : null}
+
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <KpiCard label="T4 Weight" value={config.t4Weight} hint="Kill score multiplier" tone="info" />
+          <KpiCard label="T5 Weight" value={config.t5Weight} hint="Kill score multiplier" tone="warn" />
+          <KpiCard label="Dead Weight" value={config.deadWeight} hint="Commitment multiplier" tone="good" />
+          <KpiCard label="Formula Mix" value={formulaPreview.killWeight} hint="Combined kill weighting" tone="neutral" />
         </div>
-      ) : null}
 
-      <div className="grid-4 mb-24">
-        <KpiCard label="T4 Weight" value={config.t4Weight} hint="Kill score multiplier" tone="info" />
-        <KpiCard label="T5 Weight" value={config.t5Weight} hint="Kill score multiplier" tone="warn" />
-        <KpiCard label="Dead Weight" value={config.deadWeight} hint="Commitment multiplier" tone="good" />
-        <KpiCard label="Formula Mix" value={formulaPreview.killWeight} hint="Combined kill weighting" tone="neutral" />
-      </div>
-
-      <div className="grid-2 mb-24">
-        <Panel
-          title="Combat Formula"
-          subtitle="Scoring multipliers used across compare and warrior analytics."
-          actions={
-            <button className="btn btn-secondary btn-sm" onClick={() => setConfig(DEFAULTS)}>
-              Reset Formula
-            </button>
-          }
-        >
-          <div className="mb-16">
-            <label className="form-label">
-              <span>T4 Kill Weight</span>
-              <span>{config.t4Weight} DKP</span>
-            </label>
-            <input
-              className="w-full"
-              type="range"
-              name="t4Weight"
-              min="0"
-              max="5"
-              step="0.1"
-              value={config.t4Weight}
-              onChange={handleConfigChange}
-            />
-          </div>
-
-          <div className="mb-16">
-            <label className="form-label">
-              <span>T5 Kill Weight</span>
-              <span>{config.t5Weight} DKP</span>
-            </label>
-            <input
-              className="w-full"
-              type="range"
-              name="t5Weight"
-              min="0"
-              max="10"
-              step="0.5"
-              value={config.t5Weight}
-              onChange={handleConfigChange}
-            />
-          </div>
-
-          <div className="mb-16">
-            <label className="form-label">
-              <span>Dead Troops Weight</span>
-              <span>{config.deadWeight} DKP</span>
-            </label>
-            <input
-              className="w-full"
-              type="range"
-              name="deadWeight"
-              min="0"
-              max="25"
-              step="1"
-              value={config.deadWeight}
-              onChange={handleConfigChange}
-            />
-          </div>
-
-          <div className="mb-16">
-            <label className="form-label">
-              <span>Expected KP per 1M power</span>
-              <span>{(config.kpPerPowerRatio * 1000).toLocaleString()}k</span>
-            </label>
-            <input
-              className="w-full"
-              type="range"
-              name="kpPerPowerRatio"
-              min="0"
-              max="2"
-              step="0.05"
-              value={config.kpPerPowerRatio}
-              onChange={handleConfigChange}
-            />
-          </div>
-
-          <div>
-            <label className="form-label">
-              <span>Expected Deads per 1M power</span>
-              <span>{(config.deadPerPowerRatio * 1000).toLocaleString()}k</span>
-            </label>
-            <input
-              className="w-full"
-              type="range"
-              name="deadPerPowerRatio"
-              min="0"
-              max="0.5"
-              step="0.01"
-              value={config.deadPerPowerRatio}
-              onChange={handleConfigChange}
-            />
-          </div>
-
-          <FilterBar className="mt-12">
-            <Settings2 size={14} />
-            <span className="text-sm text-muted">
-              Engagement mix score: {formulaPreview.engagementWeight}
-            </span>
-          </FilterBar>
-        </Panel>
-
-        <Panel
-          title="Weekly Activity Standards"
-          subtitle="Minimum thresholds reset weekly using the configured game reset offset."
-        >
-          <div className="form-group mb-12">
-            <label className="form-label">
-              <span>Week Reset UTC Offset</span>
-              <span>{config.weekResetUtcOffset}</span>
-            </label>
-            <input
-              type="text"
-              name="weekResetUtcOffset"
-              className="form-input"
-              value={config.weekResetUtcOffset}
-              onChange={handleConfigChange}
-              placeholder="+00:00"
-              pattern="^[+-](0\\d|1[0-4]):[0-5]\\d$"
-            />
-            <div className="text-sm text-muted mt-6">
-              Format `+HH:MM` or `-HH:MM` (example `+03:00`).
+        <div className="grid gap-6 xl:grid-cols-2">
+          <Panel
+            title="Combat Formula"
+            subtitle="Scoring multipliers used across compare and warrior analytics."
+            actions={
+              <Button
+                variant="outline"
+                className="rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white"
+                onClick={() => setConfig(DEFAULTS)}
+              >
+                Reset Formula
+              </Button>
+            }
+          >
+            <div className="space-y-5">
+              <div className="space-y-2.5">
+                <label className="flex items-center justify-between gap-3 text-[11px] uppercase tracking-[0.18em] text-white/42">
+                  <span>T4 Kill Weight</span>
+                  <span>{config.t4Weight} DKP</span>
+                </label>
+                <input
+                  className="h-2 w-full accent-sky-300"
+                  type="range"
+                  name="t4Weight"
+                  min="0"
+                  max="5"
+                  step="0.1"
+                  value={config.t4Weight}
+                  onChange={handleConfigChange}
+                />
+              </div>
+              <div className="space-y-2.5">
+                <label className="flex items-center justify-between gap-3 text-[11px] uppercase tracking-[0.18em] text-white/42">
+                  <span>T5 Kill Weight</span>
+                  <span>{config.t5Weight} DKP</span>
+                </label>
+                <input
+                  className="h-2 w-full accent-sky-300"
+                  type="range"
+                  name="t5Weight"
+                  min="0"
+                  max="10"
+                  step="0.5"
+                  value={config.t5Weight}
+                  onChange={handleConfigChange}
+                />
+              </div>
+              <div className="space-y-2.5">
+                <label className="flex items-center justify-between gap-3 text-[11px] uppercase tracking-[0.18em] text-white/42">
+                  <span>Dead Troops Weight</span>
+                  <span>{config.deadWeight} DKP</span>
+                </label>
+                <input
+                  className="h-2 w-full accent-sky-300"
+                  type="range"
+                  name="deadWeight"
+                  min="0"
+                  max="25"
+                  step="1"
+                  value={config.deadWeight}
+                  onChange={handleConfigChange}
+                />
+              </div>
+              <div className="space-y-2.5">
+                <label className="flex items-center justify-between gap-3 text-[11px] uppercase tracking-[0.18em] text-white/42">
+                  <span>Expected KP per 1M power</span>
+                  <span>{(config.kpPerPowerRatio * 1000).toLocaleString()}k</span>
+                </label>
+                <input
+                  className="h-2 w-full accent-sky-300"
+                  type="range"
+                  name="kpPerPowerRatio"
+                  min="0"
+                  max="2"
+                  step="0.05"
+                  value={config.kpPerPowerRatio}
+                  onChange={handleConfigChange}
+                />
+              </div>
+              <div className="space-y-2.5">
+                <label className="flex items-center justify-between gap-3 text-[11px] uppercase tracking-[0.18em] text-white/42">
+                  <span>Expected Deads per 1M power</span>
+                  <span>{(config.deadPerPowerRatio * 1000).toLocaleString()}k</span>
+                </label>
+                <input
+                  className="h-2 w-full accent-sky-300"
+                  type="range"
+                  name="deadPerPowerRatio"
+                  min="0"
+                  max="0.5"
+                  step="0.01"
+                  value={config.deadPerPowerRatio}
+                  onChange={handleConfigChange}
+                />
+              </div>
             </div>
-          </div>
 
-          <div className="data-table-wrap">
-            <table className="data-table data-table-dense">
-              <thead>
-                <tr>
-                  <th>Alliance</th>
-                  <th>Contribution Min</th>
-                  <th>Fort Destroy Min</th>
-                  <th>Power Growth Min</th>
-                  <th>KP Growth Min</th>
-                </tr>
-              </thead>
-              <tbody>
-                {standards.map((row) => (
-                  <tr key={row.allianceTag}>
-                    <td>
-                      <strong>{row.allianceLabel}</strong>
-                    </td>
-                    <td>
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        className="form-input"
-                        value={row.contributionPoints}
-                        onChange={(e) =>
-                          handleStandardChange(row.allianceTag, 'contributionPoints', e.target.value)
-                        }
-                        aria-label={`${row.allianceLabel} contribution minimum`}
-                      />
-                    </td>
-                    <td>
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        className="form-input"
-                        value={row.fortDestroying}
-                        onChange={(e) =>
-                          handleStandardChange(row.allianceTag, 'fortDestroying', e.target.value)
-                        }
-                        aria-label={`${row.allianceLabel} fort destroying minimum`}
-                      />
-                    </td>
-                    <td>
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        className="form-input"
-                        value={row.powerGrowth}
-                        onChange={(e) =>
-                          handleStandardChange(row.allianceTag, 'powerGrowth', e.target.value)
-                        }
-                        aria-label={`${row.allianceLabel} power growth minimum`}
-                      />
-                    </td>
-                    <td>
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        className="form-input"
-                        value={row.killPointsGrowth}
-                        onChange={(e) =>
-                          handleStandardChange(row.allianceTag, 'killPointsGrowth', e.target.value)
-                        }
-                        aria-label={`${row.allianceLabel} kill points growth minimum`}
-                      />
-                    </td>
+            <FilterBar className="mt-4">
+              <Settings2 className="size-4" />
+              <span className="text-sm text-white/60">Engagement mix score: {formulaPreview.engagementWeight}</span>
+            </FilterBar>
+          </Panel>
+
+          <Panel
+            title="Weekly Activity Standards"
+            subtitle="Minimum thresholds reset weekly using the configured game reset offset."
+          >
+            <div className="space-y-2">
+              <label className="flex items-center justify-between gap-3 text-[11px] uppercase tracking-[0.18em] text-white/42">
+                <span>Week Reset UTC Offset</span>
+                <span>{config.weekResetUtcOffset}</span>
+              </label>
+              <Input
+                type="text"
+                name="weekResetUtcOffset"
+                value={config.weekResetUtcOffset}
+                onChange={handleConfigChange}
+                placeholder="+00:00"
+                pattern="^[+-](0\\d|1[0-4]):[0-5]\\d$"
+                className="rounded-2xl border-white/10 bg-white/4 text-white placeholder:text-white/30"
+              />
+              <p className="text-xs text-white/54">Format `+HH:MM` or `-HH:MM` (example `+03:00`).</p>
+            </div>
+
+            <div className="mt-4 space-y-3 md:hidden">
+              {standards.map((row) => (
+                <div
+                  key={row.allianceTag}
+                  className="rounded-[22px] border border-white/10 bg-white/4 p-3.5"
+                >
+                  <p className="font-heading text-sm text-white">{row.allianceLabel}</p>
+                  <div className="mt-3 grid gap-2.5 grid-cols-2">
+                    <Input
+                      type="text"
+                      inputMode="numeric"
+                      value={row.contributionPoints}
+                      onChange={(e) => handleStandardChange(row.allianceTag, 'contributionPoints', e.target.value)}
+                      aria-label={`${row.allianceLabel} contribution minimum`}
+                      placeholder="Contribution"
+                      className="rounded-xl border-white/10 bg-white/4 text-white placeholder:text-white/30"
+                    />
+                    <Input
+                      type="text"
+                      inputMode="numeric"
+                      value={row.fortDestroying}
+                      onChange={(e) => handleStandardChange(row.allianceTag, 'fortDestroying', e.target.value)}
+                      aria-label={`${row.allianceLabel} fort destroying minimum`}
+                      placeholder="Fort"
+                      className="rounded-xl border-white/10 bg-white/4 text-white placeholder:text-white/30"
+                    />
+                    <Input
+                      type="text"
+                      inputMode="numeric"
+                      value={row.powerGrowth}
+                      onChange={(e) => handleStandardChange(row.allianceTag, 'powerGrowth', e.target.value)}
+                      aria-label={`${row.allianceLabel} power growth minimum`}
+                      placeholder="Power"
+                      className="rounded-xl border-white/10 bg-white/4 text-white placeholder:text-white/30"
+                    />
+                    <Input
+                      type="text"
+                      inputMode="numeric"
+                      value={row.killPointsGrowth}
+                      onChange={(e) => handleStandardChange(row.allianceTag, 'killPointsGrowth', e.target.value)}
+                      aria-label={`${row.allianceLabel} kill points growth minimum`}
+                      placeholder="KP"
+                      className="rounded-xl border-white/10 bg-white/4 text-white placeholder:text-white/30"
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-4 hidden overflow-hidden rounded-[22px] border border-white/10 md:block">
+              <table className="w-full border-collapse text-sm text-white/78">
+                <thead className="bg-white/6 text-[11px] uppercase tracking-[0.16em] text-white/45">
+                  <tr>
+                    <th className="px-3 py-2 text-left">Alliance</th>
+                    <th className="px-3 py-2 text-left">Contribution Min</th>
+                    <th className="px-3 py-2 text-left">Fort Destroy Min</th>
+                    <th className="px-3 py-2 text-left">Power Growth Min</th>
+                    <th className="px-3 py-2 text-left">KP Growth Min</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {standards.map((row) => (
+                    <tr key={row.allianceTag} className="border-t border-white/8">
+                      <td className="px-3 py-2.5 font-medium text-white">{row.allianceLabel}</td>
+                      <td className="px-3 py-2.5">
+                        <Input
+                          type="text"
+                          inputMode="numeric"
+                          value={row.contributionPoints}
+                          onChange={(e) => handleStandardChange(row.allianceTag, 'contributionPoints', e.target.value)}
+                          aria-label={`${row.allianceLabel} contribution minimum`}
+                          className="h-10 rounded-xl border-white/10 bg-white/4 text-white"
+                        />
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <Input
+                          type="text"
+                          inputMode="numeric"
+                          value={row.fortDestroying}
+                          onChange={(e) => handleStandardChange(row.allianceTag, 'fortDestroying', e.target.value)}
+                          aria-label={`${row.allianceLabel} fort destroying minimum`}
+                          className="h-10 rounded-xl border-white/10 bg-white/4 text-white"
+                        />
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <Input
+                          type="text"
+                          inputMode="numeric"
+                          value={row.powerGrowth}
+                          onChange={(e) => handleStandardChange(row.allianceTag, 'powerGrowth', e.target.value)}
+                          aria-label={`${row.allianceLabel} power growth minimum`}
+                          className="h-10 rounded-xl border-white/10 bg-white/4 text-white"
+                        />
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <Input
+                          type="text"
+                          inputMode="numeric"
+                          value={row.killPointsGrowth}
+                          onChange={(e) => handleStandardChange(row.allianceTag, 'killPointsGrowth', e.target.value)}
+                          aria-label={`${row.allianceLabel} kill points growth minimum`}
+                          className="h-10 rounded-xl border-white/10 bg-white/4 text-white"
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
 
-          <FilterBar className="mt-12">
-            <Shield size={14} />
-            <span className="text-sm text-muted">
-              Totals: Contribution {formatInt(weeklySummary.totalContribution)} • Fort {formatInt(weeklySummary.totalFort)} • Power Growth {formatInt(weeklySummary.totalGrowth)} • KP Growth {formatInt(weeklySummary.totalKpGrowth)}
-            </span>
+            <FilterBar className="mt-4">
+              <Shield className="size-4" />
+              <span className="text-sm text-white/60">
+                Totals: Contribution {formatInt(weeklySummary.totalContribution)} • Fort {formatInt(weeklySummary.totalFort)} • Power Growth {formatInt(weeklySummary.totalGrowth)} • KP Growth {formatInt(weeklySummary.totalKpGrowth)}
+              </span>
+            </FilterBar>
+          </Panel>
+        </div>
+
+        <Panel title="Discord Integration">
+          <div className="space-y-2">
+            <label className="text-[11px] uppercase tracking-[0.18em] text-white/42">Webhook URL</label>
+            <Input
+              type="text"
+              name="discordWebhook"
+              value={config.discordWebhook}
+              onChange={handleConfigChange}
+              placeholder="https://discord.com/api/webhooks/..."
+              className="rounded-2xl border-white/10 bg-white/4 text-white placeholder:text-white/30"
+            />
+          </div>
+          <FilterBar className="mt-4">
+            <Webhook className="size-4" />
+            <span className="text-sm text-white/60">Used by Discord publish endpoints and delivery retries.</span>
           </FilterBar>
         </Panel>
-      </div>
 
-      <Panel title="Discord Integration">
-        <div className="form-group" style={{ marginBottom: 0 }}>
-          <label className="form-label">Webhook URL</label>
-          <input
-            type="text"
-            className="form-input"
-            name="discordWebhook"
-            value={config.discordWebhook}
-            onChange={handleConfigChange}
-            placeholder="https://discord.com/api/webhooks/..."
-          />
-        </div>
-        <FilterBar className="mt-12">
-          <Webhook size={14} />
-          <span className="text-sm text-muted">Used by Discord publish endpoints and delivery retries.</span>
-        </FilterBar>
-      </Panel>
-
-      {message ? (
-        <div className="mt-16">
-          <StatusPill label={message.text} tone={message.type === 'success' ? 'good' : 'bad'} />
-        </div>
-      ) : null}
+        {message && message.type === 'success' ? (
+          <FilterBar className="rounded-2xl border-emerald-300/16 bg-emerald-400/10 px-4 py-3 text-emerald-100">
+            <StatusPill label="Saved" tone="good" />
+            <span className="text-sm">{message.text}</span>
+          </FilterBar>
+        ) : null}
+      </SessionGate>
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import type { AppNavItem } from './navigation';
 
 export type LeaderboardMetricKey =
   | 'power'
@@ -47,4 +48,13 @@ export interface SessionGateProps {
   notReadyLabel?: string;
   onRetry?: () => void;
   retryLabel?: string;
+}
+
+export type PageViewState = 'loading' | 'ready' | 'error' | 'empty';
+
+export type MobileDataMode = 'cards' | 'table';
+
+export interface NavGroups {
+  primary: AppNavItem[];
+  tools: AppNavItem[];
 }

@@ -1,11 +1,20 @@
 'use client';
 
+import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import React from 'react';
 import { ShieldCheck, XCircle } from 'lucide-react';
 import type { OcrRuntimeProfile } from '@/lib/ocr/profiles';
 import { useWorkspaceSession } from '@/lib/workspace-session';
 import { getRankingTypeDisplayName, SUPPORTED_RANKING_BOARDS } from '@/lib/rankings/board-types';
+import { InlineError, SessionGate } from '@/components/app/session-gate';
+import { Button } from '@/components/ui/button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { ReviewItemCard } from './review-item-card';
 import {
   type ExtractionStatus,
@@ -19,14 +28,18 @@ import {
   defaultReviewDraft,
 } from './review-model';
 import {
+  CompactAlert,
   EmptyState,
   FilterBar,
   KpiCard,
   PageHero,
   Panel,
   SkeletonSet,
+  StickyControlBar,
   StatusPill,
 } from '@/components/ui/primitives';
+
+const ALL_SEVERITY = '__all__';
 
 export default function ReviewQueuePage() {
   const {
@@ -436,152 +449,183 @@ export default function ReviewQueuePage() {
   };
 
   return (
-    <div className="page-container">
+    <div className="space-y-5 sm:space-y-6">
       <PageHero
         title="OCR Review Queue"
-        subtitle="Review and approve governor profile OCR rows."
+        subtitle="Validate OCR profile extractions with card-first review, then approve, reject, or rerun."
+        badges={[
+          `${summary.total} rows in queue`,
+          `${rankingQueueSummary?.total?.toLocaleString() || 0} ranking rows pending`,
+        ]}
       />
 
-      {!workspaceReady ? (
-        <div className="card mb-24">
-          <div className="text-sm text-muted">{sessionLoading ? 'Connecting workspace...' : sessionError || 'Workspace session is not ready yet.'}</div>
-        </div>
-      ) : null}
+      <SessionGate ready={workspaceReady} loading={sessionLoading} error={sessionError}>
+        <StickyControlBar className="space-y-3">
+          <div className="grid gap-2.5 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+            <Select
+              value={severity || ALL_SEVERITY}
+              onValueChange={(value) => setSeverity(value === ALL_SEVERITY ? '' : (value as Severity))}
+            >
+              <SelectTrigger className="w-full rounded-full border-white/10 bg-white/4 text-white">
+                <SelectValue placeholder="Severity" />
+              </SelectTrigger>
+              <SelectContent className="border-white/10 bg-[rgba(8,10,16,0.98)] text-white">
+                <SelectItem value={ALL_SEVERITY}>All Severities</SelectItem>
+                <SelectItem value="HIGH">High Severity</SelectItem>
+                <SelectItem value="MEDIUM">Medium Severity</SelectItem>
+                <SelectItem value="LOW">Low Severity</SelectItem>
+              </SelectContent>
+            </Select>
 
-      <FilterBar className="mb-24 items-stretch sm:items-end">
-        <div className="form-group w-full sm:w-auto" style={{ marginBottom: 0, minWidth: 160 }}>
-          <label className="form-label">Severity</label>
-          <select className="form-select" value={severity} onChange={(e) => setSeverity(e.target.value as '' | Severity)}>
-            <option value="">All</option>
-            <option value="HIGH">High</option>
-            <option value="MEDIUM">Medium</option>
-            <option value="LOW">Low</option>
-          </select>
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-full rounded-full border-white/10 bg-white/4 text-white">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent className="border-white/10 bg-[rgba(8,10,16,0.98)] text-white">
+                {REVIEW_STATUS_PRESETS.map((preset) => (
+                  <SelectItem key={preset.value} value={preset.value}>
+                    {preset.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Button
+              className="rounded-full bg-[linear-gradient(135deg,#5a7fff,#7ce6ff)] text-black hover:opacity-95"
+              onClick={() => void loadQueue()}
+              disabled={loading}
+            >
+              {loading ? 'Loading...' : 'Apply'}
+            </Button>
+          </div>
+
+          <FilterBar className="border-white/8 bg-black/20 p-2.5">
+            <Button
+              variant="outline"
+              className="rounded-full border-white/12 bg-white/6 text-white hover:bg-white/10 hover:text-white"
+              onClick={() => void submitReviewBulk('APPROVED')}
+              disabled={loading || Boolean(actionBusy) || items.length === 0}
+            >
+              <ShieldCheck data-icon="inline-start" />
+              {actionBusy === 'bulk:APPROVED' ? 'Approving...' : 'Accept Visible'}
+            </Button>
+            <Button
+              variant="destructive"
+              className="rounded-full"
+              onClick={() => void submitReviewBulk('REJECTED')}
+              disabled={loading || Boolean(actionBusy) || items.length === 0}
+            >
+              <XCircle data-icon="inline-start" />
+              {actionBusy === 'bulk:REJECTED' ? 'Rejecting...' : 'Reject Visible'}
+            </Button>
+            <StatusPill label={`${items.length} rows`} tone="info" />
+          </FilterBar>
+        </StickyControlBar>
+
+        {error ? <InlineError message={error} /> : null}
+        {actionNotice ? (
+          <CompactAlert title="Queue Update" description={actionNotice} tone="info" />
+        ) : null}
+
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <KpiCard label="Queue Total" value={summary.total} hint="Rows in current queue filter" tone="info" />
+          <KpiCard label="High Severity" value={summary.high} hint="Likely correction needed" tone="bad" />
+          <KpiCard label="Medium Severity" value={summary.medium} hint="Validate before approve" tone="warn" />
+          <KpiCard label="Low Severity" value={summary.low} hint="Usually ready" tone="good" />
         </div>
-        <div className="form-group w-full sm:w-auto" style={{ marginBottom: 0, minWidth: 180 }}>
-          <label className="form-label">Status</label>
-          <select className="form-select" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-            {REVIEW_STATUS_PRESETS.map((preset) => (
-              <option key={preset.value} value={preset.value}>
-                {preset.label}
-              </option>
-            ))}
-          </select>
-        </div>
-        <button className="btn btn-primary w-full sm:w-auto" onClick={loadQueue} disabled={loading}>
-          {loading ? 'Loading...' : 'Apply'}
-        </button>
-        <button
-          className="btn btn-secondary w-full sm:w-auto"
-          onClick={() => submitReviewBulk('APPROVED')}
-          disabled={loading || Boolean(actionBusy) || items.length === 0}
+
+        {metricsSummary ? (
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            <KpiCard
+              label="Low-Confidence Rate"
+              value={`${Math.round(metricsSummary.lowConfidenceRate * 100)}%`}
+              hint="Last 30 days"
+              tone="warn"
+              animated={false}
+            />
+            <KpiCard
+              label="Reviewer Edit Rate"
+              value={`${Math.round(metricsSummary.reviewerEditRate * 100)}%`}
+              hint="Field corrections"
+              tone="info"
+              animated={false}
+            />
+            <KpiCard
+              label="Review Pass Rate"
+              value={`${Math.round(metricsSummary.reviewPassRate * 100)}%`}
+              hint="Approved without reject"
+              tone="good"
+              animated={false}
+            />
+          </div>
+        ) : null}
+
+        <Panel
+          title="Post-Upload Routing"
+          subtitle="Profile screenshots stay here. Ranking screenshot rows are routed to Rank Review."
+          actions={
+            <Button
+              asChild
+              variant="outline"
+              className="rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white"
+            >
+              <Link href="/rankings/review">Open Ranking Review</Link>
+            </Button>
+          }
         >
-          <ShieldCheck size={14} /> {actionBusy === 'bulk:APPROVED' ? 'Approving...' : 'Accept All'}
-        </button>
-        <button
-          className="btn btn-danger w-full sm:w-auto"
-          onClick={() => submitReviewBulk('REJECTED')}
-          disabled={loading || Boolean(actionBusy) || items.length === 0}
-        >
-          <XCircle size={14} /> {actionBusy === 'bulk:REJECTED' ? 'Rejecting...' : 'Reject All'}
-        </button>
-      </FilterBar>
-
-      {error ? <div className="delta-negative mb-16">{error}</div> : null}
-      {actionNotice ? <div className="text-sm text-muted mb-16">{actionNotice}</div> : null}
-
-      <div className="grid-4 mb-24">
-        <KpiCard label="Queue Total" value={summary.total} hint="Rows in current queue filter" tone="info" />
-        <KpiCard label="High Severity" value={summary.high} hint="Likely correction needed" tone="bad" />
-        <KpiCard label="Medium Severity" value={summary.medium} hint="Validate before approve" tone="warn" />
-        <KpiCard label="Low Severity" value={summary.low} hint="Usually ready" tone="good" />
-      </div>
-
-      {metricsSummary ? (
-        <div className="grid-3 mb-24">
-          <KpiCard
-            label="Low-Confidence Rate"
-            value={`${Math.round(metricsSummary.lowConfidenceRate * 100)}%`}
-            hint="Last 30 days"
-            tone="warn"
-          />
-          <KpiCard
-            label="Reviewer Edit Rate"
-            value={`${Math.round(metricsSummary.reviewerEditRate * 100)}%`}
-            hint="Field corrections"
-            tone="info"
-          />
-          <KpiCard
-            label="Review Pass Rate"
-            value={`${Math.round(metricsSummary.reviewPassRate * 100)}%`}
-            hint="Approved without reject"
-            tone="good"
-          />
-        </div>
-      ) : null}
-
-      <Panel
-        title="Post-Upload Routing"
-        subtitle="Profiles are reviewed here. Ranking screenshots go to Ranking Review."
-        className="mb-24"
-      >
-        <div className="review-candidate-row">
-          <StatusPill label={`Governor Profile: ${summary.total}`} tone={summary.total > 0 ? 'warn' : 'good'} />
-          {SUPPORTED_RANKING_BOARDS.map((board) => {
-            const count = rankingByType.get(`${board.rankingType}::${board.metricKey}`) || 0;
-            return (
-              <StatusPill
-                key={`${board.rankingType}:${board.metricKey}`}
-                label={`${getRankingTypeDisplayName(board.rankingType)}: ${count}`}
-                tone={count > 0 ? 'warn' : 'good'}
-              />
-            );
-          })}
-        </div>
-        <div className="mt-12 text-sm text-muted">
-          Pending ranking rows: {rankingQueueSummary?.total?.toLocaleString() || 0}
-        </div>
-        <div className="mt-12">
-          <a className="btn btn-secondary btn-sm" href="/rankings/review">
-            Open Ranking Review
-          </a>
-        </div>
-      </Panel>
-
-      <Panel title="Review Board">
-        {loading ? (
-          <SkeletonSet rows={4} />
-        ) : items.length === 0 ? (
-          <EmptyState title="No entries in queue" description="Try broadening filters." />
-        ) : (
-          <div className="ocr-review-stack">
-            {items.map((item) => {
-              const draft = drafts[item.id] || defaultReviewDraft;
-
+          <div className="flex flex-wrap gap-1.5">
+            <StatusPill label={`Governor Profile: ${summary.total}`} tone={summary.total > 0 ? 'warn' : 'good'} />
+            {SUPPORTED_RANKING_BOARDS.map((board) => {
+              const count = rankingByType.get(`${board.rankingType}::${board.metricKey}`) || 0;
               return (
-                <ReviewItemCard
-                  key={item.id}
-                  item={item}
-                  draft={draft}
-                  actionBusy={actionBusy}
-                  profiles={profiles}
-                  rerunProfileId={rerunProfileByItem[item.id] || ''}
-                  onRerunProfileChange={(value) =>
-                    setRerunProfileByItem((prev) => ({
-                      ...prev,
-                      [item.id]: value,
-                    }))
-                  }
-                  onUpdateDraft={(field, value) => updateDraft(item.id, field, value)}
-                  onRerun={() => rerunOcr(item)}
-                  onSaveGolden={() => saveGoldenFixture(item)}
-                  onSubmit={(status) => submitReview(item.id, status)}
+                <StatusPill
+                  key={`${board.rankingType}:${board.metricKey}`}
+                  label={`${getRankingTypeDisplayName(board.rankingType)}: ${count}`}
+                  tone={count > 0 ? 'warn' : 'good'}
                 />
               );
             })}
           </div>
-        )}
-      </Panel>
+          <p className="mt-3 text-sm text-white/58">
+            Pending ranking rows: {rankingQueueSummary?.total?.toLocaleString() || 0}
+          </p>
+        </Panel>
+
+        <Panel title="Review Board" subtitle="Card-first queue with mobile drawer editing and quick review actions.">
+          {loading ? (
+            <SkeletonSet rows={4} />
+          ) : items.length === 0 ? (
+            <EmptyState title="No entries in queue" description="Try broadening filters." />
+          ) : (
+            <div className="grid gap-4">
+              {items.map((item) => {
+                const draft = drafts[item.id] || defaultReviewDraft;
+
+                return (
+                  <ReviewItemCard
+                    key={item.id}
+                    item={item}
+                    draft={draft}
+                    actionBusy={actionBusy}
+                    profiles={profiles}
+                    rerunProfileId={rerunProfileByItem[item.id] || ''}
+                    onRerunProfileChange={(value) =>
+                      setRerunProfileByItem((prev) => ({
+                        ...prev,
+                        [item.id]: value,
+                      }))
+                    }
+                    onUpdateDraft={(field, value) => updateDraft(item.id, field, value)}
+                    onRerun={() => void rerunOcr(item)}
+                    onSaveGolden={() => void saveGoldenFixture(item)}
+                    onSubmit={(status) => void submitReview(item.id, status)}
+                  />
+                );
+              })}
+            </div>
+          )}
+        </Panel>
+      </SessionGate>
     </div>
   );
 }

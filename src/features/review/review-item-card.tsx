@@ -1,16 +1,23 @@
 import Image from 'next/image';
 import {
-  AlertTriangle,
   CheckCircle2,
-  ImageIcon,
+  ExternalLink,
+  FlaskConical,
   RefreshCw,
-  Save,
-  ShieldCheck,
   Sparkles,
   XCircle,
 } from 'lucide-react';
 import type { OcrRuntimeProfile } from '@/lib/ocr/profiles';
-import { FilterBar, StatusPill } from '@/components/ui/primitives';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { ActionFooter, RowDetailDrawer, StatusPill } from '@/components/ui/primitives';
 import {
   type ExtractionStatus,
   type QueueItem,
@@ -34,6 +41,27 @@ interface ReviewItemCardProps {
   onSubmit: (status: ExtractionStatus) => void;
 }
 
+const AUTO_PROFILE = '__auto__';
+
+function statusTone(status: ExtractionStatus): 'neutral' | 'good' | 'warn' | 'bad' | 'info' {
+  if (status === 'APPROVED') return 'good';
+  if (status === 'REJECTED') return 'bad';
+  if (status === 'REVIEWED') return 'info';
+  return 'warn';
+}
+
+function confidenceTone(confidence: number): 'good' | 'warn' | 'bad' {
+  if (confidence >= 85) return 'good';
+  if (confidence >= 70) return 'warn';
+  return 'bad';
+}
+
+function formatWhen(value: string) {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.valueOf())) return value;
+  return parsed.toLocaleString();
+}
+
 export function ReviewItemCard({
   item,
   draft,
@@ -46,179 +74,214 @@ export function ReviewItemCard({
   onSaveGolden,
   onSubmit,
 }: ReviewItemCardProps) {
+  const busy = actionBusy != null;
+  const busyApprove = actionBusy === `${item.id}APPROVED`;
+  const busyReject = actionBusy === `${item.id}REJECTED`;
+  const busyReviewed = actionBusy === `${item.id}REVIEWED`;
+  const busyRerun = actionBusy === `${item.id}:rerun`;
+  const busyFixture = actionBusy === `${item.id}:fixture`;
+
+  const unresolvedValidation = item.validation.filter((entry) => entry.severity !== 'ok');
+
+  const fieldEditors = (
+    <div className="grid gap-3 sm:grid-cols-2">
+      {REVIEW_FIELD_ORDER.map((field) => {
+        const extracted = item.values[field];
+        const candidatePreview = Array.isArray(extracted.candidates)
+          ? extracted.candidates
+              .slice(0, 2)
+              .map((candidate) => String(candidate.normalizedValue || candidate.id || '').trim())
+              .filter(Boolean)
+          : [];
+
+        return (
+          <div key={field} className="rounded-2xl border border-white/10 bg-white/4 p-3">
+            <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
+              <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-white/45">
+                {REVIEW_FIELD_LABELS[field]}
+              </p>
+              <StatusPill label={formatFieldConfidence(extracted.confidence)} tone={confidenceTone(extracted.confidence)} />
+            </div>
+            <Input
+              value={draft[field]}
+              onChange={(event) => onUpdateDraft(field, event.target.value)}
+              className="rounded-xl border-white/10 bg-black/20 text-white placeholder:text-white/28"
+            />
+            <div className="mt-2.5 space-y-1.5 text-xs text-white/52">
+              <p>
+                OCR: <span className="text-white/72">{extracted.value || '—'}</span>
+              </p>
+              {extracted.previousValue ? (
+                <p>
+                  Previous: <span className="text-white/62">{extracted.previousValue}</span>
+                </p>
+              ) : null}
+              {candidatePreview.length > 0 ? <p>Candidates: {candidatePreview.join(' • ')}</p> : null}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+
   return (
-    <article className="ocr-review">
-      <header className="ocr-review-header">
-        <div>
-          <div className="flex items-center gap-8" style={{ flexWrap: 'wrap' }}>
-            <strong>{item.values.governorName.value || 'Unknown Governor'}</strong>
-            <StatusPill label="Governor Profile" tone="info" />
+    <article className="rounded-[26px] border border-white/12 bg-[rgba(10,14,24,0.92)] p-4 shadow-[0_16px_32px_rgba(0,0,0,0.24)] max-[390px]:rounded-[22px] max-[390px]:p-3.5 sm:p-5">
+      <header className="space-y-3">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h3 className="truncate font-heading text-lg text-white sm:text-xl">
+              {draft.governorName || item.values.governorName.value || 'Unknown Governor'}
+            </h3>
+            <p className="mt-1 text-xs text-white/48">
+              Queue #{item.id.slice(-8)} • {formatWhen(item.createdAt)}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center justify-end gap-1.5">
+            <StatusPill label={item.status} tone={statusTone(item.status)} />
+            <StatusPill label={`${Math.round(item.confidence)}%`} tone={confidenceTone(item.confidence)} />
             <StatusPill label={item.severity.level} tone={reviewStatusTone(item.severity.level)} />
-            <StatusPill label={item.status} tone="info" />
-            {item.syncState === 'SYNCED' ? <StatusPill label="Synced" tone="good" /> : null}
-            {item.syncState === 'PENDING_WEEK_LINK' ? <StatusPill label="Pending Week Link" tone="warn" /> : null}
-            {item.lowConfidence ? <StatusPill label="Low Confidence" tone="warn" /> : null}
           </div>
-          <div className="mt-4 text-sm text-muted">
-            ID {item.values.governorId.value || '—'} • {item.engineVersion || item.provider} •{' '}
-            {new Date(item.createdAt).toLocaleString()} • Overall {formatFieldConfidence(item.confidence)}
-            {item.scanSource ? ` • ${item.scanSource}` : ''}
-            {item.linkedEventId ? ` • Event ${item.linkedEventId.slice(0, 8)}` : ''}
-          </div>
-          {item.syncState === 'PENDING_WEEK_LINK' && item.syncMessage ? (
-            <div className="mt-4 text-sm text-muted">{item.syncMessage}</div>
-          ) : null}
         </div>
+
+        <div className="flex flex-wrap gap-1.5">
+          {item.lowConfidence ? <StatusPill label="Low Confidence" tone="bad" /> : null}
+          {item.syncState ? (
+            <StatusPill label={item.syncState === 'SYNCED' ? 'Synced' : 'Pending Week Link'} tone={item.syncState === 'SYNCED' ? 'good' : 'warn'} />
+          ) : null}
+          {item.profile?.name ? <StatusPill label={`${item.profile.name} v${item.profile.version}`} tone="info" /> : null}
+        </div>
+
+        {item.failureReasons?.length ? (
+          <div className="rounded-2xl border border-rose-300/16 bg-rose-400/10 px-3 py-2.5 text-xs text-rose-100">
+            {item.failureReasons.slice(0, 4).join(' • ')}
+          </div>
+        ) : null}
+
+        {unresolvedValidation.length ? (
+          <div className="rounded-2xl border border-amber-300/16 bg-amber-300/10 px-3 py-2.5 text-xs text-amber-100">
+            {unresolvedValidation
+              .slice(0, 4)
+              .map((entry) => `${entry.field}: ${entry.warning || entry.severity}`)
+              .join(' • ')}
+          </div>
+        ) : null}
       </header>
 
-      {item.artifact?.url ? (
-        <div style={{ padding: '12px 14px 0' }}>
-          <a href={item.artifact.url} target="_blank" rel="noreferrer" className="text-sm">
-            <ImageIcon size={14} style={{ verticalAlign: 'middle', marginRight: 6 }} />
-            Open screenshot
-          </a>
-          <div className="mt-8">
-            <Image
-              src={item.artifact.url}
-              alt={`Profile screenshot for ${item.values.governorName.value || 'governor'}`}
-              width={920}
-              height={520}
-              unoptimized
-              style={{
-                width: '100%',
-                height: 'auto',
-                maxWidth: 460,
-                borderRadius: 10,
-                border: '1px solid var(--line-soft)',
-                display: 'block',
-              }}
-            />
-          </div>
-        </div>
-      ) : null}
-
-      <div className="review-field-grid">
-        {REVIEW_FIELD_ORDER.map((fieldKey) => {
-          const source = item.values[fieldKey as keyof QueueItem['values']];
-          const validationFieldKey = fieldKey === 'governorName' ? 'name' : fieldKey;
-          const fieldValidation = item.validation.find((entry) => entry.field === validationFieldKey);
-          const candidateList = (source?.candidates || [])
-            .map((candidate) => ({
-              value: candidate.normalizedValue || '',
-              confidence: Number(candidate.confidence || 0),
-            }))
-            .filter((candidate) => candidate.value)
-            .slice(0, 3);
-
-          return (
-            <div key={`${item.id}-${fieldKey}`} className="review-field-row">
-              <label className="ocr-field-label">{REVIEW_FIELD_LABELS[fieldKey]}</label>
-              <div className="review-field-main">
-                <input
-                  className={`ocr-field-input ${
-                    fieldValidation?.severity === 'error'
-                      ? 'has-error'
-                      : fieldValidation?.severity === 'warning'
-                        ? 'has-warning'
-                        : ''
-                  }`}
-                  value={draft[fieldKey] || ''}
-                  onChange={(event) => onUpdateDraft(fieldKey, event.target.value)}
+      <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,0.88fr)_minmax(0,1.12fr)]">
+        <section className="space-y-3 rounded-2xl border border-white/10 bg-white/4 p-3.5">
+          {item.artifact?.url ? (
+            <>
+              <a
+                href={item.artifact.url}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex min-h-11 items-center gap-2 rounded-full border border-white/12 bg-black/20 px-3.5 text-sm text-white/82 hover:bg-black/30"
+              >
+                <ExternalLink className="size-4" />
+                Open Screenshot
+              </a>
+              <div className="overflow-hidden rounded-2xl border border-white/10 bg-black/20">
+                <Image
+                  src={item.artifact.url}
+                  alt={`OCR screenshot for ${draft.governorName || item.values.governorName.value || 'governor'}`}
+                  width={880}
+                  height={560}
+                  unoptimized
+                  className="h-auto w-full"
                 />
-                <span className="text-sm text-muted">{formatFieldConfidence(source?.confidence)}</span>
               </div>
-              <div className="review-field-meta text-sm text-muted">
-                <span>Prev: {source?.previousValue ?? '—'}</span>
-                {source?.changed ? <span className="delta-negative">changed</span> : null}
-                {source?.croppedImage ? (
-                  <a href={source.croppedImage} target="_blank" rel="noreferrer">
-                    crop
-                  </a>
-                ) : null}
-                {fieldValidation?.warning ? (
-                  <span className={fieldValidation.severity === 'error' ? 'delta-negative' : 'text-gold'}>
-                    {fieldValidation.warning}
-                  </span>
-                ) : null}
-              </div>
-              {candidateList.length > 0 ? (
-                <div className="review-candidate-row">
-                  {candidateList.map((candidate, index) => (
-                    <button
-                      type="button"
-                      key={`${item.id}-${fieldKey}-candidate-${index}`}
-                      className="btn btn-ghost btn-sm"
-                      onClick={() => onUpdateDraft(fieldKey, candidate.value)}
-                    >
-                      <Sparkles size={12} />
-                      {candidate.value} ({Math.round(candidate.confidence)}%)
-                    </button>
+            </>
+          ) : (
+            <div className="rounded-2xl border border-dashed border-white/12 bg-black/20 px-4 py-8 text-center text-sm text-white/52">
+              Screenshot artifact is missing for this queue row.
+            </div>
+          )}
+        </section>
+
+        <section className="space-y-3">
+          <div className="hidden md:block">{fieldEditors}</div>
+
+          <div className="md:hidden">
+            <RowDetailDrawer
+              triggerLabel="Edit Fields"
+              title="Review Fields"
+              description="Adjust extracted values before marking reviewed, approving, or rejecting."
+            >
+              {fieldEditors}
+            </RowDetailDrawer>
+          </div>
+
+          <div className="rounded-2xl border border-white/10 bg-white/4 p-3.5">
+            <div className="grid gap-2.5 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
+              <Select
+                value={rerunProfileId || AUTO_PROFILE}
+                onValueChange={(value) => onRerunProfileChange(value === AUTO_PROFILE ? '' : value)}
+              >
+                <SelectTrigger className="w-full rounded-xl border-white/10 bg-black/20 text-white">
+                  <SelectValue placeholder="Auto-select OCR profile" />
+                </SelectTrigger>
+                <SelectContent className="border-white/10 bg-[rgba(8,10,16,0.98)] text-white">
+                  <SelectItem value={AUTO_PROFILE}>Auto-select OCR profile</SelectItem>
+                  {profiles.map((profile) => (
+                    <SelectItem key={profile.id} value={profile.id}>
+                      {profile.name} ({profile.profileKey} v{profile.version})
+                    </SelectItem>
                   ))}
-                </div>
-              ) : null}
+                </SelectContent>
+              </Select>
+
+              <Button
+                variant="outline"
+                className="rounded-full border-white/12 bg-black/20 text-white hover:bg-white/8 hover:text-white"
+                onClick={onRerun}
+                disabled={busy || !item.artifact?.url}
+              >
+                <RefreshCw data-icon="inline-start" />
+                {busyRerun ? 'Re-running...' : 'Re-run OCR'}
+              </Button>
+
+              <Button
+                variant="outline"
+                className="rounded-full border-white/12 bg-black/20 text-white hover:bg-white/8 hover:text-white"
+                onClick={onSaveGolden}
+                disabled={busy || !item.artifact?.id}
+              >
+                <Sparkles data-icon="inline-start" />
+                {busyFixture ? 'Saving...' : 'Save Fixture'}
+              </Button>
             </div>
-          );
-        })}
+
+            <ActionFooter className="mt-3 border-white/8">
+              <Button
+                variant="outline"
+                className="rounded-full border-white/12 bg-white/6 text-white hover:bg-white/10 hover:text-white"
+                onClick={() => onSubmit('REVIEWED')}
+                disabled={busy}
+              >
+                <FlaskConical data-icon="inline-start" />
+                {busyReviewed ? 'Marking...' : 'Mark Reviewed'}
+              </Button>
+              <Button
+                className="rounded-full bg-[linear-gradient(135deg,#5a7fff,#7ce6ff)] text-black hover:opacity-95"
+                onClick={() => onSubmit('APPROVED')}
+                disabled={busy}
+              >
+                <CheckCircle2 data-icon="inline-start" />
+                {busyApprove ? 'Approving...' : 'Approve'}
+              </Button>
+              <Button
+                variant="destructive"
+                className="rounded-full"
+                onClick={() => onSubmit('REJECTED')}
+                disabled={busy}
+              >
+                <XCircle data-icon="inline-start" />
+                {busyReject ? 'Rejecting...' : 'Reject'}
+              </Button>
+            </ActionFooter>
+          </div>
+        </section>
       </div>
-
-      {item.severity.reasons.length > 0 ? (
-        <div style={{ padding: '0 14px 10px' }}>
-          {item.severity.reasons.map((reason, idx) => (
-            <div key={`${item.id}-reason-${idx}`} className="text-sm text-muted">
-              • {reason}
-            </div>
-          ))}
-        </div>
-      ) : null}
-
-      {item.failureReasons && item.failureReasons.length > 0 ? (
-        <div style={{ padding: '0 14px 10px' }}>
-          {item.failureReasons.slice(0, 5).map((reason, idx) => (
-            <div key={`${item.id}-failure-${idx}`} className="text-sm text-muted">
-              • {reason}
-            </div>
-          ))}
-        </div>
-      ) : null}
-
-      <FilterBar style={{ padding: '0 14px 14px' }}>
-        <select
-          className="form-select"
-          value={rerunProfileId}
-          onChange={(event) => onRerunProfileChange(event.target.value)}
-          style={{ minWidth: 220 }}
-        >
-          <option value="">Auto-select profile</option>
-          {profiles.map((profile) => (
-            <option key={profile.id} value={profile.id}>
-              {profile.name} ({profile.profileKey} v{profile.version})
-            </option>
-          ))}
-        </select>
-
-        <button className="btn btn-secondary btn-sm" disabled={Boolean(actionBusy)} onClick={onRerun}>
-          <RefreshCw size={14} /> {actionBusy === `${item.id}:rerun` ? 'Re-running...' : 'Re-run OCR'}
-        </button>
-        <button className="btn btn-secondary btn-sm" disabled={Boolean(actionBusy)} onClick={onSaveGolden}>
-          <Save size={14} /> {actionBusy === `${item.id}:fixture` ? 'Saving...' : 'Save Golden'}
-        </button>
-        <button className="btn btn-secondary btn-sm" disabled={Boolean(actionBusy)} onClick={() => onSubmit('REVIEWED')}>
-          <CheckCircle2 size={14} /> {actionBusy === `${item.id}REVIEWED` ? 'Saving...' : 'Mark Reviewed'}
-        </button>
-        <button className="btn btn-primary btn-sm" disabled={Boolean(actionBusy)} onClick={() => onSubmit('APPROVED')}>
-          <ShieldCheck size={14} /> {actionBusy === `${item.id}APPROVED` ? 'Approving...' : 'Approve'}
-        </button>
-        <button className="btn btn-danger btn-sm" disabled={Boolean(actionBusy)} onClick={() => onSubmit('REJECTED')}>
-          <XCircle size={14} /> {actionBusy === `${item.id}REJECTED` ? 'Rejecting...' : 'Reject'}
-        </button>
-      </FilterBar>
-
-      {item.lowConfidence ? (
-        <div style={{ padding: '0 14px 12px' }} className="text-sm text-gold">
-          <AlertTriangle size={14} style={{ verticalAlign: 'middle', marginRight: 6 }} />
-          Low-confidence extraction flagged by OCR pipeline.
-        </div>
-      ) : null}
     </article>
   );
 }

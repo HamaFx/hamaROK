@@ -3,6 +3,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Share2 } from 'lucide-react';
 import { useWorkspaceSession } from '@/lib/workspace-session';
+import { InlineError, SessionGate } from '@/components/app/session-gate';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { DataTableLite, EmptyState, FilterBar, KpiCard, PageHero, Panel } from '@/components/ui/primitives';
 
 interface EventOption {
@@ -68,12 +78,14 @@ interface AnalyticsPayload {
 }
 
 export default function InsightsPage() {
+  const AUTO_VALUE = '__auto__';
   const {
     workspaceId,
     accessToken,
-    ready: workspaceReady,
+    ready,
     loading: sessionLoading,
     error: sessionError,
+    refreshSession,
   } = useWorkspaceSession();
   const [events, setEvents] = useState<EventOption[]>([]);
   const [eventA, setEventA] = useState('');
@@ -92,7 +104,7 @@ export default function InsightsPage() {
   );
 
   const loadEvents = useCallback(async () => {
-    if (!workspaceReady) return;
+    if (!ready) return;
     try {
       const res = await fetch(`/api/v2/events?workspaceId=${workspaceId}&limit=200`, { headers });
       const payload = await res.json();
@@ -104,14 +116,14 @@ export default function InsightsPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load events.');
     }
-  }, [workspaceId, headers, eventA, eventB, workspaceReady]);
+  }, [workspaceId, headers, eventA, eventB, ready]);
 
   useEffect(() => {
     loadEvents();
   }, [loadEvents]);
 
   const loadAnalytics = useCallback(async () => {
-    if (!workspaceReady) {
+    if (!ready) {
       setError(sessionLoading ? 'Connecting workspace session...' : 'Workspace session is not ready.');
       return;
     }
@@ -132,16 +144,16 @@ export default function InsightsPage() {
       setError(err instanceof Error ? err.message : 'Failed to load analytics.');
       setAnalytics(null);
     }
-  }, [workspaceId, topN, eventA, eventB, headers, workspaceReady, sessionLoading]);
+  }, [workspaceId, topN, eventA, eventB, headers, ready, sessionLoading]);
 
   useEffect(() => {
-    if (workspaceReady && events.length > 0) {
+    if (ready && events.length > 0) {
       void loadAnalytics();
     }
-  }, [events, loadAnalytics, workspaceReady]);
+  }, [events, loadAnalytics, ready]);
 
   const createRankboard = async () => {
-    if (!analytics?.selectedComparison || !workspaceReady) return;
+    if (!analytics?.selectedComparison || !ready) return;
     setError('');
     setRankboardLink('');
 
@@ -166,187 +178,190 @@ export default function InsightsPage() {
   };
 
   return (
-    <div className="page-container">
+    <div className="space-y-5 sm:space-y-6">
       <PageHero
-        title="Advanced Insights"
+        title="Insights"
         subtitle="Top-N contribution trends and cross-kingdom analytics."
       />
 
-      {!workspaceReady ? (
-        <div className="card mb-24">
-          <div className="text-sm text-muted">{sessionLoading ? 'Connecting workspace...' : sessionError || 'Workspace session is not ready yet.'}</div>
-        </div>
-      ) : null}
+      <SessionGate ready={ready} loading={sessionLoading} error={sessionError} onRetry={() => void refreshSession()}>
+        {error ? <InlineError message={error} /> : null}
 
-      <Panel title="Analysis Parameters" className="mb-24">
-        <FilterBar>
-          <div className="form-group" style={{ minWidth: 220, marginBottom: 0 }}>
-            <label className="form-label">Event A</label>
-            <select className="form-select" value={eventA} onChange={(e) => setEventA(e.target.value)}>
-              <option value="">Auto</option>
-              {events.map((event) => (
-                <option key={event.id} value={event.id}>
-                  {event.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="form-group" style={{ minWidth: 220, marginBottom: 0 }}>
-            <label className="form-label">Event B</label>
-            <select className="form-select" value={eventB} onChange={(e) => setEventB(e.target.value)}>
-              <option value="">Auto</option>
-              {events.map((event) => (
-                <option key={event.id} value={event.id}>
-                  {event.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="form-group" style={{ width: 120, marginBottom: 0 }}>
-            <label className="form-label">Top N</label>
-            <input
-              className="form-input"
-              type="number"
-              min={3}
-              max={50}
-              value={topN}
-              onChange={(e) => setTopN(Math.max(3, Math.min(50, Number(e.target.value) || 10)))}
-            />
-          </div>
-        </FilterBar>
+        <Panel title="Analysis Parameters">
+          <FilterBar className="w-full items-stretch gap-2.5 sm:items-center">
+            <Select value={eventA || AUTO_VALUE} onValueChange={(value) => setEventA(value === AUTO_VALUE ? '' : value)}>
+              <SelectTrigger className="w-full min-w-0 rounded-full border-white/10 bg-white/4 text-white sm:min-w-52">
+                <SelectValue placeholder="Event A" />
+              </SelectTrigger>
+              <SelectContent className="border-white/10 bg-[rgba(8,10,16,0.98)] text-white">
+                <SelectItem value={AUTO_VALUE}>Auto (Event A)</SelectItem>
+                {events.map((event) => (
+                  <SelectItem key={event.id} value={event.id}>
+                    {event.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={eventB || AUTO_VALUE} onValueChange={(value) => setEventB(value === AUTO_VALUE ? '' : value)}>
+              <SelectTrigger className="w-full min-w-0 rounded-full border-white/10 bg-white/4 text-white sm:min-w-52">
+                <SelectValue placeholder="Event B" />
+              </SelectTrigger>
+              <SelectContent className="border-white/10 bg-[rgba(8,10,16,0.98)] text-white">
+                <SelectItem value={AUTO_VALUE}>Auto (Event B)</SelectItem>
+                {events.map((event) => (
+                  <SelectItem key={event.id} value={event.id}>
+                    {event.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <div className="w-full min-w-0 sm:w-28">
+              <Input
+                type="number"
+                min={3}
+                max={50}
+                value={topN}
+                onChange={(e) => setTopN(Math.max(3, Math.min(50, Number(e.target.value) || 10)))}
+                className="rounded-full border-white/10 bg-white/4 text-white placeholder:text-white/30"
+              />
+            </div>
+          </FilterBar>
 
-        {error ? <div className="mt-16 delta-negative">{error}</div> : null}
-        {rankboardLink ? (
-          <div className="mt-12 text-sm">
-            Rankboard: <a href={rankboardLink}>{rankboardLink}</a>
-          </div>
+          {rankboardLink ? (
+            <div className="mt-4 rounded-2xl border border-sky-300/16 bg-sky-300/10 px-4 py-3 text-sm text-sky-100">
+              Rankboard:{' '}
+              <a href={rankboardLink} className="underline">
+                {rankboardLink}
+              </a>
+            </div>
+          ) : null}
+        </Panel>
+
+        {analytics?.selectedComparison ? (
+          <>
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              <KpiCard
+                label="Compared Governors"
+                value={analytics.selectedComparison.summary.totalGovernors}
+                hint="Matched between selected events"
+                tone="info"
+              />
+              <KpiCard
+                label="Average Score"
+                value={`${analytics.selectedComparison.summary.avgWarriorScore}%`}
+                hint="Weighted total score"
+                tone="good"
+              />
+              <KpiCard
+                label="Anomalies"
+                value={analytics.selectedComparison.summary.anomalyCount}
+                hint="Potential regressions or outliers"
+                tone={analytics.selectedComparison.summary.anomalyCount > 0 ? 'warn' : 'good'}
+              />
+            </div>
+
+            <Panel
+              title="Top Contributors"
+              subtitle="Top-N by warrior score"
+              actions={
+                <Button
+                  className="rounded-full bg-[linear-gradient(135deg,#5a7fff,#7ce6ff)] text-black hover:opacity-95"
+                  onClick={createRankboard}
+                >
+                  <Share2 data-icon="inline-start" /> Create Rankboard
+                </Button>
+              }
+            >
+              <DataTableLite
+                rows={analytics.selectedComparison.topContributors}
+                rowKey={(row) => row.governorId}
+                columns={[
+                  { key: 'governor', label: 'Governor', render: (row) => row.governorName },
+                  { key: 'score', label: 'Score', className: 'num', render: (row) => `${row.score}%` },
+                  {
+                    key: 'actual',
+                    label: 'Actual DKP',
+                    className: 'num',
+                    render: (row) => row.actualDkp.toLocaleString(),
+                  },
+                  {
+                    key: 'kp',
+                    label: 'KP Delta',
+                    className: 'num',
+                    render: (row) => row.killPointsDelta.toLocaleString(),
+                  },
+                  {
+                    key: 'deads',
+                    label: 'Deads Delta',
+                    className: 'num',
+                    render: (row) => row.deadsDelta.toLocaleString(),
+                  },
+                ]}
+              />
+            </Panel>
+          </>
         ) : null}
-      </Panel>
 
-      {analytics?.selectedComparison ? (
-        <>
-          <div className="grid-3 mt-24 mb-24">
-            <KpiCard
-              label="Compared Governors"
-              value={analytics.selectedComparison.summary.totalGovernors}
-              hint="Matched between selected events"
-              tone="info"
-            />
-            <KpiCard
-              label="Average Score"
-              value={`${analytics.selectedComparison.summary.avgWarriorScore}%`}
-              hint="Weighted total score"
-              tone="good"
-            />
-            <KpiCard
-              label="Anomalies"
-              value={analytics.selectedComparison.summary.anomalyCount}
-              hint="Potential regressions or outliers"
-              tone={analytics.selectedComparison.summary.anomalyCount > 0 ? 'warn' : 'good'}
-            />
+        {analytics ? (
+          <div className="grid gap-6 xl:grid-cols-2">
+            <Panel title="Trend Lines" subtitle="Rolling event-pair averages">
+              <DataTableLite
+                rows={analytics.trendLines}
+                rowKey={(row, index) => `${row.eventA.name}-${row.eventB.name}-${index}`}
+                columns={[
+                  {
+                    key: 'pair',
+                    label: 'Event Pair',
+                    render: (row) => `${row.eventA.name} -> ${row.eventB.name}`,
+                  },
+                  { key: 'score', label: 'Avg Score', className: 'num', render: (row) => `${row.avgWarriorScore}%` },
+                  { key: 'gov', label: 'Governors', className: 'num', render: (row) => row.totalGovernors },
+                  {
+                    key: 'anomaly',
+                    label: 'Anomalies',
+                    className: 'num',
+                    mobileHidden: true,
+                    render: (row) => row.anomalyCount,
+                  },
+                ]}
+              />
+            </Panel>
+
+            <Panel title="Kingdom Slice" subtitle="Latest comparative score per workspace">
+              <DataTableLite
+                rows={analytics.kingdomSlices}
+                rowKey={(row) => row.workspaceId}
+                columns={[
+                  {
+                    key: 'kingdom',
+                    label: 'Kingdom',
+                    render: (row) => `${row.kingdomTag ? `[${row.kingdomTag}] ` : ''}${row.name}`,
+                  },
+                  {
+                    key: 'avg',
+                    label: 'Latest Avg',
+                    className: 'num',
+                    render: (row) => row.latestAvgWarriorScore ?? '—',
+                  },
+                  { key: 'gov', label: 'Governors', className: 'num', render: (row) => row.totals.governors },
+                  {
+                    key: 'events',
+                    label: 'Events',
+                    className: 'num',
+                    mobileHidden: true,
+                    render: (row) => row.totals.events,
+                  },
+                ]}
+              />
+            </Panel>
           </div>
-
-          <Panel
-            title="Top Contributors"
-            subtitle="Top-N by warrior score"
-            actions={
-              <button className="btn btn-primary btn-sm" onClick={createRankboard}>
-                <Share2 size={14} /> Create Shareable Rankboard
-              </button>
-            }
-            className="mb-24"
-          >
-            <DataTableLite
-              rows={analytics.selectedComparison.topContributors}
-              rowKey={(row) => row.governorId}
-              columns={[
-                { key: 'governor', label: 'Governor', render: (row) => row.governorName },
-                { key: 'score', label: 'Score', className: 'num', render: (row) => `${row.score}%` },
-                {
-                  key: 'actual',
-                  label: 'Actual DKP',
-                  className: 'num',
-                  render: (row) => row.actualDkp.toLocaleString(),
-                },
-                {
-                  key: 'kp',
-                  label: 'KP Delta',
-                  className: 'num',
-                  render: (row) => row.killPointsDelta.toLocaleString(),
-                },
-                {
-                  key: 'deads',
-                  label: 'Deads Delta',
-                  className: 'num',
-                  render: (row) => row.deadsDelta.toLocaleString(),
-                },
-              ]}
-            />
-          </Panel>
-        </>
-      ) : null}
-
-      {analytics ? (
-        <div className="grid-2">
-          <Panel title="Trend Lines" subtitle="Rolling event-pair averages">
-            <DataTableLite
-              rows={analytics.trendLines}
-              rowKey={(row, index) => `${row.eventA.name}-${row.eventB.name}-${index}`}
-              columns={[
-                {
-                  key: 'pair',
-                  label: 'Event Pair',
-                  render: (row) => `${row.eventA.name} -> ${row.eventB.name}`,
-                },
-                { key: 'score', label: 'Avg Score', className: 'num', render: (row) => `${row.avgWarriorScore}%` },
-                { key: 'gov', label: 'Governors', className: 'num', render: (row) => row.totalGovernors },
-                {
-                  key: 'anomaly',
-                  label: 'Anomalies',
-                  className: 'num',
-                  mobileHidden: true,
-                  render: (row) => row.anomalyCount,
-                },
-              ]}
-            />
-          </Panel>
-
-          <Panel title="Kingdom Slice" subtitle="Latest comparative score per workspace">
-            <DataTableLite
-              rows={analytics.kingdomSlices}
-              rowKey={(row) => row.workspaceId}
-              columns={[
-                {
-                  key: 'kingdom',
-                  label: 'Kingdom',
-                  render: (row) => `${row.kingdomTag ? `[${row.kingdomTag}] ` : ''}${row.name}`,
-                },
-                {
-                  key: 'avg',
-                  label: 'Latest Avg',
-                  className: 'num',
-                  render: (row) => row.latestAvgWarriorScore ?? '—',
-                },
-                { key: 'gov', label: 'Governors', className: 'num', render: (row) => row.totals.governors },
-                {
-                  key: 'events',
-                  label: 'Events',
-                  className: 'num',
-                  mobileHidden: true,
-                  render: (row) => row.totals.events,
-                },
-              ]}
-            />
-          </Panel>
-        </div>
-      ) : (
-        <div className="mt-24">
+        ) : (
           <EmptyState
             title="Insights not loaded"
             description="Select event parameters to render trend and contribution analysis."
           />
-        </div>
-      )}
+        )}
+      </SessionGate>
     </div>
   );
 }

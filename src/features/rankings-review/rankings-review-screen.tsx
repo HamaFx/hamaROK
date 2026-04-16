@@ -3,6 +3,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { OcrRuntimeProfile } from '@/lib/ocr/profiles';
 import { useWorkspaceSession } from '@/lib/workspace-session';
+import { InlineError, SessionGate } from '@/components/app/session-gate';
+import { Button } from '@/components/ui/button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   SUPPORTED_RANKING_BOARDS,
 } from '@/lib/rankings/board-types';
@@ -26,8 +35,13 @@ import {
   PageHero,
   Panel,
   SkeletonSet,
+  StickyControlBar,
   StatusPill,
 } from '@/components/ui/primitives';
+
+const ALL_STATUS = '__all_status__';
+const ALL_RANKING_TYPE = '__all_ranking_type__';
+const ALL_METRIC = '__all_metric__';
 
 export default function RankingReviewPage() {
   const {
@@ -184,6 +198,14 @@ export default function RankingReviewPage() {
     }
     return base;
   }, [summaryData]);
+
+  const statusSelectValue = useMemo(
+    () =>
+      statusFilter === RANKING_REVIEW_STATUS_OPTIONS.join(',')
+        ? ALL_STATUS
+        : statusFilter || ALL_STATUS,
+    [statusFilter]
+  );
 
   const updateDraft = (rowId: string, key: keyof RankingReviewDraft, value: string) => {
     setDrafts((prev) => ({
@@ -410,136 +432,161 @@ export default function RankingReviewPage() {
   );
 
   return (
-    <div className="page-container">
+    <div className="space-y-5 sm:space-y-6">
       <PageHero
         title="Ranking Review Queue"
-        subtitle="Resolve identity matches and corrections for ranking screenshots."
+        subtitle="Resolve identity links and corrections for ranking screenshots with a mobile card-first triage board."
+        badges={[`${rows.length} rows in view`, `${summaryData?.total?.toLocaleString() || 0} total in status set`]}
       />
 
-      {!workspaceReady ? (
-        <div className="card mb-24">
-          <div className="text-sm text-muted">
-            {sessionLoading ? 'Connecting workspace...' : sessionError || 'Workspace session is not ready yet.'}
+      <SessionGate ready={workspaceReady} loading={sessionLoading} error={sessionError}>
+        <StickyControlBar className="space-y-3">
+          <div className="grid gap-2.5 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
+            <Select
+              value={statusSelectValue}
+              onValueChange={(value) =>
+                setStatusFilter(value === ALL_STATUS ? RANKING_REVIEW_STATUS_OPTIONS.join(',') : value)
+              }
+            >
+              <SelectTrigger className="w-full rounded-full border-white/10 bg-white/4 text-white">
+                <SelectValue placeholder="Status Filter" />
+              </SelectTrigger>
+              <SelectContent className="border-white/10 bg-[rgba(8,10,16,0.98)] text-white">
+                <SelectItem value="UNRESOLVED">Unresolved</SelectItem>
+                <SelectItem value="AUTO_LINKED,MANUAL_LINKED">Linked (Auto + Manual)</SelectItem>
+                <SelectItem value="REJECTED">Rejected</SelectItem>
+                <SelectItem value={ALL_STATUS}>All Statuses</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select
+              value={rankingTypeFilter || ALL_RANKING_TYPE}
+              onValueChange={(value) => setRankingTypeFilter(value === ALL_RANKING_TYPE ? '' : value)}
+            >
+              <SelectTrigger className="w-full rounded-full border-white/10 bg-white/4 text-white">
+                <SelectValue placeholder="Ranking Type" />
+              </SelectTrigger>
+              <SelectContent className="border-white/10 bg-[rgba(8,10,16,0.98)] text-white">
+                <SelectItem value={ALL_RANKING_TYPE}>All Ranking Types</SelectItem>
+                {RANKING_TYPE_FILTERS.filter((option) => option.value).map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select
+              value={metricFilter || ALL_METRIC}
+              onValueChange={(value) => setMetricFilter(value === ALL_METRIC ? '' : value)}
+            >
+              <SelectTrigger className="w-full rounded-full border-white/10 bg-white/4 text-white">
+                <SelectValue placeholder="Metric Key" />
+              </SelectTrigger>
+              <SelectContent className="border-white/10 bg-[rgba(8,10,16,0.98)] text-white">
+                <SelectItem value={ALL_METRIC}>All Metrics</SelectItem>
+                {METRIC_FILTERS.filter((option) => option.value).map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Button
+              className="rounded-full bg-[linear-gradient(135deg,#5a7fff,#7ce6ff)] text-black hover:opacity-95"
+              onClick={() => void loadRows()}
+              disabled={loading}
+            >
+              {loading ? 'Loading...' : 'Apply'}
+            </Button>
           </div>
+
+          <FilterBar className="border-white/8 bg-black/20 p-2.5">
+            <Button
+              variant="outline"
+              className="rounded-full border-white/12 bg-white/6 text-white hover:bg-white/10 hover:text-white"
+              onClick={() => void runBulkAction('accept_linked')}
+              disabled={loading || Boolean(busyRow)}
+            >
+              {busyRow === 'bulk:accept_linked' ? 'Accepting...' : 'Accept Linked'}
+            </Button>
+            <Button
+              variant="destructive"
+              className="rounded-full"
+              onClick={() => void runBulkAction('reject_all')}
+              disabled={loading || Boolean(busyRow)}
+            >
+              {busyRow === 'bulk:reject_all' ? 'Rejecting...' : 'Reject All'}
+            </Button>
+            <StatusPill label={`${rows.length} rows`} tone="info" />
+          </FilterBar>
+        </StickyControlBar>
+
+        {error ? <InlineError message={error} /> : null}
+
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <KpiCard label="Rows in View" value={rows.length} hint="Filtered review rows" tone="info" />
+          <KpiCard label="Unresolved" value={summary.unresolved} hint="Needs manual identity action" tone="warn" />
+          <KpiCard label="Linked" value={summary.linked} hint="Auto/manual links ready" tone="good" />
+          <KpiCard label="Rejected" value={summary.rejected} hint="Discarded ranking rows" tone="bad" />
         </div>
-      ) : null}
 
-      <FilterBar className="mb-24">
-        <div className="form-group" style={{ marginBottom: 0, minWidth: 230 }}>
-          <label className="form-label">Status Filter</label>
-          <select className="form-select" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-            <option value="UNRESOLVED">Unresolved</option>
-            <option value="AUTO_LINKED,MANUAL_LINKED">Linked (Auto + Manual)</option>
-            <option value="REJECTED">Rejected</option>
-            <option value={RANKING_REVIEW_STATUS_OPTIONS.join(',')}>All</option>
-          </select>
-        </div>
-        <div className="form-group" style={{ marginBottom: 0, minWidth: 220 }}>
-          <label className="form-label">Ranking Type</label>
-          <select
-            className="form-select"
-            value={rankingTypeFilter}
-            onChange={(e) => setRankingTypeFilter(e.target.value)}
-          >
-            {RANKING_TYPE_FILTERS.map((option) => (
-              <option key={option.value || 'all'} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="form-group" style={{ marginBottom: 0, minWidth: 220 }}>
-          <label className="form-label">Metric Key</label>
-          <select className="form-select" value={metricFilter} onChange={(e) => setMetricFilter(e.target.value)}>
-            {METRIC_FILTERS.map((option) => (
-              <option key={option.value || 'all'} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </div>
-        <button className="btn btn-primary" onClick={loadRows} disabled={loading}>
-          {loading ? 'Loading...' : 'Apply'}
-        </button>
-        <button
-          className="btn btn-secondary"
-          onClick={() => runBulkAction('accept_linked')}
-          disabled={loading || Boolean(busyRow)}
-        >
-          {busyRow === 'bulk:accept_linked' ? 'Accepting...' : 'Accept Linked'}
-        </button>
-        <button
-          className="btn btn-danger"
-          onClick={() => runBulkAction('reject_all')}
-          disabled={loading || Boolean(busyRow)}
-        >
-          {busyRow === 'bulk:reject_all' ? 'Rejecting...' : 'Reject All'}
-        </button>
-      </FilterBar>
-
-      {error ? <div className="delta-negative mb-16">{error}</div> : null}
-
-      <div className="grid-4 mb-24">
-        <KpiCard label="Rows in View" value={rows.length} hint="Filtered review rows" tone="info" />
-        <KpiCard label="Unresolved" value={summary.unresolved} hint="Needs manual identity action" tone="warn" />
-        <KpiCard label="Linked" value={summary.linked} hint="Auto/manual links ready" tone="good" />
-        <KpiCard label="Rejected" value={summary.rejected} hint="Discarded ranking rows" tone="bad" />
-      </div>
-
-      <Panel title="Screenshot Type Coverage" subtitle="Counts by supported ranking screenshot type.">
-        <div className="review-candidate-row" style={{ paddingTop: 4 }}>
-          {SUPPORTED_RANKING_BOARDS.map((board) => {
-            const count = summaryByType.get(`${board.rankingType}::${board.metricKey}`) || 0;
-            return (
-              <StatusPill
-                key={`${board.rankingType}:${board.metricKey}`}
-                label={`${board.label}: ${count}`}
-                tone={count > 0 ? 'warn' : 'good'}
-              />
-            );
-          })}
-        </div>
-        {summaryData?.total != null ? (
-          <p className="text-sm text-muted mt-8">
-            Total rows in selected status set: {summaryData.total.toLocaleString()}.
-          </p>
-        ) : null}
-      </Panel>
-
-      <Panel title="Triage Board">
-        {loading ? (
-          <SkeletonSet rows={4} />
-        ) : rows.length === 0 ? (
-          <EmptyState title="Queue is clear" description="No ranking rows in the selected filters." />
-        ) : (
-          <div className="ocr-review-stack">
-            {rows.map((row) => {
-              const draft = drafts[row.id] || defaultRankingReviewDraft;
-
+        <Panel title="Screenshot Type Coverage" subtitle="Counts by supported ranking screenshot type.">
+          <div className="flex flex-wrap gap-1.5">
+            {SUPPORTED_RANKING_BOARDS.map((board) => {
+              const count = summaryByType.get(`${board.rankingType}::${board.metricKey}`) || 0;
               return (
-                <RankingReviewItemCard
-                  key={row.id}
-                  row={row}
-                  draft={draft}
-                  rankingProfiles={rankingProfiles}
-                  rerunProfileId={rerunProfileByRow[row.id] || ''}
-                  rerunHint={rerunHints[row.id] || null}
-                  busyRow={busyRow}
-                  onUpdateDraft={(field, value) => updateDraft(row.id, field, value)}
-                  onRerunProfileChange={(value) =>
-                    setRerunProfileByRow((prev) => ({
-                      ...prev,
-                      [row.id]: value,
-                    }))
-                  }
-                  onRerun={() => rerunOcr(row)}
-                  onAction={(action) => runAction(row, action)}
+                <StatusPill
+                  key={`${board.rankingType}:${board.metricKey}`}
+                  label={`${board.label}: ${count}`}
+                  tone={count > 0 ? 'warn' : 'good'}
                 />
               );
             })}
           </div>
-        )}
-      </Panel>
+          {summaryData?.total != null ? (
+            <p className="mt-3 text-sm text-white/58">
+              Total rows in selected status set: {summaryData.total.toLocaleString()}.
+            </p>
+          ) : null}
+        </Panel>
+
+        <Panel title="Triage Board" subtitle="Card-first review queue with drawer-assisted mobile correction.">
+          {loading ? (
+            <SkeletonSet rows={4} />
+          ) : rows.length === 0 ? (
+            <EmptyState title="Queue is clear" description="No ranking rows in the selected filters." />
+          ) : (
+            <div className="grid gap-4">
+              {rows.map((row) => {
+                const draft = drafts[row.id] || defaultRankingReviewDraft;
+
+                return (
+                  <RankingReviewItemCard
+                    key={row.id}
+                    row={row}
+                    draft={draft}
+                    rankingProfiles={rankingProfiles}
+                    rerunProfileId={rerunProfileByRow[row.id] || ''}
+                    rerunHint={rerunHints[row.id] || null}
+                    busyRow={busyRow}
+                    onUpdateDraft={(field, value) => updateDraft(row.id, field, value)}
+                    onRerunProfileChange={(value) =>
+                      setRerunProfileByRow((prev) => ({
+                        ...prev,
+                        [row.id]: value,
+                      }))
+                    }
+                    onRerun={() => void rerunOcr(row)}
+                    onAction={(action) => void runAction(row, action)}
+                  />
+                );
+              })}
+            </div>
+          )}
+        </Panel>
+      </SessionGate>
     </div>
   );
 }

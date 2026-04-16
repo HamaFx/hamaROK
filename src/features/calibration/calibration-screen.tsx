@@ -6,7 +6,17 @@ import { Target, Upload, Play, Save } from 'lucide-react';
 import { OCR_TEMPLATES } from '@/lib/ocr/templates';
 import type { OcrRuntimeProfile } from '@/lib/ocr/profiles';
 import { useWorkspaceSession } from '@/lib/workspace-session';
-import { PageHero, Panel } from '@/components/ui/primitives';
+import { InlineError, SessionGate } from '@/components/app/session-gate';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { EmptyState, FilterBar, PageHero, Panel } from '@/components/ui/primitives';
 
 type Region = { x: number; y: number; width: number; height: number };
 
@@ -224,225 +234,260 @@ export default function CalibrationPage() {
     }
   };
 
+  const PROFILE_NONE = '__create__';
+
   return (
-    <div className="page-container">
+    <div className="space-y-5 sm:space-y-6">
       <PageHero
-        title="OCR Calibration Wizard"
-        subtitle="Tune profile offsets and overlays for reliable OCR."
+        title="Calibration"
+        subtitle="Tune OCR profile offsets and overlays for reliable extraction."
         actions={
-          <button className="btn btn-primary" onClick={saveProfile} disabled={saving || !workspaceReady}>
-            <Save size={14} /> {saving ? 'Saving...' : 'Save Profile'}
-          </button>
+          <Button
+            className="rounded-full bg-[linear-gradient(135deg,#5a7fff,#7ce6ff)] text-black hover:opacity-95"
+            onClick={saveProfile}
+            disabled={saving || !workspaceReady}
+          >
+            <Save data-icon="inline-start" />
+            {saving ? 'Saving...' : 'Save Profile'}
+          </Button>
         }
       />
 
-      {!workspaceReady ? (
-        <div className="card mb-24">
-          <div className="text-sm text-muted">{sessionLoading ? 'Connecting workspace...' : sessionError || 'Workspace session is not ready yet.'}</div>
-        </div>
-      ) : null}
+      <SessionGate ready={workspaceReady} loading={sessionLoading} error={sessionError}>
+        {message && (message.toLowerCase().includes('failed') || message.toLowerCase().includes('required')) ? (
+          <InlineError message={message} />
+        ) : null}
 
-      <Panel title="Profile Selection" className="mb-24">
-        <div className="grid-2">
-          <div className="form-group">
-            <label className="form-label">Existing Profile (Optional)</label>
-            <select
-              className="form-select"
-              value={selectedProfileId}
-              onChange={(e) => setSelectedProfileId(e.target.value)}
-            >
-              <option value="">Create from template</option>
-              {profiles.map((profile) => (
-                <option key={profile.id} value={profile.id}>
-                  {profile.name} ({profile.profileKey} v{profile.version})
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="form-group">
-            <label className="form-label">Base Template</label>
-            <select
-              className="form-select"
-              value={templateId}
-              onChange={(e) => setTemplateId(e.target.value)}
-            >
-              {OCR_TEMPLATES.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.label} ({item.id})
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-        <div className="grid-2">
-          <div className="form-group">
-            <label className="form-label">Profile Key</label>
-            <input
-              className="form-input"
-              value={profileKey}
-              onChange={(e) => setProfileKey(e.target.value)}
-            />
-          </div>
-          <div className="form-group">
-            <label className="form-label">Profile Name</label>
-            <input
-              className="form-input"
-              value={profileName}
-              onChange={(e) => setProfileName(e.target.value)}
-            />
-          </div>
-        </div>
-        <div className="flex gap-12 items-center" style={{ flexWrap: 'wrap' }}>
-          <button className="btn btn-secondary btn-sm" onClick={loadProfileToForm} disabled={!selectedProfile}>
-            Load Selected Profile
-          </button>
-          <label className="text-sm flex items-center gap-8">
-            <input
-              type="checkbox"
-              checked={updateExisting}
-              onChange={(e) => setUpdateExisting(e.target.checked)}
-              disabled={!selectedProfile || selectedProfile.id.startsWith('template:')}
-            />
-            Update selected profile directly
-          </label>
-          <label className="text-sm flex items-center gap-8">
-            <input
-              type="checkbox"
-              checked={isDefault}
-              onChange={(e) => setIsDefault(e.target.checked)}
-            />
-            Set as default profile
-          </label>
-        </div>
-      </Panel>
-
-      <Panel title="Calibrate Overlay" className="mb-24">
-        <div className="form-group">
-          <label className="form-label">Reference Screenshot</label>
-          <input
-            className="form-input"
-            type="file"
-            accept="image/png,image/jpeg,image/webp"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (!file) return;
-              setImageFile(file);
-              const next = URL.createObjectURL(file);
-              const probe = new window.Image();
-              probe.onload = () => {
-                setImageSize({
-                  width: probe.naturalWidth || 1600,
-                  height: probe.naturalHeight || 900,
-                });
-              };
-              probe.src = next;
-              if (imageUrl) URL.revokeObjectURL(imageUrl);
-              setImageUrl(next);
-            }}
-          />
-        </div>
-        <div className="grid-2">
-          <div className="form-group">
-            <label className="form-label">X Offset ({xOffset.toFixed(3)})</label>
-            <input type="range" min={-0.1} max={0.1} step={0.001} value={xOffset} onChange={(e) => setXOffset(Number(e.target.value))} />
-          </div>
-          <div className="form-group">
-            <label className="form-label">Y Offset ({yOffset.toFixed(3)})</label>
-            <input type="range" min={-0.1} max={0.1} step={0.001} value={yOffset} onChange={(e) => setYOffset(Number(e.target.value))} />
-          </div>
-          <div className="form-group">
-            <label className="form-label">X Scale ({xScale.toFixed(2)})</label>
-            <input type="range" min={0.8} max={1.2} step={0.01} value={xScale} onChange={(e) => setXScale(Number(e.target.value))} />
-          </div>
-          <div className="form-group">
-            <label className="form-label">Y Scale ({yScale.toFixed(2)})</label>
-            <input type="range" min={0.8} max={1.2} step={0.01} value={yScale} onChange={(e) => setYScale(Number(e.target.value))} />
-          </div>
-        </div>
-      </Panel>
-
-      <div className="grid-2">
-        <Panel title="Overlay Preview">
-          {imageUrl ? (
-            <div style={{ position: 'relative', width: '100%', overflow: 'hidden', borderRadius: 12 }}>
-              <Image
-                src={imageUrl}
-                alt="Calibration"
-                width={imageSize.width}
-                height={imageSize.height}
-                style={{ width: '100%', height: 'auto', display: 'block' }}
-                unoptimized
-              />
-              {Object.entries(calibratedRegions).map(([key, region]) => (
-                <div
-                  key={key}
-                  title={key}
-                  style={{
-                    position: 'absolute',
-                    left: `${region.x * 100}%`,
-                    top: `${region.y * 100}%`,
-                    width: `${region.width * 100}%`,
-                    height: `${region.height * 100}%`,
-                    border: '2px solid rgba(245,158,11,0.9)',
-                    background: 'rgba(245,158,11,0.08)',
-                    color: '#f59e0b',
-                    fontSize: 11,
-                    padding: 2,
-                    pointerEvents: 'none',
-                  }}
-                >
-                  {key}
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="empty-state" style={{ padding: 24 }}>
-              <div className="empty-icon"><Upload size={48} /></div>
-              <h3>Upload a screenshot</h3>
-              <p>Field overlays will appear here for calibration.</p>
-            </div>
-          )}
-        </Panel>
-
-        <Panel title="Live OCR Test" actions={
-          <button className="btn btn-secondary btn-sm" onClick={runLiveTest} disabled={liveRunning || !imageFile}>
-            <Play size={14} /> {liveRunning ? 'Running OCR...' : 'Run Test'}
-          </button>
-        }>
-          {liveResult ? (
-            <div>
-              <div className="text-sm mb-12">
-                Avg confidence: <strong>{Math.round(liveResult.averageConfidence)}%</strong> • Template: {liveResult.templateId}
-              </div>
-              {Object.entries(liveResult.values).map(([field, value]) => (
-                <div key={field} className="text-sm" style={{ marginBottom: 6 }}>
-                  <strong>{field}</strong>: {value || '—'}{' '}
-                  <span className="text-muted">({Math.round(liveResult.confidences[field] || 0)}%)</span>
-                </div>
-              ))}
-              {liveResult.failureReasons.length > 0 && (
-                <div className="mt-12 text-sm text-muted">
-                  {liveResult.failureReasons.slice(0, 5).map((reason) => (
-                    <div key={reason}>• {reason}</div>
+        <Panel title="1. Profile Selection" subtitle="Choose a profile/template and set profile metadata.">
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <label className="text-[11px] uppercase tracking-[0.18em] text-white/45">Existing Profile</label>
+              <Select
+                value={selectedProfileId || PROFILE_NONE}
+                onValueChange={(value) => setSelectedProfileId(value === PROFILE_NONE ? '' : value)}
+              >
+                <SelectTrigger className="rounded-2xl border-white/10 bg-white/4 text-white">
+                  <SelectValue placeholder="Create from template" />
+                </SelectTrigger>
+                <SelectContent className="border-white/10 bg-[rgba(8,10,16,0.98)] text-white">
+                  <SelectItem value={PROFILE_NONE}>Create from template</SelectItem>
+                  {profiles.map((profile) => (
+                    <SelectItem key={profile.id} value={profile.id}>
+                      {profile.name} ({profile.profileKey} v{profile.version})
+                    </SelectItem>
                   ))}
-                </div>
-              )}
+                </SelectContent>
+              </Select>
             </div>
-          ) : (
-            <div className="empty-state" style={{ padding: 24 }}>
-              <div className="empty-icon"><Target size={48} /></div>
-              <h3>No results</h3>
-              <p>Run the test to verify your profile before saving.</p>
+            <div className="space-y-2">
+              <label className="text-[11px] uppercase tracking-[0.18em] text-white/45">Base Template</label>
+              <Select value={templateId} onValueChange={setTemplateId}>
+                <SelectTrigger className="rounded-2xl border-white/10 bg-white/4 text-white">
+                  <SelectValue placeholder="Select base template" />
+                </SelectTrigger>
+                <SelectContent className="border-white/10 bg-[rgba(8,10,16,0.98)] text-white">
+                  {OCR_TEMPLATES.map((item) => (
+                    <SelectItem key={item.id} value={item.id}>
+                      {item.label} ({item.id})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-          )}
+            <div className="space-y-2">
+              <label className="text-[11px] uppercase tracking-[0.18em] text-white/45">Profile Key</label>
+              <Input
+                value={profileKey}
+                onChange={(e) => setProfileKey(e.target.value)}
+                className="rounded-2xl border-white/10 bg-white/4 text-white"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-[11px] uppercase tracking-[0.18em] text-white/45">Profile Name</label>
+              <Input
+                value={profileName}
+                onChange={(e) => setProfileName(e.target.value)}
+                className="rounded-2xl border-white/10 bg-white/4 text-white"
+              />
+            </div>
+          </div>
+          <FilterBar className="mt-4">
+            <Button
+              variant="outline"
+              className="rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white"
+              onClick={loadProfileToForm}
+              disabled={!selectedProfile}
+            >
+              Load Selected Profile
+            </Button>
+            <label className="inline-flex min-h-11 items-center gap-2 text-sm text-white/70">
+              <input
+                type="checkbox"
+                checked={updateExisting}
+                onChange={(e) => setUpdateExisting(e.target.checked)}
+                disabled={!selectedProfile || selectedProfile.id.startsWith('template:')}
+              />
+              Update selected profile directly
+            </label>
+            <label className="inline-flex min-h-11 items-center gap-2 text-sm text-white/70">
+              <input type="checkbox" checked={isDefault} onChange={(e) => setIsDefault(e.target.checked)} />
+              Set as default profile
+            </label>
+          </FilterBar>
         </Panel>
-      </div>
 
-      {message ? (
-        <div className={`card mt-24 ${message.toLowerCase().includes('failed') || message.toLowerCase().includes('required') ? 'delta-negative' : ''}`}>
-          <div className="text-sm">{message}</div>
+        <Panel title="2. Calibrate Overlay" subtitle="Upload a reference screenshot and tune offsets/scales.">
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-[11px] uppercase tracking-[0.18em] text-white/45">Reference Screenshot</label>
+              <Input
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                className="rounded-2xl border-white/10 bg-white/4 text-white file:mr-3 file:rounded-full file:border-0 file:bg-white/10 file:px-3 file:py-1.5 file:text-xs file:text-white"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  setImageFile(file);
+                  const next = URL.createObjectURL(file);
+                  const probe = new window.Image();
+                  probe.onload = () => {
+                    setImageSize({
+                      width: probe.naturalWidth || 1600,
+                      height: probe.naturalHeight || 900,
+                    });
+                  };
+                  probe.src = next;
+                  if (imageUrl) URL.revokeObjectURL(imageUrl);
+                  setImageUrl(next);
+                }}
+              />
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <label className="flex items-center justify-between gap-2 text-[11px] uppercase tracking-[0.18em] text-white/45">
+                  <span>X Offset</span>
+                  <span>{xOffset.toFixed(3)}</span>
+                </label>
+                <input className="h-2 w-full accent-sky-300" type="range" min={-0.1} max={0.1} step={0.001} value={xOffset} onChange={(e) => setXOffset(Number(e.target.value))} />
+              </div>
+              <div className="space-y-2">
+                <label className="flex items-center justify-between gap-2 text-[11px] uppercase tracking-[0.18em] text-white/45">
+                  <span>Y Offset</span>
+                  <span>{yOffset.toFixed(3)}</span>
+                </label>
+                <input className="h-2 w-full accent-sky-300" type="range" min={-0.1} max={0.1} step={0.001} value={yOffset} onChange={(e) => setYOffset(Number(e.target.value))} />
+              </div>
+              <div className="space-y-2">
+                <label className="flex items-center justify-between gap-2 text-[11px] uppercase tracking-[0.18em] text-white/45">
+                  <span>X Scale</span>
+                  <span>{xScale.toFixed(2)}</span>
+                </label>
+                <input className="h-2 w-full accent-sky-300" type="range" min={0.8} max={1.2} step={0.01} value={xScale} onChange={(e) => setXScale(Number(e.target.value))} />
+              </div>
+              <div className="space-y-2">
+                <label className="flex items-center justify-between gap-2 text-[11px] uppercase tracking-[0.18em] text-white/45">
+                  <span>Y Scale</span>
+                  <span>{yScale.toFixed(2)}</span>
+                </label>
+                <input className="h-2 w-full accent-sky-300" type="range" min={0.8} max={1.2} step={0.01} value={yScale} onChange={(e) => setYScale(Number(e.target.value))} />
+              </div>
+            </div>
+          </div>
+        </Panel>
+
+        <div className="grid gap-6 xl:grid-cols-2">
+          <Panel title="3. Overlay Preview">
+            {imageUrl ? (
+              <div className="relative w-full overflow-hidden rounded-xl">
+                <Image
+                  src={imageUrl}
+                  alt="Calibration"
+                  width={imageSize.width}
+                  height={imageSize.height}
+                  style={{ width: '100%', height: 'auto', display: 'block' }}
+                  unoptimized
+                />
+                {Object.entries(calibratedRegions).map(([key, region]) => (
+                  <div
+                    key={key}
+                    title={key}
+                    style={{
+                      position: 'absolute',
+                      left: `${region.x * 100}%`,
+                      top: `${region.y * 100}%`,
+                      width: `${region.width * 100}%`,
+                      height: `${region.height * 100}%`,
+                      border: '2px solid rgba(245,158,11,0.9)',
+                      background: 'rgba(245,158,11,0.08)',
+                      color: '#f59e0b',
+                      fontSize: 11,
+                      padding: 2,
+                      pointerEvents: 'none',
+                    }}
+                  >
+                    {key}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <EmptyState
+                title="Upload a screenshot"
+                description="Field overlays will appear here for calibration."
+                action={<Upload className="size-10 text-white/34" />}
+              />
+            )}
+          </Panel>
+
+          <Panel
+            title="4. Live OCR Test"
+            actions={
+              <Button
+                variant="outline"
+                className="rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white"
+                onClick={runLiveTest}
+                disabled={liveRunning || !imageFile}
+              >
+                <Play data-icon="inline-start" />
+                {liveRunning ? 'Running OCR...' : 'Run Test'}
+              </Button>
+            }
+          >
+            {liveResult ? (
+              <div className="space-y-3 text-sm text-white/72">
+                <p>
+                  Avg confidence: <strong className="text-white">{Math.round(liveResult.averageConfidence)}%</strong> • Template:{' '}
+                  {liveResult.templateId}
+                </p>
+                {Object.entries(liveResult.values).map(([field, value]) => (
+                  <div key={field} className="flex flex-wrap items-center gap-2">
+                    <strong className="text-white">{field}</strong>: {value || '—'}{' '}
+                    <span className="text-white/45">({Math.round(liveResult.confidences[field] || 0)}%)</span>
+                  </div>
+                ))}
+                {liveResult.failureReasons.length > 0 ? (
+                  <div className="rounded-2xl border border-white/10 bg-white/4 p-3 text-white/60">
+                    {liveResult.failureReasons.slice(0, 5).map((reason) => (
+                      <div key={reason}>• {reason}</div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <EmptyState
+                title="No results"
+                description="Run the test to verify your profile before saving."
+                action={<Target className="size-10 text-white/34" />}
+              />
+            )}
+          </Panel>
         </div>
-      ) : null}
+
+        {message && !message.toLowerCase().includes('failed') && !message.toLowerCase().includes('required') ? (
+          <FilterBar className="rounded-2xl border-emerald-300/16 bg-emerald-400/10 px-4 py-3 text-emerald-100">
+            <span className="text-sm">{message}</span>
+          </FilterBar>
+        ) : null}
+      </SessionGate>
     </div>
   );
 }

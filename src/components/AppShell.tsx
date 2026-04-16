@@ -206,7 +206,7 @@ function MobileMoreNav() {
             })}
           </div>
         </ScrollArea>
-        <DrawerFooter>
+        <DrawerFooter className="pb-[calc(env(safe-area-inset-bottom)+0.75rem)]">
           <DrawerClose asChild>
             <Button variant="outline" className="border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white">
               Close
@@ -273,7 +273,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
         </div>
       </header>
 
-      <main className="relative z-10 mx-auto flex w-full max-w-[1600px] flex-col px-4 pb-28 pt-5 max-[390px]:px-3 max-[390px]:pb-[6.5rem] max-[390px]:pt-4 sm:px-6 lg:px-8 lg:pb-14 lg:pt-7">
+      <main className="relative z-10 mx-auto flex w-full max-w-[1600px] flex-col px-4 pb-[calc(7.2rem+env(safe-area-inset-bottom))] pt-5 max-[390px]:px-3 max-[390px]:pb-[calc(6.8rem+env(safe-area-inset-bottom))] max-[390px]:pt-4 sm:px-6 lg:px-8 lg:pb-14 lg:pt-7">
         {weeklySchemaWarning ? (
           <Alert className="mb-6 border-amber-300/16 bg-[rgba(120,78,9,0.18)] text-amber-50">
             <AlertTitle className="font-heading text-sm">Schema Attention Needed</AlertTitle>

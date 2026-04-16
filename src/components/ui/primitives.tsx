@@ -1,10 +1,21 @@
 'use client';
 
-import { type CSSProperties, type ReactNode, useEffect, useState } from 'react';
+import { type CSSProperties, type ReactNode, useEffect, useMemo, useState } from 'react';
 import { ArrowUpDown, ChevronDown, ChevronUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Drawer,
+  DrawerClose,
+  DrawerContent,
+  DrawerDescription,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerTrigger,
+} from '@/components/ui/drawer';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   Table,
@@ -201,6 +212,69 @@ export function FilterBar({
   );
 }
 
+export function StickyControlBar({
+  children,
+  className,
+  stickyTopClassName,
+}: {
+  children: ReactNode;
+  className?: string;
+  stickyTopClassName?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        'sticky z-20 rounded-[24px] border border-white/10 bg-[rgba(8,11,19,0.94)] p-3.5 shadow-[0_14px_36px_rgba(0,0,0,0.32)] backdrop-blur',
+        'top-[76px] max-[390px]:top-[72px] max-[390px]:rounded-[20px] max-[390px]:p-2.5',
+        'xl:static xl:border-white/8 xl:bg-black/20 xl:shadow-none xl:backdrop-blur-none',
+        stickyTopClassName,
+        className
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+
+export function SegmentedChips<T extends string>({
+  value,
+  options,
+  onChange,
+  className,
+}: {
+  value: T;
+  options: Array<{ value: T; label: string }>;
+  onChange: (value: T) => void;
+  className?: string;
+}) {
+  return (
+    <div
+      role="tablist"
+      aria-label="Segmented controls"
+      className={cn('flex flex-wrap items-center gap-2', className)}
+    >
+      {options.map((option) => {
+        const active = value === option.value;
+        return (
+          <button
+            key={option.value}
+            type="button"
+            onClick={() => onChange(option.value)}
+            className={cn(
+              'inline-flex min-h-11 items-center justify-center rounded-full border px-3.5 py-2 text-xs font-medium uppercase tracking-[0.16em] transition-colors',
+              active
+                ? 'border-sky-300/22 bg-sky-300/12 text-white'
+                : 'border-white/10 bg-white/5 text-white/64 hover:bg-white/8 hover:text-white'
+            )}
+          >
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export function ActionToolbar({
   children,
   className,
@@ -214,6 +288,37 @@ export function ActionToolbar({
     <div className={cn('flex flex-wrap items-center gap-2.5', className)} style={style}>
       {children}
     </div>
+  );
+}
+
+export function CompactAlert({
+  title,
+  description,
+  tone = 'neutral',
+  className,
+}: {
+  title: string;
+  description?: ReactNode;
+  tone?: 'neutral' | 'good' | 'warn' | 'bad' | 'info';
+  className?: string;
+}) {
+  const toneClass = useMemo(
+    () =>
+      ({
+        neutral: 'border-white/10 bg-white/5 text-white',
+        good: 'border-emerald-300/18 bg-emerald-400/10 text-emerald-100',
+        warn: 'border-sky-300/18 bg-sky-300/10 text-sky-100',
+        bad: 'border-rose-300/18 bg-rose-400/10 text-rose-100',
+        info: 'border-indigo-300/18 bg-indigo-300/10 text-indigo-100',
+      })[tone],
+    [tone]
+  );
+
+  return (
+    <Alert className={cn('rounded-2xl', toneClass, className)}>
+      <AlertTitle className="font-heading text-sm text-current">{title}</AlertTitle>
+      {description ? <AlertDescription className="text-current/85">{description}</AlertDescription> : null}
+    </Alert>
   );
 }
 
@@ -257,6 +362,72 @@ export function StatusPill({
     <Badge className={cn('rounded-full border px-3 py-1 text-[10px] font-semibold tracking-[0.14em] uppercase max-[390px]:px-2.5 max-[390px]:text-[9px]', toneClasses(tone))}>
       {label}
     </Badge>
+  );
+}
+
+export function ActionFooter({
+  children,
+  className,
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        'mt-4 flex flex-col gap-2 border-t border-white/10 pt-3 sm:flex-row sm:flex-wrap sm:items-center',
+        className
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+
+export function RowDetailDrawer({
+  triggerLabel = 'Details',
+  title,
+  description,
+  children,
+  footer,
+  className,
+}: {
+  triggerLabel?: ReactNode;
+  title: string;
+  description?: string;
+  children: ReactNode;
+  footer?: ReactNode;
+  className?: string;
+}) {
+  return (
+    <Drawer>
+      <DrawerTrigger asChild>
+        <button
+          type="button"
+          className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/84 hover:bg-white/8"
+        >
+          {triggerLabel}
+        </button>
+      </DrawerTrigger>
+      <DrawerContent className={cn('border-white/10 bg-[rgba(8,10,16,0.98)] text-white', className)}>
+        <DrawerHeader>
+          <DrawerTitle className="font-heading text-xl text-white">{title}</DrawerTitle>
+          {description ? <DrawerDescription className="text-white/55">{description}</DrawerDescription> : null}
+        </DrawerHeader>
+        <div className="max-h-[60svh] overflow-auto px-4 pb-4">{children}</div>
+        <DrawerFooter>
+          {footer}
+          <DrawerClose asChild>
+            <button
+              type="button"
+              className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/12 bg-white/4 px-4 py-2 text-sm text-white hover:bg-white/8"
+            >
+              Close
+            </button>
+          </DrawerClose>
+        </DrawerFooter>
+      </DrawerContent>
+    </Drawer>
   );
 }
 
