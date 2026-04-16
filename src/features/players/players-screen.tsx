@@ -65,6 +65,9 @@ interface WeeklyActivityRow {
   fortDestroying: string;
   powerGrowth: string | null;
   killPointsGrowth: string | null;
+  deadsGrowth?: string | null;
+  t4KillsGrowth?: string | null;
+  t5KillsGrowth?: string | null;
   compliance: {
     overall: ComplianceState;
   };
@@ -612,14 +615,18 @@ export default function PlayersScreen() {
                         <p className="mt-1 text-xs text-tier-3">power</p>
                       </div>
                     </div>
-                    <div className="mt-4 grid grid-cols-2 gap-2.5 text-xs text-tier-3 min-[390px]:text-[13px] sm:text-sm">
+                    <div className="mt-4 border-t border-white/5 pt-3 grid grid-cols-3 gap-2.5 text-xs min-[390px]:text-[13px] sm:text-sm">
                       <div>
-                        <p className="text-xs  text-tier-3">Contribution</p>
-                        <p className="mt-2 font-medium text-tier-1">{formatCompactNumber(row.weekly?.contributionPoints || '0')}</p>
+                        <p className="text-[10px] uppercase tracking-wider text-tier-3">Forts</p>
+                        <p className="mt-1 font-heading text-lg font-bold text-[color:var(--rok-blue)]">{formatCompactNumber(row.weekly?.fortDestroying || '0')}</p>
                       </div>
                       <div>
-                        <p className="text-xs  text-tier-3">Snapshots</p>
-                        <p className="mt-2 font-medium text-tier-1">{row.snapshotCount}</p>
+                        <p className="text-[10px] uppercase tracking-wider text-tier-3">KP Growth</p>
+                        <p className="mt-1 font-heading text-lg font-bold text-[color:var(--rok-red)]">{formatCompactNumber(row.weekly?.killPointsGrowth || '0')}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] uppercase tracking-wider text-tier-3">Deads</p>
+                        <p className="mt-1 font-heading text-lg font-bold text-[color:var(--rok-gold)]">{formatCompactNumber(row.weekly?.deadsGrowth || '0')}</p>
                       </div>
                     </div>
                   </button>
