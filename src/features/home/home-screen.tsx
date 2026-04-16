@@ -398,17 +398,18 @@ export default function HomeScreen() {
                    <h3 className="font-heading text-sm font-bold text-tier-1 tracking-tight">Top Power Growth</h3>
                 </div>
                 {topPowerGrowth ? (
-                   <div className="flex flex-row items-center justify-between gap-3">
+                   <div className="flex flex-row items-center gap-4">
+                      <div className="flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border-2 border-emerald-500/30 bg-[#1f2937] shadow-lg">
+                        <img src={`https://api.dicebear.com/9.x/adventurer/svg?seed=${topPowerGrowth.governorDbId}&backgroundColor=transparent`} alt="avatar" className="size-full object-cover scale-[1.15]" />
+                      </div>
                       <div className="min-w-0">
                          <p className="text-lg font-bold text-tier-1 font-heading truncate leading-tight">{topPowerGrowth.governorName}</p>
                          <p className="text-[11px] text-tier-3 font-medium">{topPowerGrowth.allianceLabel}</p>
                          <p className="mt-1 text-xl font-mono font-bold text-emerald-400">+{formatMetric(topPowerGrowth.powerGrowth)}</p>
                       </div>
-                      <div className="flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border-2 border-emerald-500/30 bg-[#1f2937] shadow-lg">
-                        <img src={`https://api.dicebear.com/9.x/adventurer/svg?seed=${topPowerGrowth.governorDbId}&backgroundColor=transparent`} alt="avatar" className="size-full object-cover scale-[1.15]" />
-                      </div>
                    </div>
                 ) : <p className="text-xs text-tier-4 mt-2">Awaiting stats.</p>}
+
              </div>
 
 
@@ -419,17 +420,18 @@ export default function HomeScreen() {
                    <h3 className="font-heading text-sm font-bold text-tier-1 tracking-tight">Top Activity MVP</h3>
                 </div>
                 {topContribution ? (
-                   <div className="flex flex-row items-center justify-between gap-3">
+                   <div className="flex flex-row items-center gap-4">
+                      <div className="flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border-2 border-amber-500/30 bg-[#1f2937] shadow-lg">
+                        <img src={`https://api.dicebear.com/9.x/adventurer/svg?seed=${topContribution.governorDbId}&backgroundColor=transparent`} alt="avatar" className="size-full object-cover scale-[1.15]" />
+                      </div>
                       <div className="min-w-0">
                          <p className="text-lg font-bold text-tier-1 font-heading truncate leading-tight">{topContribution.governorName}</p>
                          <p className="text-[11px] text-tier-3 font-medium">{topContribution.allianceLabel}</p>
                          <p className="mt-1 text-xl font-mono font-bold text-amber-400">{formatMetric(topContribution.contributionPoints)} DKP</p>
                       </div>
-                      <div className="flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border-2 border-amber-500/30 bg-[#1f2937] shadow-lg">
-                        <img src={`https://api.dicebear.com/9.x/adventurer/svg?seed=${topContribution.governorDbId}&backgroundColor=transparent`} alt="avatar" className="size-full object-cover scale-[1.15]" />
-                      </div>
                    </div>
                 ) : <p className="text-xs text-tier-4 mt-2">Awaiting stats.</p>}
+
              </div>
 
 
@@ -440,17 +442,18 @@ export default function HomeScreen() {
                    <h3 className="font-heading text-sm font-bold text-tier-1 tracking-tight">Top Fort Destroyer</h3>
                 </div>
                 {topForts ? (
-                   <div className="flex flex-row items-center justify-between gap-3">
+                   <div className="flex flex-row items-center gap-4">
+                      <div className="flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border-2 border-rose-500/30 bg-[#1f2937] shadow-lg">
+                        <img src={`https://api.dicebear.com/9.x/adventurer/svg?seed=${topForts.governorDbId}&backgroundColor=transparent`} alt="avatar" className="size-full object-cover scale-[1.15]" />
+                      </div>
                       <div className="min-w-0">
                          <p className="text-lg font-bold text-tier-1 font-heading truncate leading-tight">{topForts.governorName}</p>
                          <p className="text-[11px] text-tier-3 font-medium">{topForts.allianceLabel}</p>
                          <p className="mt-1 text-xl font-mono font-bold text-rose-400">{formatMetric(topForts.fortDestroying)} Forts</p>
                       </div>
-                      <div className="flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border-2 border-rose-500/30 bg-[#1f2937] shadow-lg">
-                        <img src={`https://api.dicebear.com/9.x/adventurer/svg?seed=${topForts.governorDbId}&backgroundColor=transparent`} alt="avatar" className="size-full object-cover scale-[1.15]" />
-                      </div>
                    </div>
                 ) : <p className="text-xs text-tier-4 mt-2">Awaiting stats.</p>}
+
              </div>
 
           </div>

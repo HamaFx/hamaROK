@@ -241,18 +241,56 @@ export function KpiSquare({
   animated?: boolean;
   className?: string;
 }) {
+  const toneAccentMap = {
+    neutral: 'border-white/10 group-hover:border-white/20',
+    good: 'border-emerald-500/20 group-hover:border-emerald-500/40 shadow-[inset_0_0_12px_rgba(16,185,129,0.05)]',
+    warn: 'border-amber-500/20 group-hover:border-amber-500/40 shadow-[inset_0_0_12px_rgba(245,158,11,0.05)]',
+    bad: 'border-rose-500/20 group-hover:border-rose-500/40 shadow-[inset_0_0_12px_rgba(244,63,94,0.05)]',
+    info: 'border-sky-500/20 group-hover:border-sky-500/40 shadow-[inset_0_0_12px_rgba(14,165,233,0.05)]',
+  } as const;
+
+  const toneIconMap = {
+    neutral: 'text-tier-3',
+    good: 'text-emerald-400',
+    warn: 'text-amber-400',
+    bad: 'text-rose-400',
+    info: 'text-sky-400',
+  } as const;
+
   return (
-    <Card className={cn('aspect-square overflow-hidden border-white/[0.05] bg-white/[0.02]', toneClasses(tone), className)}>
-      <CardContent className="flex h-full flex-col items-center justify-center gap-1.5 p-3 text-center relative">
-        {icon ? <div className="text-tier-3 opacity-70 group-hover:opacity-100 transition-opacity mb-0.5">{icon}</div> : null}
-        <p className="font-heading text-xl font-bold tracking-tight text-tier-1 min-[390px]:text-2xl">
-          {animated && typeof value === 'number' ? <AnimatedCounter value={value} /> : value}
-        </p>
-        <p className="text-[10px] font-bold uppercase tracking-[0.05em] text-tier-3 leading-tight px-1">{label}</p>
+    <Card className={cn(
+      'group aspect-square relative overflow-hidden transition-all duration-300',
+      'bg-[color:var(--surface-2)]/40 backdrop-blur-sm border-[1.5px]',
+      toneAccentMap[tone],
+      className
+    )}>
+      {/* Background Tech Pattern */}
+      <div className="absolute inset-0 opacity-[0.03] pointer-events-none" 
+           style={{ backgroundImage: 'radial-gradient(circle, white 1px, transparent 1px)', backgroundSize: '12px 12px' }} />
+      
+      <CardContent className="flex h-full flex-col p-3 z-10">
+        <div className="flex items-start justify-between w-full">
+           <div className={cn('p-1.5 rounded-lg bg-black/20 border border-white/5 opacity-80 group-hover:opacity-100 transition-opacity', toneIconMap[tone])}>
+             {icon}
+           </div>
+        </div>
+        
+        <div className="mt-auto">
+          <p className="font-mono text-xl font-black tracking-tight text-tier-1 sm:text-2xl drop-shadow-sm">
+            {animated && typeof value === 'number' ? <AnimatedCounter value={value} /> : value}
+          </p>
+          <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-tier-3 leading-tight truncate">
+            {label}
+          </p>
+        </div>
       </CardContent>
+
+      {/* Decorative Corner Notch */}
+      <div className="absolute bottom-0 right-0 size-2 bg-white/5 skew-x-[-45deg] translate-x-1 translate-y-1" />
     </Card>
   );
 }
+
 
 
 export function MetricStrip({
