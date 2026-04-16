@@ -465,28 +465,37 @@ export default function HomeScreen() {
             label="Kingdom Power" 
             value={weeklyInsights ? formatCompactNumber(weeklyInsights.totalPowerGrowth) : "—"} 
             icon={<Sparkles className="size-4" />} 
+            trend="+2.4%"
+            subtitle="Growth Peak"
             tone="good" 
           />
           <KpiSquare 
             label="Total Combat DKP" 
             value={weeklyInsights ? formatCompactNumber(weeklyInsights.totalContribution) : "—"} 
             icon={<Activity className="size-4" />} 
+            trend="+1.8%"
+            subtitle="Active Sector"
             tone="warn" 
           />
           <KpiSquare 
             label="Tracked Members" 
             value={weeklyActivity?.summary.membersTracked ?? 0} 
             icon={<Users className="size-4" />} 
+            trend="Stable"
+            subtitle="Alliance Core"
             tone="info" 
           />
           <KpiSquare 
             label="Activity Pass" 
             value={weeklyInsights ? `${weeklyInsights.overallPassRate}%` : "—"} 
             icon={<ShieldCheck className="size-4" />} 
+            trend="-0.4%"
+            subtitle="Stability Check"
             tone="good" 
             animated={false} 
           />
         </section>
+
 
 
         {/* 3. COMBAT ACTIVITY MATRIX */}

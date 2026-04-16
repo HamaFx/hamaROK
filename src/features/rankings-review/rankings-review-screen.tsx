@@ -564,7 +564,10 @@ export default function RankingReviewPage() {
     async (mode: 'accept_linked' | 'reject_all', group?: RankingReviewGroup) => {
       if (!workspaceReady || !accessToken) return;
 
-      const baseRows = group ? group.rows : visibleRows;
+      // Global actions (no group) should target all loaded rows to ignore visibility filters
+      // Group actions should target only that specific group's rows
+      const baseRows = group ? group.rows : groups.flatMap((g) => g.rows);
+      
       const targets =
         mode === 'accept_linked'
           ? baseRows.filter(
@@ -578,7 +581,7 @@ export default function RankingReviewPage() {
       const confirmed = window.confirm(
         mode === 'accept_linked'
           ? `Accept ${targets.length} linked row${targets.length === 1 ? '' : 's'} ${group ? 'in this screenshot' : ''} now?`
-          : `Reject ${targets.length} visible row${targets.length === 1 ? '' : 's'} ${group ? 'in this screenshot' : ''} now?`
+          : `Reject ${targets.length} visibility-independent row${targets.length === 1 ? '' : 's'} now?`
       );
       if (!confirmed) return;
 
@@ -634,8 +637,9 @@ export default function RankingReviewPage() {
       }
       setBusyRow(null);
     },
-    [workspaceReady, accessToken, workspaceId, visibleRows, loadRows]
+    [workspaceReady, accessToken, workspaceId, groups, loadRows]
   );
+
 
 
 

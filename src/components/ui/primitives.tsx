@@ -230,6 +230,8 @@ export function KpiSquare({
   label,
   value,
   icon,
+  trend,
+  subtitle,
   tone = 'neutral',
   animated = true,
   className,
@@ -237,6 +239,8 @@ export function KpiSquare({
   label: string;
   value: string | number;
   icon?: ReactNode;
+  trend?: string;
+  subtitle?: string;
   tone?: 'neutral' | 'good' | 'warn' | 'bad' | 'info';
   animated?: boolean;
   className?: string;
@@ -268,11 +272,22 @@ export function KpiSquare({
       <div className="absolute inset-0 opacity-[0.03] pointer-events-none" 
            style={{ backgroundImage: 'radial-gradient(circle, white 1px, transparent 1px)', backgroundSize: '12px 12px' }} />
       
+      {/* Scanning Line Animation */}
+      <div className="absolute top-0 left-0 w-full h-[1px] bg-white/[0.05] animate-scan pointer-events-none" />
+
       <CardContent className="flex h-full flex-col p-3 z-10">
         <div className="flex items-start justify-between w-full">
            <div className={cn('p-1.5 rounded-lg bg-black/20 border border-white/5 opacity-80 group-hover:opacity-100 transition-opacity', toneIconMap[tone])}>
              {icon}
            </div>
+           {trend ? (
+             <div className="flex items-center gap-1 rounded px-1.5 py-0.5 bg-white/[0.03] border border-white/5">
+                <div className={cn('size-1 rounded-full animate-pulse', toneIconMap[tone])} />
+                <span className="text-[9px] font-mono font-bold text-tier-1">{trend}</span>
+             </div>
+           ) : (
+             <div className="size-1.5 rounded-full bg-white/10" />
+           )}
         </div>
         
         <div className="mt-auto">
@@ -282,6 +297,11 @@ export function KpiSquare({
           <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-tier-3 leading-tight truncate">
             {label}
           </p>
+          {subtitle ? (
+            <p className="mt-1 text-[9px] font-medium text-tier-4 uppercase tracking-[0.05em] truncate">
+              {subtitle}
+            </p>
+          ) : null}
         </div>
       </CardContent>
 
@@ -290,6 +310,7 @@ export function KpiSquare({
     </Card>
   );
 }
+
 
 
 
