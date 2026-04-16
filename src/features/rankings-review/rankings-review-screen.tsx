@@ -7,11 +7,13 @@ import { useWorkspaceSession } from '@/lib/workspace-session';
 import { InlineError, SessionGate } from '@/components/app/session-gate';
 import { Button } from '@/components/ui/button';
 import {
+  Check,
   Pencil,
   Trash2,
   TrendingUp,
   X,
 } from 'lucide-react';
+
 import {
   Select,
   SelectContent,
@@ -559,66 +561,72 @@ export default function RankingReviewPage() {
   };
 
   const runBulkAction = useCallback(
-    async (mode: 'accept_linked' | 'reject_all') => {
-      if (!workspaceId || !accessToken) return;
+    async (mode: 'accept_linked' | 'reject_all', group?: RankingReviewGroup) => {
+      if (!workspaceReady || !accessToken) return;
 
+      const baseRows = group ? group.rows : visibleRows;
       const targets =
         mode === 'accept_linked'
-          ? visibleRows.filter(
+          ? baseRows.filter(
               (row) =>
                 row.identityStatus === 'AUTO_LINKED' ||
                 row.identityStatus === 'MANUAL_LINKED'
             )
-          : visibleRows.filter((row) => row.identityStatus !== 'REJECTED');
+          : baseRows.filter((row) => row.identityStatus !== 'REJECTED');
 
       if (targets.length === 0) return;
       const confirmed = window.confirm(
         mode === 'accept_linked'
-          ? `Accept ${targets.length} linked row${targets.length === 1 ? '' : 's'} now?`
-          : `Reject ${targets.length} visible row${targets.length === 1 ? '' : 's'} now?`
+          ? `Accept ${targets.length} linked row${targets.length === 1 ? '' : 's'} ${group ? 'in this screenshot' : ''} now?`
+          : `Reject ${targets.length} visible row${targets.length === 1 ? '' : 's'} ${group ? 'in this screenshot' : ''} now?`
       );
       if (!confirmed) return;
 
-      setBusyRow(`bulk:${mode}`);
+      const busyKey = group ? `bulk:${group.runId}:${mode}` : `bulk:${mode}`;
+      setBusyRow(busyKey);
       setError(null);
 
-      let succeeded = 0;
-      let failed = 0;
-
-      for (const row of targets) {
-        try {
-          const action = mode === 'accept_linked' ? 'CORRECT_ROW' : 'REJECT_ROW';
-          const body: Record<string, unknown> = {
-            workspaceId,
-            action,
-          };
-
-          if (mode === 'accept_linked') {
-            body.corrected = {
-              sourceRank: row.sourceRank,
-              governorNameRaw: row.governorNameRaw,
-              metricRaw: row.metricRaw,
-              metricValue: row.metricValue,
+      // We use a simple parallel execution for now
+      const results = await Promise.all(
+        targets.map(async (row) => {
+          try {
+            const action = mode === 'accept_linked' ? 'CORRECT_ROW' : 'REJECT_ROW';
+            const body: Record<string, unknown> = {
+              workspaceId,
+              action,
             };
-          }
 
-          const res = await fetch(`/api/v2/rankings/review/${row.id}`, {
-            method: 'PATCH',
-            headers: {
-              'Content-Type': 'application/json',
-              'x-access-token': accessToken,
-            },
-            body: JSON.stringify(body),
-          });
-          const payload = await res.json();
-          if (!res.ok) {
-            throw new Error(payload?.error?.message || 'Bulk action failed.');
+            if (mode === 'accept_linked') {
+              body.corrected = {
+                sourceRank: row.sourceRank,
+                governorNameRaw: row.governorNameRaw,
+                metricRaw: row.metricRaw,
+                metricValue: row.metricValue,
+              };
+              // If it's an auto-link suggestion, we must provide the ID to finalize it
+              const bestSuggestion = row.identitySuggestions?.[0];
+              if (row.identityStatus === 'AUTO_LINKED' && bestSuggestion) {
+                body.governorGameId = bestSuggestion.governorGameId;
+              }
+            }
+
+            const res = await fetch(`/api/v2/rankings/review/${row.id}`, {
+              method: 'PATCH',
+              headers: {
+                'Content-Type': 'application/json',
+                'x-access-token': accessToken,
+              },
+              body: JSON.stringify(body),
+            });
+            return res.ok;
+          } catch {
+            return false;
           }
-          succeeded += 1;
-        } catch {
-          failed += 1;
-        }
-      }
+        })
+      );
+
+      const succeeded = results.filter(Boolean).length;
+      const failed = results.length - succeeded;
 
       await loadRows();
       if (failed > 0) {
@@ -626,8 +634,10 @@ export default function RankingReviewPage() {
       }
       setBusyRow(null);
     },
-    [workspaceId, accessToken, visibleRows, loadRows]
+    [workspaceReady, accessToken, workspaceId, visibleRows, loadRows]
   );
+
+
 
   const runGovernorSearch = useCallback(
     async (rowId: string) => {
@@ -851,10 +861,38 @@ export default function RankingReviewPage() {
                       </div>
                     </div>
 
-                    {group.diagnostics?.guardFailures?.length ? (
-                      <p className="text-sm text-rose-100">Guard failures: {group.diagnostics.guardFailures.join(' • ')}</p>
-                    ) : null}
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/[0.05] pt-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-8 rounded-lg border-emerald-500/20 bg-emerald-500/5 text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-300 font-bold text-[11px] uppercase tracking-wider"
+                          onClick={() => void runBulkAction('accept_linked', group)}
+                          disabled={!!busyRow}
+                        >
+                          <Check className="mr-1.5 size-3.5" />
+                          Accept Linked
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-8 rounded-lg border-rose-500/20 bg-rose-500/5 text-rose-400 hover:bg-rose-500/10 hover:text-rose-300 font-bold text-[11px] uppercase tracking-wider"
+                          onClick={() => void runBulkAction('reject_all', group)}
+                          disabled={!!busyRow}
+                        >
+                          <Trash2 className="mr-1.5 size-3.5" />
+                          Reject All
+                        </Button>
+                      </div>
+
+                      {group.diagnostics?.guardFailures?.length ? (
+                        <p className="text-sm text-rose-200/80 font-medium">
+                          Guard failures: <span className="text-rose-100">{group.diagnostics.guardFailures.join(' • ')}</span>
+                        </p>
+                      ) : null}
+                    </div>
                   </header>
+
 
                   {group.artifact?.url ? (
                     <div className="mt-3 overflow-hidden rounded-2xl border border-[color:var(--stroke-soft)] bg-black/20">

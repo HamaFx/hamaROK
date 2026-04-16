@@ -27,7 +27,9 @@ import {
   MetricStrip,
   PageHero,
   Panel,
+  SkeletonSet,
   StatusPill,
+  KpiSquare,
 } from '@/components/ui/primitives';
 import { formatCompactNumber, formatMetric, formatWeekShort, toSafeBigInt } from '@/features/shared/formatters';
 import type { LeaderboardMetricKey, PlayerSpotlightModel } from '@/features/shared/types';
@@ -385,78 +387,104 @@ export default function HomeScreen() {
       <SessionGate ready={ready} loading={sessionLoading} error={sessionError} onRetry={() => void refreshSession()}>
         {error ? <InlineError message={error} /> : null}
 
-        {/* 1. TOP KPI ROW - GAME FOCUSED */}
-        <section className="grid gap-3 min-[390px]:gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <KpiCard label="Kingdom Power Grown" value={weeklyInsights ? formatCompactNumber(weeklyInsights.totalPowerGrowth) : "—"} icon={<Sparkles className="size-5" />} tone="good" hint="Total positive growth captured" />
-          <KpiCard label="Total Combat DKP" value={weeklyInsights ? formatCompactNumber(weeklyInsights.totalContribution) : "—"} icon={<Activity className="size-5" />} tone="warn" hint="Total Contribution sum" />
-          <KpiCard label="Tracked Members" value={weeklyActivity?.summary.membersTracked ?? 0} icon={<Users className="size-5" />} tone="info" hint={`Week: ${weeklyEvent?.weekKey || "N/A"}`} />
-          <KpiCard label="Kingdom Activity Pass" value={weeklyInsights ? `${weeklyInsights.overallPassRate}%` : "—"} icon={<ShieldCheck className="size-5" />} tone="good" hint="Overall compliance threshold" animated={false} />
-        </section>
-
-        {/* 2. TOP MVPs - HORIZONTAL COLUMNS */}
+        {/* 1. TOP MVPs - HORIZONTAL COLUMNS (Now the primary focus) */}
         <Panel title="Weekly MVP Operations" subtitle="Top performers isolated by statistical category.">
+
           <div className="grid gap-4 sm:grid-cols-3">
              {/* Power Growth MVP */}
-             <div className="rounded-[20px] bg-white/[0.02] border border-emerald-500/20 shadow-[0_0_20px_rgba(16,185,129,0.05)] p-5">
-                <div className="flex items-center gap-2 mb-3">
-                   <TrendingUp className="size-5 text-emerald-400" />
-                   <h3 className="font-heading text-lg font-bold text-tier-1">Top Power Growth</h3>
+             <div className="rounded-[22px] bg-white/[0.02] border border-emerald-500/20 shadow-[0_0_25px_rgba(16,185,129,0.05)] p-4">
+                <div className="flex items-center gap-2 mb-2">
+                   <TrendingUp className="size-4 text-emerald-400" />
+                   <h3 className="font-heading text-sm font-bold text-tier-1 tracking-tight">Top Power Growth</h3>
                 </div>
                 {topPowerGrowth ? (
-                   <div className="flex flex-col gap-3">
-                      <div className="flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-[14px] border-[1.5px] border-emerald-500/40 bg-[#1f2937]">
+                   <div className="flex flex-row items-center justify-between gap-3">
+                      <div className="min-w-0">
+                         <p className="text-lg font-bold text-tier-1 font-heading truncate leading-tight">{topPowerGrowth.governorName}</p>
+                         <p className="text-[11px] text-tier-3 font-medium">{topPowerGrowth.allianceLabel}</p>
+                         <p className="mt-1 text-xl font-mono font-bold text-emerald-400">+{formatMetric(topPowerGrowth.powerGrowth)}</p>
+                      </div>
+                      <div className="flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border-2 border-emerald-500/30 bg-[#1f2937] shadow-lg">
                         <img src={`https://api.dicebear.com/9.x/adventurer/svg?seed=${topPowerGrowth.governorDbId}&backgroundColor=transparent`} alt="avatar" className="size-full object-cover scale-[1.15]" />
                       </div>
-                      <div>
-                         <p className="text-xl font-bold text-tier-1 font-heading">{topPowerGrowth.governorName}</p>
-                         <p className="text-sm text-tier-3">{topPowerGrowth.allianceLabel}</p>
-                         <p className="mt-2 text-2xl font-mono font-bold text-emerald-400">+{formatMetric(topPowerGrowth.powerGrowth)}</p>
-                      </div>
                    </div>
-                ) : <p className="text-sm text-tier-4 mt-6">Awaiting power board stats.</p>}
+                ) : <p className="text-xs text-tier-4 mt-2">Awaiting stats.</p>}
              </div>
+
 
              {/* Activity / Contribution MVP */}
-             <div className="rounded-[20px] bg-white/[0.02] border border-amber-500/20 shadow-[0_0_20px_rgba(245,158,11,0.05)] p-5">
-                <div className="flex items-center gap-2 mb-3">
-                   <Sparkles className="size-5 text-amber-400" />
-                   <h3 className="font-heading text-lg font-bold text-tier-1">Top Activity MVP</h3>
+             <div className="rounded-[22px] bg-white/[0.02] border border-amber-500/20 shadow-[0_0_25px_rgba(245,158,11,0.05)] p-4">
+                <div className="flex items-center gap-2 mb-2">
+                   <Sparkles className="size-4 text-amber-400" />
+                   <h3 className="font-heading text-sm font-bold text-tier-1 tracking-tight">Top Activity MVP</h3>
                 </div>
                 {topContribution ? (
-                   <div className="flex flex-col gap-3">
-                      <div className="flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-[14px] border-[1.5px] border-amber-500/40 bg-[#1f2937]">
+                   <div className="flex flex-row items-center justify-between gap-3">
+                      <div className="min-w-0">
+                         <p className="text-lg font-bold text-tier-1 font-heading truncate leading-tight">{topContribution.governorName}</p>
+                         <p className="text-[11px] text-tier-3 font-medium">{topContribution.allianceLabel}</p>
+                         <p className="mt-1 text-xl font-mono font-bold text-amber-400">{formatMetric(topContribution.contributionPoints)} DKP</p>
+                      </div>
+                      <div className="flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border-2 border-amber-500/30 bg-[#1f2937] shadow-lg">
                         <img src={`https://api.dicebear.com/9.x/adventurer/svg?seed=${topContribution.governorDbId}&backgroundColor=transparent`} alt="avatar" className="size-full object-cover scale-[1.15]" />
                       </div>
-                      <div>
-                         <p className="text-xl font-bold text-tier-1 font-heading">{topContribution.governorName}</p>
-                         <p className="text-sm text-tier-3">{topContribution.allianceLabel}</p>
-                         <p className="mt-2 text-2xl font-mono font-bold text-amber-400">{formatMetric(topContribution.contributionPoints)} DKP</p>
-                      </div>
                    </div>
-                ) : <p className="text-sm text-tier-4 mt-6">Awaiting activity board stats.</p>}
+                ) : <p className="text-xs text-tier-4 mt-2">Awaiting stats.</p>}
              </div>
 
+
              {/* Fort Destroyer MVP */}
-             <div className="rounded-[20px] bg-white/[0.02] border border-rose-500/20 shadow-[0_0_20px_rgba(244,63,94,0.05)] p-5">
-                <div className="flex items-center gap-2 mb-3">
-                   <Target className="size-5 text-rose-400" />
-                   <h3 className="font-heading text-lg font-bold text-tier-1">Top Fort Destroyer</h3>
+             <div className="rounded-[22px] bg-white/[0.02] border border-rose-500/20 shadow-[0_0_25px_rgba(244,63,94,0.05)] p-4">
+                <div className="flex items-center gap-2 mb-2">
+                   <Target className="size-4 text-rose-400" />
+                   <h3 className="font-heading text-sm font-bold text-tier-1 tracking-tight">Top Fort Destroyer</h3>
                 </div>
                 {topForts ? (
-                   <div className="flex flex-col gap-3">
-                      <div className="flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-[14px] border-[1.5px] border-rose-500/40 bg-[#1f2937]">
+                   <div className="flex flex-row items-center justify-between gap-3">
+                      <div className="min-w-0">
+                         <p className="text-lg font-bold text-tier-1 font-heading truncate leading-tight">{topForts.governorName}</p>
+                         <p className="text-[11px] text-tier-3 font-medium">{topForts.allianceLabel}</p>
+                         <p className="mt-1 text-xl font-mono font-bold text-rose-400">{formatMetric(topForts.fortDestroying)} Forts</p>
+                      </div>
+                      <div className="flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border-2 border-rose-500/30 bg-[#1f2937] shadow-lg">
                         <img src={`https://api.dicebear.com/9.x/adventurer/svg?seed=${topForts.governorDbId}&backgroundColor=transparent`} alt="avatar" className="size-full object-cover scale-[1.15]" />
                       </div>
-                      <div>
-                         <p className="text-xl font-bold text-tier-1 font-heading">{topForts.governorName}</p>
-                         <p className="text-sm text-tier-3">{topForts.allianceLabel}</p>
-                         <p className="mt-2 text-2xl font-mono font-bold text-rose-400">{formatMetric(topForts.fortDestroying)} Forts</p>
-                      </div>
                    </div>
-                ) : <p className="text-sm text-tier-4 mt-6">Awaiting fort board stats.</p>}
+                ) : <p className="text-xs text-tier-4 mt-2">Awaiting stats.</p>}
              </div>
+
           </div>
         </Panel>
+
+        {/* 2. GLOBAL INSIGHTS - SHRUNK SQUARE CARDS (Moved lower as requested) */}
+        <section className="grid grid-cols-2 min-[440px]:grid-cols-4 gap-3">
+          <KpiSquare 
+            label="Kingdom Power" 
+            value={weeklyInsights ? formatCompactNumber(weeklyInsights.totalPowerGrowth) : "—"} 
+            icon={<Sparkles className="size-4" />} 
+            tone="good" 
+          />
+          <KpiSquare 
+            label="Total Combat DKP" 
+            value={weeklyInsights ? formatCompactNumber(weeklyInsights.totalContribution) : "—"} 
+            icon={<Activity className="size-4" />} 
+            tone="warn" 
+          />
+          <KpiSquare 
+            label="Tracked Members" 
+            value={weeklyActivity?.summary.membersTracked ?? 0} 
+            icon={<Users className="size-4" />} 
+            tone="info" 
+          />
+          <KpiSquare 
+            label="Activity Pass" 
+            value={weeklyInsights ? `${weeklyInsights.overallPassRate}%` : "—"} 
+            icon={<ShieldCheck className="size-4" />} 
+            tone="good" 
+            animated={false} 
+          />
+        </section>
+
 
         {/* 3. COMBAT ACTIVITY MATRIX */}
         <div className="grid gap-5 xl:grid-cols-[1.3fr_0.7fr]">

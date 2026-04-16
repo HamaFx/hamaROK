@@ -226,6 +226,35 @@ export function KpiCard({
   );
 }
 
+export function KpiSquare({
+  label,
+  value,
+  icon,
+  tone = 'neutral',
+  animated = true,
+  className,
+}: {
+  label: string;
+  value: string | number;
+  icon?: ReactNode;
+  tone?: 'neutral' | 'good' | 'warn' | 'bad' | 'info';
+  animated?: boolean;
+  className?: string;
+}) {
+  return (
+    <Card className={cn('aspect-square overflow-hidden border-white/[0.05] bg-white/[0.02]', toneClasses(tone), className)}>
+      <CardContent className="flex h-full flex-col items-center justify-center gap-1.5 p-3 text-center relative">
+        {icon ? <div className="text-tier-3 opacity-70 group-hover:opacity-100 transition-opacity mb-0.5">{icon}</div> : null}
+        <p className="font-heading text-xl font-bold tracking-tight text-tier-1 min-[390px]:text-2xl">
+          {animated && typeof value === 'number' ? <AnimatedCounter value={value} /> : value}
+        </p>
+        <p className="text-[10px] font-bold uppercase tracking-[0.05em] text-tier-3 leading-tight px-1">{label}</p>
+      </CardContent>
+    </Card>
+  );
+}
+
+
 export function MetricStrip({
   items,
 }: {
