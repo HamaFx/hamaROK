@@ -137,7 +137,7 @@ function MobileMoreNav() {
 
   return (
     <Drawer>
-      <nav className="fixed inset-x-2.5 bottom-[calc(env(safe-area-inset-bottom)+12px)] z-40 grid h-[64px] grid-cols-5 rounded-[20px] border border-[color:var(--stroke-soft)] bg-[color:color-mix(in_oklab,var(--surface-0)_90%,transparent)] px-1.5 text-tier-3 shadow-[0_12px_32px_rgba(0,0,0,0.5)] backdrop-blur-xl min-[390px]:inset-x-4 min-[390px]:h-[70px] min-[390px]:rounded-[24px] min-[390px]:px-2 lg:hidden">
+      <nav className="fixed inset-x-2.5 bottom-[calc(env(safe-area-inset-bottom)+12px)] z-40 grid h-[64px] grid-cols-5 rounded-[20px] border border-white/10 bg-black/60 px-1.5 text-tier-3 shadow-[0_8px_32px_rgba(0,229,255,0.15)] ring-1 ring-white/5 backdrop-blur-2xl min-[390px]:inset-x-4 min-[390px]:h-[70px] min-[390px]:rounded-[24px] min-[390px]:px-2 lg:hidden">
         {MOBILE_PRIMARY_NAV.map((item) => {
           const Icon = item.icon;
           const active = isActivePath(pathname, item.href);
@@ -251,8 +251,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="relative min-h-screen overflow-x-hidden bg-background text-foreground">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,color-mix(in_oklab,var(--tone-teal)_8%,transparent),transparent_34%),radial-gradient(circle_at_bottom_right,color-mix(in_oklab,var(--tone-teal)_5%,transparent),transparent_26%)]" />
-      <header className="sticky top-0 z-30 border-b border-[color:var(--stroke-soft)] bg-[color:color-mix(in_oklab,var(--surface-0)_84%,transparent)] backdrop-blur-xl">
-        <div className="mx-auto flex w-full max-w-[1600px] items-center justify-between gap-2 px-3 py-3 min-[390px]:gap-4 min-[390px]:px-4 min-[390px]:py-3.5 sm:px-6 lg:px-8">
+      <header className="sticky top-2 sm:top-4 z-30 mx-auto w-[calc(100%-1rem)] max-w-[1600px] rounded-2xl border border-white/10 bg-black/60 shadow-2xl ring-1 ring-white/5 backdrop-blur-2xl sm:w-[calc(100%-3rem)] lg:top-6">
+        <div className="mx-auto flex w-full items-center justify-between gap-2 px-3 py-3 min-[390px]:gap-4 min-[390px]:px-4 min-[390px]:py-3.5 sm:px-6 lg:px-8">
           <div className="flex min-w-0 items-center gap-2.5 min-[390px]:gap-4">
             <BrandLockup />
             <div className="hidden h-10 w-px bg-[color:var(--stroke-subtle)] lg:block" />

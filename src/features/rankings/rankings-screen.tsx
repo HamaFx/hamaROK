@@ -590,79 +590,7 @@ export default function RankingsScreen() {
     setUiNotice(`Exported ${displayRows.length} rows.`);
   }, [displayRows, selectedWeekKey]);
 
-  const columns = useMemo(
-    () => [
-      {
-        key: 'stable',
-        label: 'Rank',
-        className: 'text-nowrap',
-        render: (row: DisplayRankingRow) => (
-          <div className="flex flex-col items-start gap-2">
-            <StatusPill label={`#${row.stableRank}`} tone={row.stableRank <= 3 ? 'warn' : 'neutral'} />
-            {row.conflictFlags?.tie ? <span className="text-xs text-tier-3">Tie group {row.tieGroup}</span> : <span className="text-xs text-tier-3">Stable rank</span>}
-          </div>
-        ),
-      },
-      {
-        key: 'governor',
-        label: 'Player',
-        render: (row: DisplayRankingRow) => (
-          <div className="flex min-w-0 flex-col gap-2">
-            <div className="flex flex-wrap items-center gap-2">
-              <strong className="font-heading text-base text-tier-1">{row.displayName}</strong>
-              {row.titleRaw ? <StatusPill label={row.titleRaw} tone="info" /> : null}
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <StatusPill label={row.allianceLabel || 'No alliance'} tone={allianceTone(row.allianceTag)} />
-              <StatusPill label={row.linkedGovernorId ? `ID ${row.linkedGovernorId}` : 'Unlinked'} tone="neutral" />
-            </div>
-          </div>
-        ),
-      },
-      {
-        key: 'metric',
-        label: 'Metric',
-        className: 'text-right',
-        render: (row: DisplayRankingRow) => (
-          <div className="flex flex-col items-end gap-2 text-right">
-            <div>
-              <p className="font-heading text-lg text-tier-1">{formatMetric(row.metricValue)}</p>
-              <p className="text-xs  text-tier-3">{row.metricLabel}</p>
-            </div>
-            {metricVisualMode === 'bars' ? (
-              <div className="w-full max-w-40 overflow-hidden rounded-full bg-[color:var(--surface-4)]">
-                <div className="h-2 rounded-full bg-[linear-gradient(90deg,#5a7fff,#7ce6ff)]" style={{ width: `${Math.max(4, row.metricRatio)}%` }} />
-              </div>
-            ) : null}
-          </div>
-        ),
-      },
-      {
-        key: 'board',
-        label: 'Board',
-        mobileHidden: true,
-        render: (row: DisplayRankingRow) => <span className="text-sm text-tier-3">{row.boardLabel}</span>,
-      },
-      {
-        key: 'source',
-        label: 'Source',
-        mobileHidden: true,
-        render: (row: DisplayRankingRow) => <span className="text-sm text-tier-3">{row.sourceRank ? `#${row.sourceRank}` : '—'}</span>,
-      },
-      {
-        key: 'status',
-        label: 'State',
-        render: (row: DisplayRankingRow) => <StatusPill label={row.status} tone={statusTone(row.status)} />,
-      },
-      {
-        key: 'updated',
-        label: 'Updated',
-        mobileHidden: true,
-        render: (row: DisplayRankingRow) => <span className="text-sm text-tier-3">{formatRelativeDate(row.updatedAt)}</span>,
-      },
-    ],
-    [metricVisualMode]
-  );
+
 
   return (
     <div className="space-y-4 sm:space-y-5 lg:space-y-6">
@@ -776,28 +704,7 @@ export default function RankingsScreen() {
                   <Button variant="outline" className="w-full rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1" onClick={resetFilters}>Reset</Button>
                 </div>
 
-                <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto]">
-                  <div>
-                    <p className="mb-2 text-xs  text-tier-3">Leaderboard layout</p>
-                    <ToggleGroup className="w-full flex-wrap justify-start" type="single" value={viewMode} onValueChange={(value) => value && setViewMode(value as RankingsViewMode)}>
-                      {['auto', 'table', 'cards'].map((item) => (
-                        <ToggleGroupItem key={item} value={item} className="rounded-full border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] px-4 text-xs font-medium  text-tier-2 data-[state=on]:border-sky-300/20 data-[state=on]:bg-sky-300/12 data-[state=on]:text-tier-1">
-                          {item}
-                        </ToggleGroupItem>
-                      ))}
-                    </ToggleGroup>
-                  </div>
-                  <div>
-                    <p className="mb-2 text-xs  text-tier-3">Metric rendering</p>
-                    <ToggleGroup className="w-full flex-wrap justify-start sm:w-auto" type="single" value={metricVisualMode} onValueChange={(value) => value && setMetricVisualMode(value as MetricVisualMode)}>
-                      {['numeric', 'bars'].map((item) => (
-                        <ToggleGroupItem key={item} value={item} className="rounded-full border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] px-4 text-xs font-medium  text-tier-2 data-[state=on]:border-sky-300/20 data-[state=on]:bg-sky-300/12 data-[state=on]:text-tier-1">
-                          {item}
-                        </ToggleGroupItem>
-                      ))}
-                    </ToggleGroup>
-                  </div>
-                </div>
+
               </div>
             </CompactControlDrawer>
           </CompactControlRow>
@@ -821,62 +728,80 @@ export default function RankingsScreen() {
             </div>
           </div>
           {displayRows.length ? (
-            viewMode === 'cards' ? (
-              <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-3">
-                {displayRows.map((row) => (
+            <div className="flex flex-col gap-2">
+              {displayRows.map((row) => {
+                let rankColor = 'text-tier-3 border-white/5 bg-transparent';
+                let rankGlow = '';
+                if (row.stableRank === 1) {
+                  rankColor = 'text-[color:var(--rank-gold)] border-[color:var(--rank-gold)] bg-[color:color-mix(in_oklab,var(--rank-gold)_10%,transparent)]';
+                  rankGlow = 'shadow-[0_0_12px_rgba(216,184,120,0.3)]';
+                } else if (row.stableRank === 2) {
+                  rankColor = 'text-slate-300 border-slate-300/50 bg-slate-100/10';
+                  rankGlow = 'shadow-[0_0_12px_rgba(203,213,225,0.2)]';
+                } else if (row.stableRank === 3) {
+                  rankColor = 'text-orange-300 border-orange-300/50 bg-orange-100/10';
+                  rankGlow = 'shadow-[0_0_12px_rgba(253,186,116,0.2)]';
+                }
+
+                const initials = row.displayName.substring(0, 2).toUpperCase();
+                const isConflict = row.status !== 'ACTIVE';
+
+                return (
                   <article
                     key={row.id}
-                    className={
-                      row.status === 'ACTIVE'
-                        ? 'rounded-[20px] border border-[color:var(--stroke-soft)] bg-[rgba(11,15,24,0.92)] p-3 shadow-[0_12px_28px_rgba(0,0,0,0.24)] min-[390px]:rounded-[22px] min-[390px]:p-3.5 sm:rounded-[24px] sm:p-4'
-                        : row.status === 'UNRESOLVED'
-                          ? 'rounded-[20px] border border-sky-300/20 bg-[rgba(76,127,197,0.14)] p-3 shadow-[0_12px_28px_rgba(0,0,0,0.24)] min-[390px]:rounded-[22px] min-[390px]:p-3.5 sm:rounded-[24px] sm:p-4'
-                          : 'rounded-[20px] border border-rose-300/20 bg-[rgba(150,62,90,0.15)] p-3 shadow-[0_12px_28px_rgba(0,0,0,0.24)] min-[390px]:rounded-[22px] min-[390px]:p-3.5 sm:rounded-[24px] sm:p-4'
-                    }
+                    className={`group flex flex-col gap-3 rounded-2xl border border-white/5 bg-card p-3 shadow-lg transition-colors hover:bg-white/5 sm:flex-row sm:items-center sm:p-4 ${isConflict ? 'border-none ring-1 ring-amber-400/20 bg-amber-400/5' : ''}`}
                   >
-                    <div className="flex items-center justify-between gap-3">
-                      <StatusPill label={`#${row.stableRank}`} tone={row.stableRank <= 3 ? 'warn' : 'neutral'} />
-                      <StatusPill label={row.status} tone={statusTone(row.status)} />
-                    </div>
-                    <div className="mt-4 space-y-2">
-                      <p className="clamp-title-mobile font-heading text-base text-tier-1 min-[390px]:text-lg sm:text-xl" title={row.displayName}>{row.displayName}</p>
-                      <div className="flex flex-wrap gap-2">
-                        <StatusPill label={row.allianceLabel || 'No alliance'} tone={allianceTone(row.allianceTag)} />
-                        <StatusPill label={row.linkedGovernorId ? `ID ${row.linkedGovernorId}` : 'Unlinked'} tone="neutral" />
+                    <div className="flex items-center gap-3 sm:w-[45%]">
+                      <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border font-heading text-lg font-bold ${rankColor} ${rankGlow}`}>
+                        {row.stableRank}
+                      </div>
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/5 font-heading text-sm font-bold text-tier-2 shadow-[inset_0_1px_rgba(255,255,255,0.1)]">
+                        {initials}
+                      </div>
+                      <div className="flex min-w-0 flex-col">
+                        <div className="flex items-center gap-2">
+                          <p className="truncate font-heading text-base font-medium text-tier-1">{row.displayName}</p>
+                          {row.titleRaw && <span className="rounded px-1.5 py-0.5 text-[10px] font-bold tracking-wider text-sky-400 bg-sky-400/10 uppercase border border-sky-400/20">{row.titleRaw}</span>}
+                        </div>
+                        <div className="mt-0.5 flex items-center gap-2 text-xs text-tier-3">
+                          {row.allianceLabel ? <span className="truncate text-tier-2">{row.allianceLabel}</span> : <span>No Alliance</span>}
+                          <span>&bull;</span>
+                          <span className="truncate">ID: {row.linkedGovernorId || 'Unknown'}</span>
+                        </div>
                       </div>
                     </div>
-                    <div className="mt-4 grid grid-cols-2 gap-3">
-                      <div className="rounded-2xl border border-[color:var(--stroke-subtle)] bg-[color:var(--surface-3)] p-3">
-                        <p className="text-xs  text-tier-3">{row.metricLabel}</p>
-                        <p className="mt-1.5 font-heading text-base text-tier-1 sm:text-lg">{formatMetric(row.metricValue)}</p>
+
+                    <div className="grid grid-cols-2 gap-4 sm:flex sm:w-[55%] sm:items-center sm:justify-end sm:gap-6">
+                      <div className="flex flex-col items-start sm:items-end">
+                        <p className="font-heading text-lg font-bold text-tier-1">{formatMetric(row.metricValue)}</p>
+                        <p className="text-[10px] uppercase tracking-wider text-tier-3">{row.metricLabel}</p>
                       </div>
-                      <div className="rounded-2xl border border-[color:var(--stroke-subtle)] bg-[color:var(--surface-3)] p-3">
-                        <p className="text-xs  text-tier-3">Board</p>
-                        <p className="clamp-secondary mt-1.5 text-xs text-tier-2 min-[390px]:text-[13px]" title={formatTokenLabel(row.rankingType)}>{formatTokenLabel(row.rankingType)}</p>
+                      
+                      <div className="flex flex-col justify-center sm:w-28">
+                        <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/5">
+                          <div className="h-full rounded-full bg-[color:var(--primary)] shadow-[0_0_8px_var(--primary)]" style={{ width: `${Math.max(2, row.metricRatio)}%` }} />
+                        </div>
+                        <p className="mt-1.5 text-right text-[10px] font-medium tracking-wide text-tier-3">{row.metricRatio.toFixed(1)}% / MAX</p>
+                      </div>
+
+                      <div className="hidden flex-col items-end sm:flex sm:w-24">
+                        <span className="truncate text-[11px] text-tier-2">{row.boardLabel}</span>
+                        {isConflict ? (
+                          <span className={`mt-1 whitespace-nowrap rounded px-1.5 py-0.5 text-[10px] font-bold ${row.status === 'UNRESOLVED' ? 'bg-amber-400/10 text-amber-400 border border-amber-400/20' : 'bg-rose-400/10 text-rose-400 border border-rose-400/20'}`}>
+                            {row.status}
+                          </span>
+                        ) : (
+                          <span className="mt-1 flex items-center gap-1.5 text-[10px] font-bold tracking-wider text-emerald-400">
+                            <span className="size-1.5 rounded-full bg-emerald-400 shadow-[0_0_4px_#34d399]" />
+                            VERIFIED
+                          </span>
+                        )}
                       </div>
                     </div>
-                    <p className="mt-3 text-xs text-tier-3">Updated {formatRelativeDate(row.updatedAt)}</p>
                   </article>
-                ))}
-              </div>
-            ) : (
-              <DataTableLite
-                stickyFirst
-                dense={denseRows}
-                mobileCards
-                columns={columns}
-                rows={displayRows}
-                rowKey={(row) => row.id}
-                rowClassName={(row) =>
-                  row.status === 'ACTIVE'
-                    ? 'shadow-[inset_0_0_0_1px_rgba(255,255,255,0.01)]'
-                    : row.status === 'UNRESOLVED'
-                      ? 'bg-[rgba(76,127,197,0.06)]'
-                      : 'bg-[rgba(150,62,90,0.08)]'
-                }
-                emptyLabel="No canonical ranking rows found for these filters."
-              />
-            )
+                );
+              })}
+            </div>
           ) : (
             <EmptyState
               title="No board rows found"
