@@ -407,283 +407,109 @@ export default function HomeScreen() {
   ];
 
   return (
-    <div className="space-y-4 sm:space-y-5 lg:space-y-6">
-      <PageHero
-        title="Live Weekly Boards"
-        subtitle="A rankings-first home that surfaces current leaders, rising players, and the statboards worth checking next."
-        badges={[
-          weeklyEvent?.weekKey ? `Week ${weeklyEvent.weekKey}` : 'Week pending',
-          `${weeklyActivity?.summary.membersTracked ?? 0} tracked players`,
-          `${events.length} events indexed`,
-        ]}
-        actions={
-          <>
-            <Button asChild className="rounded-full bg-[color:var(--primary)] text-primary-foreground hover:opacity-95 shadow-lg">
-              <Link href="/rankings">
-                <Trophy data-icon="inline-start" />
-                Open Rankings
-              </Link>
-            </Button>
-            <Button asChild variant="outline" className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1">
-              <Link href="/compare">
-                <Swords data-icon="inline-start" />
-                Compare Events
-              </Link>
-            </Button>
-          </>
-        }
-      />
-
+    <div className="space-y-4 lg:space-y-6">
       <SessionGate ready={ready} loading={sessionLoading} error={sessionError} onRetry={() => void refreshSession()}>
         {error ? <InlineError message={error} /> : null}
 
-        <div className="grid gap-5 xl:grid-cols-[1.4fr_1fr]">
-          <motion.div initial={false} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}>
-            <Panel
-              title="Podium Spotlight"
-              subtitle="Switch the board story to see who owns the current week."
-              actions={
-                <ToggleGroup type="single" value={spotlightMetric} onValueChange={(value) => value && setSpotlightMetric(value as SpotlightMetric)} className="w-full justify-start gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible">
-                  {METRIC_OPTIONS.map((option) => (
-                    <ToggleGroupItem
-                      key={option.key}
-                      value={option.key}
-                      className="shrink-0 rounded-full border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] px-3 text-xs text-tier-2 data-[state=on]:border-sky-300/22 data-[state=on]:bg-sky-300/12 data-[state=on]:text-tier-1"
-                    >
-                      {option.short}
-                    </ToggleGroupItem>
-                  ))}
-                </ToggleGroup>
-              }
-            >
-              <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
-                <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3">
-                  {podiumRows.map((row, index) => {
-                    if (!row) {
-                      return (
-                        <Card key={`podium-empty-${index}`} className="border-dashed border-[color:var(--stroke-strong)] bg-card/60 backdrop-blur-md shadow-lg">
-                          <CardContent className="flex flex-col justify-between gap-3 p-3 min-[390px]:p-3.5 sm:p-4">
-                            <StatusPill label={`#${index + 1}`} tone="neutral" />
-                            <div>
-                              <p className="font-heading text-base text-tier-2 sm:text-lg">Open Podium Slot</p>
-                              <p className="clamp-secondary mt-2 text-xs text-tier-3 min-[390px]:text-[13px] sm:text-sm">Upload and score this week to populate additional leaderboard positions.</p>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      );
-                    }
+        {/* 1. TOP KPI ROW */}
+        <section className="grid gap-3 min-[390px]:gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <KpiCard label="Registered Governors" value={governorCount} icon={<Users className="size-5" />} tone="info" hint="Total across Kingdom" />
+          <KpiCard label="Tracked Members" value={weeklyActivity?.summary.membersTracked ?? 0} icon={<Activity className="size-5" />} tone="neutral" hint={"Week: " + (weeklyEvent?.weekKey || "N/A")} />
+          <KpiCard label="Active Events" value={events.length} icon={<Trophy className="size-5" />} tone="warn" hint="Indexed leaderboards" />
+          <KpiCard label="Global Compliance" value={weeklyInsights ? `${weeklyInsights.overallPassRate}%` : "—"} icon={<ShieldCheck className="size-5" />} tone="good" hint={`Total Pass: ${weeklyInsights?.totalPass ?? 0}`} animated={false} />
+        </section>
 
-                    const value =
-                      spotlightMetric === 'contribution_points'
-                        ? row.contributionPoints
-                        : spotlightMetric === 'fort_destroying'
-                          ? row.fortDestroying
-                          : spotlightMetric === 'power_growth'
-                            ? row.powerGrowth
-                            : row.killPointsGrowth;
-
-                    return (
-                      <Card
-                        key={row.governorDbId}
-                        className={
-                          index === 0
-                            ? 'border-[#ffd57d]/18 surface-2'
-                            : 'surface-2'
-                        }
-                      >
-                        <CardContent className="flex flex-col gap-3 p-3 min-[390px]:p-3.5 sm:p-4">
-                          <div className="flex items-center justify-between">
-                            <StatusPill label={`#${index + 1}`} tone={index === 0 ? 'warn' : 'neutral'} />
-                            {index === 0 ? <Crown className="size-5 text-[#ffd57d]" /> : null}
-                          </div>
-                          <div>
-                            <p className="clamp-title-mobile font-heading text-base text-tier-1 sm:text-lg" title={row.governorName}>{row.governorName}</p>
-                            <p className="clamp-secondary mt-1 text-xs text-tier-3 min-[390px]:text-[13px] sm:text-sm" title={row.allianceLabel}>{row.allianceLabel}</p>
-                          </div>
-                          <div>
-                            <p className="text-xs  text-tier-3">
-                              {METRIC_OPTIONS.find((option) => option.key === spotlightMetric)?.label}
-                            </p>
-                            <p className="mt-1.5 font-heading text-lg text-tier-1 min-[390px]:text-xl sm:text-2xl">{formatMetric(value)}</p>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    );
-                  })}
-                </div>
-
-                <Card className="surface-2">
-                  <CardHeader>
-                    <CardTitle className="font-heading text-tier-1">Featured Player</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    {featuredPlayer ? (
-                      <>
-                        <div>
-                          <p className="text-xs  text-tier-3">Current spotlight</p>
-                          <h2 className="clamp-title-mobile mt-2 font-heading text-2xl text-tier-1" title={featuredPlayer.name}>{featuredPlayer.name}</h2>
-                          <p className="clamp-secondary mt-1 text-sm text-tier-3" title={featuredPlayer.allianceLabel || ''}>{featuredPlayer.allianceLabel}</p>
-                        </div>
-                        <MetricStrip
-                          items={[
-                            { label: featuredPlayer.primaryLabel, value: featuredPlayer.primaryValue, accent: 'gold' },
-                            featuredPlayer.secondaryValue
-                              ? {
-                                  label: featuredPlayer.secondaryLabel || 'Weekly MVP',
-                                  value: featuredPlayer.secondaryValue,
-                                  accent: 'teal' as const,
-                                }
-                              : { label: 'Week', value: formatWeekShort(weeklyEvent?.weekKey), accent: 'slate' as const },
-                          ]}
-                        />
-                        <p className="text-sm leading-6 text-tier-3">{featuredPlayer.note}</p>
-                        <div className="grid gap-2 md:grid-cols-2">
-                          {quickActions.map((action) => {
-                            const Icon = action.icon;
-                            return (
-                              <Button key={action.href} asChild variant="outline" className="h-11 justify-between rounded-2xl border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1">
-                                <Link href={action.href}>
-                                  <span className="flex items-center gap-2">
-                                    <Icon className="size-4" />
-                                    {action.label}
-                                  </span>
-                                  <ArrowRight className="size-4" />
-                                </Link>
-                              </Button>
-                            );
-                          })}
-                        </div>
-                      </>
-                    ) : (
-                      <p className="text-sm text-tier-3">Upload and score a weekly cycle to unlock the featured-player spotlight.</p>
-                    )}
-                  </CardContent>
-                </Card>
-              </div>
-            </Panel>
-          </motion.div>
-
-          <motion.div initial={false} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, delay: 0.03 }} className="space-y-4 sm:space-y-5">
-            <Panel title="Week Pulse" subtitle="A compact read on the current board state.">
-              <div className="grid grid-cols-2 gap-3 md:gap-4">
-                <KpiCard label="Tracked Players" value={weeklyActivity?.summary.membersTracked ?? 0} hint="Rows in the active weekly board" tone="info" icon={<Users className="size-5" />} />
-                <KpiCard label="Pass Rate" value={weeklyInsights ? `${weeklyInsights.overallPassRate}%` : '—'} hint={`${weeklyInsights?.totalPass ?? 0} pass / ${weeklyInsights?.totalMembers ?? 0} scored`} tone="good" icon={<ShieldCheck className="size-5" />} animated={false} />
-                <KpiCard label="Total Contribution" value={weeklyInsights ? formatCompactNumber(weeklyInsights.totalContribution) : '—'} hint="Contribution captured this week" tone="warn" icon={<Sparkles className="size-5" />} animated={false} />
-                <KpiCard label="Baseline Coverage" value={weeklyInsights ? `${weeklyInsights.baselineCoverage}%` : '—'} hint="Power baseline readiness" tone="neutral" icon={<CalendarClock className="size-5" />} animated={false} />
-              </div>
-            </Panel>
-
-            <Panel title="Alliance Leader" subtitle="Best pass-rate alliance in the active week.">
-              {weeklyInsights?.topAlliance ? (
-                <div className="rounded-[20px] border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] p-3 min-[390px]:rounded-[22px] min-[390px]:p-3.5 sm:rounded-[24px] sm:p-4">
-                  <div className="flex items-center justify-between gap-4">
-                    <div>
-                      <p className="font-heading text-lg text-tier-1 sm:text-xl">{weeklyInsights.topAlliance.allianceLabel}</p>
-                      <p className="mt-1 text-xs text-tier-3 min-[390px]:text-[13px] sm:text-sm">{weeklyInsights.topAlliance.passCount} passing players out of {weeklyInsights.topAlliance.members}</p>
-                    </div>
-                    <StatusPill label={`${weeklyInsights.topAlliance.passRate}%`} tone="good" />
-                  </div>
-                  <div className="mt-5 h-2 overflow-hidden rounded-full bg-[color:var(--surface-4)]">
-                    <div className="h-full rounded-full bg-[color:var(--primary)] shadow-[0_0_8px_var(--primary)]" style={{ width: `${weeklyInsights.topAlliance.passRate}%` }} />
-                  </div>
-                </div>
+        {/* 2. MID DASHBOARD MATRIX */}
+        <div className="grid gap-5 xl:grid-cols-[1.3fr_0.7fr]">
+          <Panel title="Alliance Compliance Matrix" subtitle="Aggregated completion rates across active operational alliances.">
+            <div className="flex flex-col gap-4">
+              {alliancePulse.length === 0 ? (
+                <p className="text-sm text-tier-3">No compliance data available for the active week.</p>
               ) : (
-                <p className="text-sm text-tier-3">Alliance pass-rate data appears once weekly scoring is available.</p>
+                alliancePulse.map((alliance) => {
+                  const percentPass = alliance.members > 0 ? (alliance.passCount / alliance.members) * 100 : 0;
+                  const percentPartial = alliance.members > 0 && alliance.partialCount ? (alliance.partialCount / alliance.members) * 100 : 0;
+                  const percentFail = 100 - percentPass - percentPartial;
+                  
+                  return (
+                    <div key={alliance.allianceTag} className="flex flex-col gap-3 rounded-[18px] bg-[color:var(--surface-3)] p-5 border border-[color:var(--stroke-soft)]">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2.5">
+                          <span className="font-heading text-lg font-bold text-tier-1">{alliance.allianceLabel}</span>
+                          <span className="flex h-6 items-center rounded-full bg-white/5 border border-white/10 px-2.5 text-[11px] font-medium text-tier-3">{alliance.members} members</span>
+                        </div>
+                        <span className="text-lg font-mono font-bold text-tier-1">{Math.round(percentPass)}% <span className="text-sm font-sans font-medium text-tier-4">Pass</span></span>
+                      </div>
+                      
+                      {/* Gradient Stacked Bar */}
+                      <div className="h-2.5 w-full flex overflow-hidden rounded-full bg-white/[0.04] shadow-inner">
+                        <div style={{ width: `${percentPass}%` }} className="bg-emerald-500 shadow-[0_0_12px_rgba(16,185,129,0.4)] transition-all" />
+                        <div style={{ width: `${percentPartial}%` }} className="bg-amber-500 shadow-[0_0_12px_rgba(245,158,11,0.4)] transition-all" />
+                        {percentFail > 0 && <div style={{ width: `${percentFail}%` }} className="bg-rose-500 shadow-[0_0_12px_rgba(244,63,94,0.4)] transition-all" />}
+                      </div>
+                      
+                      <div className="mt-0.5 flex gap-5 text-[11px] text-tier-3 font-semibold uppercase tracking-wider">
+                        <span className="flex items-center gap-1.5"><span className="size-2 rounded-full bg-emerald-500" /> {alliance.passCount} Pass</span>
+                        {!!alliance.partialCount && <span className="flex items-center gap-1.5"><span className="size-2 rounded-full bg-amber-500" /> {alliance.partialCount} Partial</span>}
+                        <span className="flex items-center gap-1.5"><span className="size-2 rounded-full bg-rose-500" /> {alliance.failCount} Fail</span>
+                      </div>
+                    </div>
+                  );
+                })
               )}
-            </Panel>
-          </motion.div>
-        </div>
-
-        <div className="grid gap-5 xl:grid-cols-[1.15fr_0.85fr]">
-          <Panel title="Movement Watch" subtitle="The players climbing or dropping fastest since the previous scored week.">
-            {weekMovement ? (
-              <div className="grid gap-4 lg:grid-cols-2">
-                <Card className="border-emerald-400/16 bg-emerald-400/6">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 font-heading text-base text-tier-1">
-                      <TrendingUp className="size-4 text-emerald-200" /> Top Risers
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    {weekMovement.risers.map((row) => (
-                      <div key={row.governorDbId} className="flex items-center justify-between gap-3 rounded-2xl border border-[color:var(--stroke-subtle)] bg-black/10 px-3.5 py-2.5 sm:px-4 sm:py-3">
-                        <div>
-                          <p className="text-sm font-medium text-tier-1">{row.governorName}</p>
-                          <p className="text-xs text-tier-3">{row.allianceLabel}</p>
-                        </div>
-                        <p className="font-heading text-lg text-emerald-100">+{row.delta.toFixed(1)}</p>
-                      </div>
-                    ))}
-                  </CardContent>
-                </Card>
-                <Card className="border-rose-400/16 bg-rose-400/6">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 font-heading text-base text-tier-1">
-                      <TrendingDown className="size-4 text-rose-200" /> Top Fallers
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    {weekMovement.fallers.length ? weekMovement.fallers.map((row) => (
-                      <div key={row.governorDbId} className="flex items-center justify-between gap-3 rounded-2xl border border-[color:var(--stroke-subtle)] bg-black/10 px-3.5 py-2.5 sm:px-4 sm:py-3">
-                        <div>
-                          <p className="text-sm font-medium text-tier-1">{row.governorName}</p>
-                          <p className="text-xs text-tier-3">{row.allianceLabel}</p>
-                        </div>
-                        <p className="font-heading text-lg text-rose-100">{row.delta.toFixed(1)}</p>
-                      </div>
-                    )) : <p className="text-sm text-tier-3">No fallers were detected in the current comparison window.</p>}
-                  </CardContent>
-                </Card>
-              </div>
-            ) : (
-              <div className="rounded-[20px] border border-dashed border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] p-3 min-[390px]:rounded-[22px] min-[390px]:p-3.5 sm:rounded-[24px] sm:p-4">
-                <p className="font-heading text-lg text-tier-1">Movement Tracking Locked</p>
-                <p className="mt-2 text-sm text-tier-3">Score at least two weekly cycles to unlock risers and fallers with week-over-week deltas.</p>
-              </div>
-            )}
+            </div>
           </Panel>
 
-          <Panel title="Board Quick Read" subtitle="MVP and system totals with collapsible event history.">
-            <div className="space-y-3">
-              <div className="rounded-[20px] border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] p-3 min-[390px]:rounded-[22px] min-[390px]:p-3.5 sm:rounded-[24px] sm:p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-xs  text-tier-3">Weekly MVP</p>
-                    <p className="clamp-title-mobile mt-1.5 font-heading text-lg text-tier-1" title={weeklyMvp?.row.governorName || 'Pending'}>{weeklyMvp?.row.governorName ?? 'Pending'}</p>
-                    <p className="clamp-secondary mt-1 text-xs text-tier-3" title={weeklyMvp?.row.allianceLabel || 'No scored week yet'}>{weeklyMvp?.row.allianceLabel ?? 'No scored week yet'}</p>
-                  </div>
-                  {weeklyMvp ? <StatusPill label={`${weeklyMvp.score.toFixed(1)} pts`} tone="good" /> : null}
-                </div>
-              </div>
-
-              <MetricStrip
-                items={[
-                  { label: 'Total Players', value: governorCount.toLocaleString(), accent: 'slate' },
-                  { label: 'Snapshots', value: totalSnapshots.toLocaleString(), accent: 'teal' },
-                  { label: 'Events', value: events.length, accent: 'gold' },
-                ]}
-              />
-
-              <details className="rounded-[20px] border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] p-3 min-[390px]:rounded-[22px] min-[390px]:p-3.5 sm:rounded-[24px] sm:p-4">
-                <summary className="cursor-pointer list-none text-sm font-medium text-tier-1">Recent Events</summary>
-                <div className="mt-3 space-y-2.5">
-                  {events.slice(0, 4).map((event) => (
-                    <div key={event.id} className="flex items-center justify-between gap-3 rounded-2xl border border-[color:var(--stroke-subtle)] bg-black/10 px-3.5 py-2.5">
-                      <div className="min-w-0">
-                        <p className="clamp-title-mobile text-sm font-medium text-tier-1" title={event.name}>{event.name}</p>
-                        <p className="text-xs text-tier-3">{new Date(event.createdAt).toLocaleDateString()}</p>
+          <Panel title="Top Performers Podium" subtitle="Highest statistical MVPs.">
+            <div className="flex flex-col gap-3">
+                {podiumRows.filter(Boolean).map((row, index) => {
+                  if (!row) return null;
+                  return (
+                    <div key={row.governorDbId} className="group/row flex flex-wrap items-center gap-3 rounded-2xl bg-[color:var(--surface-3)] p-3 border border-[color:var(--stroke-soft)] transition-colors hover:bg-white/[0.04]">
+                      <div className="flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-[12px] border-[1.5px] border-[color:var(--rank-gold)] bg-[#1f2937] shadow-[0_0_12px_rgba(216,184,120,0.15)] ring-1 ring-black/50">
+                        <img src={`https://api.dicebear.com/9.x/adventurer/svg?seed=${row.governorDbId}&backgroundColor=transparent`} alt="avatar" className="size-full object-cover scale-[1.15]" />
                       </div>
-                      <StatusPill label={`${event.snapshotCount} rows`} tone="neutral" />
+                      <div className="flex-1 min-w-0 flex flex-col justify-center">
+                        <p className="truncate text-[15px] font-bold text-tier-1 drop-shadow-sm">{row.governorName}</p>
+                        <p className="text-[11px] text-tier-3 font-medium mt-0.5">{row.allianceLabel}</p>
+                      </div>
+                      <div className="flex flex-col items-end gap-1.5 shrink-0">
+                        <StatusPill label={`Rank ${index + 1}`} tone={index === 0 ? "warn" : "neutral"} />
+                        <span className="text-[13px] font-mono font-bold text-tier-2">{formatMetric(row.contributionPoints)} pt</span>
+                      </div>
                     </div>
-                  ))}
-                  <Button asChild variant="outline" className="w-full rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1 sm:w-auto">
-                    <Link href="/events">View all events</Link>
-                  </Button>
-                </div>
-              </details>
+                  );
+                })}
+                {podiumRows.filter(Boolean).length === 0 && (
+                   <p className="text-sm text-tier-3 mt-4">Run weekly scoring to populate podium positions.</p>
+                )}
             </div>
           </Panel>
         </div>
+
+        {/* 3. RECENT OPERATIONS LOG */}
+        <Panel title="Recent Operations Log" subtitle="Historical snapshots of kingdom events and operations.">
+          <div className="flex snap-x overflow-x-auto pb-4 gap-4 no-scrollbar">
+             {recentWeeklyReports.length === 0 ? (
+               <p className="text-sm text-tier-3">No recent logs generated.</p>
+             ) : (
+               recentWeeklyReports.map(({ weekKey, report }) => (
+                 <div key={weekKey} className="snap-start shrink-0 w-[260px] rounded-[18px] bg-[color:var(--surface-3)] p-4 border border-[color:var(--stroke-soft)] hover:border-white/20 transition-colors">
+                   <div className="flex items-start justify-between">
+                     <h4 className="font-heading text-[15px] leading-tight text-tier-1 line-clamp-2 pr-2">{report.event.name}</h4>
+                     <CalendarClock className="size-4 shrink-0 text-tier-4" />
+                   </div>
+                   <p className="text-[11px] font-mono text-tier-3 mt-2">{weekKey}</p>
+                   <div className="mt-5 grid grid-cols-2 gap-3 text-sm text-tier-2 border-t border-white/5 pt-3">
+                     <div className="flex flex-col gap-0.5"><span className="text-[10px] uppercase tracking-wider text-tier-4">Tracked</span><span className="font-mono font-bold">{report.summary.membersTracked}</span></div>
+                     <div className="flex flex-col gap-0.5"><span className="text-[10px] uppercase tracking-wider text-tier-4">Issues</span><span className={`font-mono font-bold ${report.summary.unresolvedIdentityCount > 0 ? "text-rose-300" : "text-tier-3"}`}>{report.summary.unresolvedIdentityCount}</span></div>
+                   </div>
+                 </div>
+               ))
+             )}
+          </div>
+        </Panel>
+
       </SessionGate>
     </div>
   );

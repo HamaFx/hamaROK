@@ -595,7 +595,7 @@ export default function PlayersScreen() {
               <button
                 type="button"
                 onClick={() => setEditingCell({ rowId: row.id, field: 'name', value: row.name })}
-                className="shrink-0 rounded-md p-1 opacity-0 transition-opacity group-hover/row:opacity-100 hover:bg-white/5 text-tier-3 ml-2"
+                className="shrink-0 rounded-md p-1 opacity-30 transition-opacity md:opacity-0 group-hover/row:opacity-100 hover:bg-white/5 text-tier-3 ml-2"
               >
                 <Pencil className="size-3" />
               </button>
@@ -660,7 +660,7 @@ export default function PlayersScreen() {
               <button
                 type="button"
                 onClick={() => setEditingCell({ rowId: row.id, field: 'alliance', value: row.alliance })}
-                className="shrink-0 rounded-md p-1 opacity-0 transition-opacity group-hover/row:opacity-100 hover:bg-white/5 text-tier-3"
+                className="shrink-0 rounded-md p-1 opacity-30 transition-opacity md:opacity-0 group-hover/row:opacity-100 hover:bg-white/5 text-tier-3 ml-auto"
               >
                 <Pencil className="size-3" />
               </button>

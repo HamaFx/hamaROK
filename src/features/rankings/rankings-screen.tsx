@@ -628,32 +628,26 @@ export default function RankingsScreen() {
 
   return (
     <div className="space-y-4 sm:space-y-5 lg:space-y-6">
-      <PageHero
-        title="Rankings"
-        subtitle="Canonical leaderboard view across all board types, with weekly activity enrichment and multi-board filtering."
-        badges={[
-          selectedWeekKey ? `Week ${selectedWeekKey}` : 'Week pending',
-          `${displayRows.length} rows`,
-          freshness?.label || 'No data yet',
-        ]}
-        actions={
-          <>
-            <Button asChild variant="outline" className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1">
-              <Link href="/activity">
-                Activity
-              </Link>
-            </Button>
-            <Button variant="outline" className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1" onClick={exportLeaderboardCsv} disabled={!displayRows.length}>
-              <Download data-icon="inline-start" /> CSV
-            </Button>
-          </>
-        }
-      />
-
       <SessionGate ready={ready} loading={sessionLoading} error={sessionError} onRetry={() => void refreshSession()}>
         {error ? <InlineError message={error} /> : null}
 
         <motion.section initial={false} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }} className="relative z-10 space-y-2">
+          <div className="flex w-full items-center justify-between gap-4 pb-4">
+            <div className="flex gap-2">
+              <Button asChild variant="outline" className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1">
+                <Link href="/activity">
+                  Activity
+                </Link>
+              </Button>
+              <Button variant="outline" className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1" onClick={exportLeaderboardCsv} disabled={!displayRows.length}>
+                <Download data-icon="inline-start" /> CSV
+              </Button>
+            </div>
+            <div className="flex items-center gap-2">
+                <span className="text-sm font-semibold tracking-wide text-tier-3">{displayRows.length} rows</span>
+                {freshness ? <StatusPill label={freshness.label} tone={freshness.tone} /> : null}
+            </div>
+          </div>
           <CompactControlRow>
             <Button type="button" variant="outline" className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1" onClick={goPreviousWeek} disabled={loading || currentWeekIndex >= weeks.length - 1}>
               <ArrowLeft data-icon="inline-start" /> Older
