@@ -74,7 +74,10 @@ export function RankingReviewItemCard({
   onRerun,
   onAction,
 }: RankingReviewItemCardProps) {
-  const candidatePreview = parseCandidatePreview(row.candidates);
+  const candidatePreview =
+    Array.isArray(row.identitySuggestions) && row.identitySuggestions.length > 0
+      ? row.identitySuggestions.slice(0, 3).map((entry) => `${entry.name} (ID ${entry.governorGameId})`)
+      : parseCandidatePreview(row.candidates);
   const boardLabel = getRankingTypeDisplayName(row.run.rankingType);
   const metricLabel = getMetricDisplayName(row.run.metricKey);
   const supportedBoard = getSupportedBoardForPair(row.run.rankingType, row.run.metricKey);

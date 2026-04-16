@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useWorkspaceSession } from '@/lib/workspace-session';
 import { InlineError, SessionGate } from '@/components/app/session-gate';
@@ -9,6 +9,7 @@ import {
   type AwsOcrControlStatus,
   type ScanJobResponse,
   type TaskRow,
+  type UploadFinalizeManifestEntry,
   type UploadQueueEntry,
   type WeeklyEventInfo,
   mapTaskStatus,
@@ -21,6 +22,27 @@ import {
   UploadSubmitNotice,
   UploadWorkerPanel,
 } from './upload-sections';
+
+const UPLOAD_CONCURRENCY = 4;
+const MAX_RETRIES = 3;
+
+function delay(ms: number) {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
+
+function toManifestEntry(entry: UploadQueueEntry): UploadFinalizeManifestEntry {
+  return {
+    rowId: entry.id,
+    fileName: entry.fileName,
+    status: entry.status,
+    taskId: entry.taskId,
+    artifactId: entry.artifactId,
+    idempotencyKey: entry.idempotencyKey,
+    error: entry.error,
+  };
+}
 
 export default function UploadPage() {
   const router = useRouter();
@@ -49,18 +71,73 @@ export default function UploadPage() {
   const [awsControlBusy, setAwsControlBusy] = useState<'START' | 'STOP' | null>(null);
   const [awsControlMessage, setAwsControlMessage] = useState<string | null>(null);
 
+  const [retryingRowId, setRetryingRowId] = useState<string | null>(null);
+  const [retryingBulk, setRetryingBulk] = useState(false);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const completionNotifiedRef = useRef<string | null>(null);
+  const localFilesRef = useRef<Record<string, File>>({});
+  const entriesRef = useRef<UploadQueueEntry[]>([]);
 
   const getPersistedJobKey = useCallback((id: string) => `upload:activeScanJob:${id}`, []);
+  const getPersistedManifestKey = useCallback(
+    (id: string, jobId: string) => `upload:manifest:${id}:${jobId}`,
+    []
+  );
+
+  useEffect(() => {
+    entriesRef.current = entries;
+  }, [entries]);
+
+  const clearPersistedManifest = useCallback(
+    (jobId: string | null) => {
+      if (typeof window === 'undefined' || !workspaceId || !jobId) return;
+      localStorage.removeItem(getPersistedManifestKey(workspaceId, jobId));
+    },
+    [workspaceId, getPersistedManifestKey]
+  );
 
   useEffect(() => {
     if (typeof window === 'undefined' || !workspaceId || !accessToken) return;
+
     const persistedJobId = localStorage.getItem(getPersistedJobKey(workspaceId)) || '';
-    if (persistedJobId) {
-      setScanJobId((prev) => prev || persistedJobId);
+    if (!persistedJobId) {
+      setScanJobId(null);
+      setEntries([]);
+      return;
     }
-  }, [workspaceId, accessToken, getPersistedJobKey]);
+
+    setScanJobId((prev) => prev || persistedJobId);
+
+    const manifestRaw = localStorage.getItem(getPersistedManifestKey(workspaceId, persistedJobId));
+    if (!manifestRaw) return;
+
+    try {
+      const manifest = JSON.parse(manifestRaw) as UploadFinalizeManifestEntry[];
+      if (!Array.isArray(manifest)) return;
+      const hydrated: UploadQueueEntry[] = manifest.map((entry, index) => ({
+        id: entry.rowId || `${persistedJobId}-${index}`,
+        fileName: entry.fileName || `screenshot-${index + 1}`,
+        status: entry.status,
+        sizeBytes: 0,
+        taskId: entry.taskId,
+        artifactId: entry.artifactId,
+        idempotencyKey: entry.idempotencyKey,
+        error: entry.error,
+        updatedAt: new Date().toISOString(),
+        persisted: true,
+      }));
+      setEntries((prev) => (prev.length > 0 ? prev : hydrated));
+    } catch {
+      // Ignore malformed cached manifest.
+    }
+  }, [workspaceId, accessToken, getPersistedJobKey, getPersistedManifestKey]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !workspaceId || !scanJobId) return;
+    const manifest = entries.map((entry) => toManifestEntry(entry));
+    localStorage.setItem(getPersistedManifestKey(workspaceId, scanJobId), JSON.stringify(manifest));
+  }, [entries, workspaceId, scanJobId, getPersistedManifestKey]);
 
   const loadWeeklyEvent = useCallback(async (): Promise<WeeklyEventInfo | null> => {
     if (!workspaceReady) {
@@ -134,25 +211,35 @@ export default function UploadPage() {
     let cancelled = false;
     completionNotifiedRef.current = null;
 
-    const loadTasks = async () => {
+    const loadJobState = async () => {
       try {
-        const res = await fetch(`/api/v2/scan-jobs/${scanJobId}/tasks?limit=200`, {
-          headers: { 'x-access-token': accessToken },
-        });
-        const payload = await res.json();
-        if (!res.ok || cancelled) {
-          if (res.status === 404 || res.status === 403) {
+        const [tasksRes, jobRes] = await Promise.all([
+          fetch(`/api/v2/scan-jobs/${scanJobId}/tasks?limit=400`, {
+            headers: { 'x-access-token': accessToken },
+          }),
+          fetch(`/api/v2/scan-jobs/${scanJobId}`, {
+            headers: { 'x-access-token': accessToken },
+          }),
+        ]);
+
+        const [tasksPayload, jobPayload] = await Promise.all([tasksRes.json(), jobRes.json()]);
+
+        if (cancelled) return;
+
+        if (!tasksRes.ok || !jobRes.ok) {
+          if (tasksRes.status === 404 || tasksRes.status === 403 || jobRes.status === 404 || jobRes.status === 403) {
             setScanJobId(null);
             setScanJobState(null);
             setEntries([]);
             if (typeof window !== 'undefined') {
               localStorage.removeItem(getPersistedJobKey(workspaceId));
+              clearPersistedManifest(scanJobId);
             }
           }
           return;
         }
 
-        const rows = (Array.isArray(payload?.data) ? payload.data : []) as TaskRow[];
+        const rows = (Array.isArray(tasksPayload?.data) ? tasksPayload.data : []) as TaskRow[];
         const fromTasks: UploadQueueEntry[] = rows.map((task) => {
           const artifactMetadata =
             task.artifact?.metadata && typeof task.artifact.metadata === 'object' && !Array.isArray(task.artifact.metadata)
@@ -181,6 +268,7 @@ export default function UploadPage() {
                 : 0,
             taskId: task.id,
             artifactId: task.artifactId,
+            artifactUrl: task.artifact?.url,
             updatedAt: task.updatedAt,
             error: task.lastError || undefined,
             archetypeHint: task.archetypeHint || undefined,
@@ -204,38 +292,42 @@ export default function UploadPage() {
           return [...localOnlyRows, ...inFlightMissingFromPoll, ...fromTasks];
         });
 
-        const completed = rows.filter((row) => row.status === 'COMPLETED').length;
-        const failed = rows.filter((row) => row.status === 'FAILED').length;
-        const nextStatus =
-          completed + failed >= rows.length && rows.length > 0
-            ? failed > 0
-              ? 'FAILED'
-              : 'REVIEW'
-            : 'PROCESSING';
+        const jobData = jobPayload?.data as
+          | {
+              id: string;
+              status: string;
+              totalFiles: number;
+              processedFiles: number;
+              eventId?: string | null;
+            }
+          | undefined;
 
-        setScanJobState(() => ({
-          id: scanJobId,
-          status: nextStatus,
-          totalFiles: rows.length,
-          processedFiles: completed + failed,
-        }));
+        if (jobData) {
+          setScanJobState({
+            id: jobData.id,
+            status: jobData.status,
+            totalFiles: jobData.totalFiles,
+            processedFiles: jobData.processedFiles,
+            eventId: jobData.eventId || null,
+          });
+        }
 
         if (typeof window !== 'undefined') {
           localStorage.setItem(getPersistedJobKey(workspaceId), scanJobId);
         }
 
-        const isTerminal = nextStatus === 'REVIEW' || nextStatus === 'FAILED';
-        if (isTerminal && completionNotifiedRef.current !== scanJobId) {
+        const terminalStatus = jobData?.status === 'REVIEW' || jobData?.status === 'FAILED' || jobData?.status === 'COMPLETED';
+        if (terminalStatus && completionNotifiedRef.current !== scanJobId) {
           completionNotifiedRef.current = scanJobId;
-          if (nextStatus === 'REVIEW') {
+          if (jobData?.status === 'REVIEW' || jobData?.status === 'COMPLETED') {
             setSubmitMessage({
               type: 'success',
-              text: `Processing finished. ${completed} screenshot(s) are ready for review.`,
+              text: `Processing finished. ${jobData?.processedFiles || 0} screenshot(s) are ready for review.`,
             });
           } else {
             setSubmitMessage({
               type: 'error',
-              text: `Processing finished with failures (${failed}/${rows.length}). Review or retry failed rows.`,
+              text: `Processing finished with failures (${jobData?.processedFiles || 0}/${jobData?.totalFiles || 0}). Review or retry failed rows.`,
             });
           }
         }
@@ -244,9 +336,9 @@ export default function UploadPage() {
       }
     };
 
-    void loadTasks();
+    void loadJobState();
     const interval = window.setInterval(() => {
-      void loadTasks();
+      void loadJobState();
       void loadAwsOcrControl();
     }, 3000);
 
@@ -254,7 +346,14 @@ export default function UploadPage() {
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, [scanJobId, workspaceId, accessToken, loadAwsOcrControl, getPersistedJobKey]);
+  }, [
+    scanJobId,
+    workspaceId,
+    accessToken,
+    loadAwsOcrControl,
+    getPersistedJobKey,
+    clearPersistedManifest,
+  ]);
 
   const triggerAwsOcrControl = useCallback(
     async (action: 'START' | 'STOP', source: 'manual' | 'auto' = 'manual', force = false) => {
@@ -346,9 +445,11 @@ export default function UploadPage() {
     async (args: {
       scanJobId: string;
       eventId: string | null;
-      file: File;
       rowId: string;
       artifactUrl: string;
+      fileName: string;
+      bytes: number;
+      idempotencyKey: string;
     }) => {
       const res = await fetch(`/api/v2/scan-jobs/${args.scanJobId}/artifacts`, {
         method: 'POST',
@@ -361,19 +462,19 @@ export default function UploadPage() {
           eventId: args.eventId,
           artifactUrl: args.artifactUrl,
           artifactType: 'SCREENSHOT',
-          fileName: args.file.name,
-          bytes: args.file.size,
-          idempotencyKey: `task-${args.scanJobId}-${args.rowId}`,
+          fileName: args.fileName,
+          bytes: args.bytes,
+          idempotencyKey: args.idempotencyKey,
         }),
       });
 
       const payload = await res.json();
       if (!res.ok) {
-        throw new Error(payload?.error?.message || `Failed to enqueue ${args.file.name}.`);
+        throw new Error(payload?.error?.message || `Failed to enqueue ${args.fileName}.`);
       }
 
       return payload?.data as {
-        artifact: { id: string };
+        artifact: { id: string; url?: string };
         task: {
           id: string;
           status: 'QUEUED' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
@@ -383,6 +484,169 @@ export default function UploadPage() {
     },
     [accessToken, workspaceId]
   );
+
+  const runWithRetries = useCallback(async <T,>(fn: (attempt: number) => Promise<T>) => {
+    let lastError: unknown = null;
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt += 1) {
+      try {
+        return await fn(attempt);
+      } catch (error) {
+        lastError = error;
+        if (attempt >= MAX_RETRIES) break;
+        await delay(250 * 2 ** (attempt - 1));
+      }
+    }
+    throw lastError instanceof Error ? lastError : new Error('Operation failed after retries.');
+  }, []);
+
+  const finalizeUploadBatch = useCallback(
+    async (args: { scanJobId: string; expectedTotal: number; rowIds?: string[] }) => {
+      if (!workspaceReady || !accessToken) return null;
+
+      const manifestRows = (args.rowIds && args.rowIds.length > 0
+        ? entriesRef.current.filter((entry) => args.rowIds?.includes(entry.id))
+        : entriesRef.current
+      ).map((entry) => toManifestEntry(entry));
+
+      const res = await fetch(`/api/v2/scan-jobs/${args.scanJobId}/finalize-upload`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-access-token': accessToken,
+        },
+        body: JSON.stringify({
+          workspaceId,
+          expectedTotal: args.expectedTotal,
+          manifest: manifestRows,
+        }),
+      });
+
+      const payload = await res.json();
+      if (!res.ok) {
+        throw new Error(payload?.error?.message || 'Failed to finalize upload batch.');
+      }
+
+      const data = payload?.data as
+        | {
+            finalized: boolean;
+            missingCount: number;
+            enqueuedCount: number;
+            status: string;
+            error: string | null;
+          }
+        | undefined;
+
+      if (data) {
+        setScanJobState((prev) =>
+          prev
+            ? {
+                ...prev,
+                status: data.status || prev.status,
+                totalFiles: args.expectedTotal,
+              }
+            : prev
+        );
+      }
+
+      return data || null;
+    },
+    [workspaceReady, accessToken, workspaceId]
+  );
+
+  const processQueueEntry = useCallback(
+    async (args: {
+      scanJobId: string;
+      eventId: string | null;
+      rowId: string;
+      fileName: string;
+      bytes: number;
+      idempotencyKey: string;
+      file?: File;
+      artifactUrl?: string;
+      retryCount?: number;
+    }) => {
+      setEntries((prev) =>
+        prev.map((entry) =>
+          entry.id === args.rowId
+            ? {
+                ...entry,
+                status: 'uploading',
+                error: undefined,
+                retryCount: (entry.retryCount || 0) + (args.retryCount || 0),
+                updatedAt: new Date().toISOString(),
+              }
+            : entry
+        )
+      );
+
+      try {
+        const artifactUrl =
+          args.artifactUrl ||
+          (await runWithRetries(async () => {
+            if (!args.file) {
+              throw new Error(`File payload is no longer available for ${args.fileName}. Re-upload this screenshot.`);
+            }
+            return uploadScreenshotArtifact(args.file);
+          }));
+
+        const queued = await runWithRetries(async () =>
+          enqueueArtifactTask({
+            scanJobId: args.scanJobId,
+            eventId: args.eventId,
+            rowId: args.rowId,
+            artifactUrl,
+            fileName: args.fileName,
+            bytes: args.bytes,
+            idempotencyKey: args.idempotencyKey,
+          })
+        );
+
+        setEntries((prev) =>
+          prev.map((entry) =>
+            entry.id === args.rowId
+              ? {
+                  ...entry,
+                  status: mapTaskStatus(queued.task.status, null),
+                  taskId: queued.task.id,
+                  artifactId: queued.artifact.id,
+                  artifactUrl,
+                  archetypeHint: queued.task.archetypeHint || undefined,
+                  updatedAt: new Date().toISOString(),
+                  error: undefined,
+                }
+              : entry
+          )
+        );
+      } catch (error) {
+        setEntries((prev) =>
+          prev.map((entry) =>
+            entry.id === args.rowId
+              ? {
+                  ...entry,
+                  status: 'failed',
+                  artifactUrl: args.artifactUrl || entry.artifactUrl,
+                  error: error instanceof Error ? error.message : 'Failed to enqueue file.',
+                  updatedAt: new Date().toISOString(),
+                }
+              : entry
+          )
+        );
+      }
+    },
+    [runWithRetries, uploadScreenshotArtifact, enqueueArtifactTask]
+  );
+
+  const runConcurrent = useCallback(async (jobs: Array<() => Promise<void>>, concurrency: number) => {
+    let cursor = 0;
+    const workers = Array.from({ length: Math.min(concurrency, jobs.length) }, async () => {
+      while (cursor < jobs.length) {
+        const index = cursor;
+        cursor += 1;
+        await jobs[index]();
+      }
+    });
+    await Promise.all(workers);
+  }, []);
 
   const handleFiles = useCallback(
     async (files: File[]) => {
@@ -413,68 +677,60 @@ export default function UploadPage() {
           localStorage.setItem(getPersistedJobKey(workspaceId), job.id);
         }
 
-        const newRows: UploadQueueEntry[] = imageFiles.map((file, index) => ({
-          id: `${Date.now()}-${index}`,
-          fileName: file.name,
-          status: 'uploading',
-          sizeBytes: file.size,
-          updatedAt: new Date().toISOString(),
-        }));
+        const baseTime = Date.now();
+        const newRows: UploadQueueEntry[] = imageFiles.map((file, index) => {
+          const rowId = `${baseTime}-${index}`;
+          const idempotencyKey = `task-${job.id}-${rowId}`;
+          localFilesRef.current[rowId] = file;
+          return {
+            id: rowId,
+            fileName: file.name,
+            status: 'uploading',
+            sizeBytes: file.size,
+            idempotencyKey,
+            updatedAt: new Date().toISOString(),
+          };
+        });
 
-        setEntries((prev) => [...newRows, ...prev]);
+        setEntries(newRows);
 
-        for (let i = 0; i < imageFiles.length; i += 1) {
-          const file = imageFiles[i];
-          const rowId = newRows[i].id;
+        const jobs = newRows.map((row, index) => async () => {
+          const file = imageFiles[index];
+          await processQueueEntry({
+            scanJobId: job.id,
+            eventId: job.eventId || activeWeekly?.id || null,
+            rowId: row.id,
+            fileName: file.name,
+            bytes: file.size,
+            idempotencyKey: row.idempotencyKey || `task-${job.id}-${row.id}`,
+            file,
+          });
+        });
 
-          try {
-            const artifactUrl = await uploadScreenshotArtifact(file);
-            const queued = await enqueueArtifactTask({
-              scanJobId: job.id,
-              eventId: job.eventId || activeWeekly?.id || null,
-              file,
-              rowId,
-              artifactUrl,
-            });
+        await runConcurrent(jobs, UPLOAD_CONCURRENCY);
+        await delay(50);
 
-            setEntries((prev) =>
-              prev.map((entry) =>
-                entry.id === rowId
-                  ? {
-                      ...entry,
-                      status: mapTaskStatus(queued.task.status, null),
-                      taskId: queued.task.id,
-                      artifactId: queued.artifact.id,
-                      archetypeHint: queued.task.archetypeHint || undefined,
-                      updatedAt: new Date().toISOString(),
-                    }
-                  : entry
-              )
-            );
-          } catch (error) {
-            setEntries((prev) =>
-              prev.map((entry) =>
-                entry.id === rowId
-                  ? {
-                      ...entry,
-                      status: 'failed',
-                      error: error instanceof Error ? error.message : 'Failed to enqueue file.',
-                      updatedAt: new Date().toISOString(),
-                    }
-                  : entry
-              )
-            );
-          }
-        }
+        const finalizeResult = await finalizeUploadBatch({
+          scanJobId: job.id,
+          expectedTotal: imageFiles.length,
+          rowIds: newRows.map((row) => row.id),
+        });
 
         if (awsOcrControl?.enabled && awsOcrControl.startLambdaConfigured) {
           await triggerAwsOcrControl('START', 'auto', false);
         }
 
-        setSubmitMessage({
-          type: 'success',
-          text: `Queued ${imageFiles.length} screenshot(s). OCR processing now runs in the EC2 worker queue.`,
-        });
+        if (finalizeResult?.finalized === false) {
+          setSubmitMessage({
+            type: 'error',
+            text: `Upload finalized with mismatch: expected ${imageFiles.length}, enqueued ${finalizeResult.enqueuedCount}. Missing ${finalizeResult.missingCount}.`,
+          });
+        } else {
+          setSubmitMessage({
+            type: 'success',
+            text: `Queued ${imageFiles.length} screenshot(s). OCR processing now runs in the EC2 worker queue.`,
+          });
+        }
       } catch (error) {
         setSubmitMessage({
           type: 'error',
@@ -492,14 +748,85 @@ export default function UploadPage() {
       weeklyEvent,
       loadWeeklyEvent,
       createScanJob,
-      uploadScreenshotArtifact,
-      enqueueArtifactTask,
+      processQueueEntry,
+      runConcurrent,
+      finalizeUploadBatch,
       awsOcrControl?.enabled,
       awsOcrControl?.startLambdaConfigured,
       triggerAwsOcrControl,
       getPersistedJobKey,
     ]
   );
+
+  const retryEntry = useCallback(
+    async (rowId: string, fromBulk = false) => {
+      if (!scanJobId || !scanJobState) {
+        throw new Error('No active scan job to retry against.');
+      }
+
+      const entry = entriesRef.current.find((item) => item.id === rowId);
+      if (!entry) {
+        throw new Error('Upload row not found for retry.');
+      }
+
+      const idempotencyKey = entry.idempotencyKey || `retry-${scanJobId}-${rowId}-${Date.now()}`;
+      const file = localFilesRef.current[rowId];
+
+      if (!fromBulk) {
+        setRetryingRowId(rowId);
+      }
+
+      try {
+        await processQueueEntry({
+          scanJobId,
+          eventId: scanJobState.eventId || null,
+          rowId,
+          fileName: entry.fileName,
+          bytes: entry.sizeBytes,
+          artifactUrl: entry.artifactUrl,
+          idempotencyKey,
+          file,
+          retryCount: 1,
+        });
+
+        await delay(25);
+        await finalizeUploadBatch({
+          scanJobId,
+          expectedTotal: scanJobState.totalFiles,
+        });
+      } finally {
+        if (!fromBulk) {
+          setRetryingRowId(null);
+        }
+      }
+    },
+    [scanJobId, scanJobState, processQueueEntry, finalizeUploadBatch]
+  );
+
+  const retryFailedEntries = useCallback(async () => {
+    const failedRows = entriesRef.current.filter((entry) => entry.status === 'failed');
+    if (failedRows.length === 0) return;
+
+    setRetryingBulk(true);
+    setSubmitMessage(null);
+
+    let failed = 0;
+    for (const entry of failedRows) {
+      try {
+        await retryEntry(entry.id, true);
+      } catch {
+        failed += 1;
+      }
+    }
+
+    setRetryingBulk(false);
+    if (failed > 0) {
+      setSubmitMessage({
+        type: 'error',
+        text: `Retry finished with ${failed} failed row(s).`,
+      });
+    }
+  }, [retryEntry]);
 
   const onDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -520,8 +847,10 @@ export default function UploadPage() {
     setSubmitMessage(null);
     setScanJobId(null);
     setScanJobState(null);
+    localFilesRef.current = {};
     if (typeof window !== 'undefined' && workspaceId) {
       localStorage.removeItem(getPersistedJobKey(workspaceId));
+      clearPersistedManifest(scanJobId);
     }
   };
 
@@ -536,18 +865,26 @@ export default function UploadPage() {
   const workerLabel = !awsOcrControl?.enabled ? 'Disabled' : workerRunning ? 'Online' : 'Standby';
   const workerTone = !awsOcrControl?.enabled ? 'neutral' : workerRunning ? 'good' : 'warn';
 
-  const completedProfileRows = entries.filter(
-    (entry) =>
-      (entry.status === 'completed' || entry.status === 'duplicate') &&
-      entry.metadata &&
-      String((entry.metadata as Record<string, unknown>).ingestionDomain || '') === 'PROFILE_SNAPSHOT'
-  ).length;
-  const completedRankingRows = entries.filter(
-    (entry) =>
-      (entry.status === 'completed' || entry.status === 'duplicate') &&
-      entry.metadata &&
-      String((entry.metadata as Record<string, unknown>).ingestionDomain || '') === 'RANKING_CAPTURE'
-  ).length;
+  const completedProfileRows = useMemo(
+    () =>
+      entries.filter(
+        (entry) =>
+          (entry.status === 'completed' || entry.status === 'duplicate') &&
+          entry.metadata &&
+          String((entry.metadata as Record<string, unknown>).ingestionDomain || '') === 'PROFILE_SNAPSHOT'
+      ).length,
+    [entries]
+  );
+  const completedRankingRows = useMemo(
+    () =>
+      entries.filter(
+        (entry) =>
+          (entry.status === 'completed' || entry.status === 'duplicate') &&
+          entry.metadata &&
+          String((entry.metadata as Record<string, unknown>).ingestionDomain || '') === 'RANKING_CAPTURE'
+      ).length,
+    [entries]
+  );
 
   return (
     <div className="space-y-4 sm:space-y-5 lg:space-y-6">
@@ -608,7 +945,18 @@ export default function UploadPage() {
           onOpenRankingReview={() => router.push('/rankings/review')}
         />
 
-        <UploadQueueTable entries={entries} onClear={clearRows} />
+        <UploadQueueTable
+          entries={entries}
+          onClear={clearRows}
+          onRetryRow={(rowId) => {
+            void retryEntry(rowId);
+          }}
+          onRetryFailed={() => {
+            void retryFailedEntries();
+          }}
+          retryingRowId={retryingRowId}
+          retryingBulk={retryingBulk}
+        />
 
         <UploadSubmitNotice submitMessage={submitMessage?.type === 'success' ? submitMessage : null} />
       </SessionGate>

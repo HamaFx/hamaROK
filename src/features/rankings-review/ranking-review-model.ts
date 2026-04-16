@@ -18,6 +18,12 @@ export interface ReviewRow {
   confidence: number;
   identityStatus: IdentityStatus;
   candidates?: Record<string, unknown>;
+  identitySuggestions?: Array<{
+    governorId: string;
+    governorGameId: string;
+    name: string;
+    source: 'alias' | 'name';
+  }>;
   createdAt: string;
   run: {
     id: string;
@@ -34,6 +40,9 @@ export interface ReviewRow {
       uniformity?: Record<string, unknown> | null;
       worker?: string | null;
       ocrDurationMs?: number | null;
+      slotCount?: number | null;
+      detectedRows?: number | null;
+      validRows?: number | null;
     } | null;
     createdAt: string;
     artifact?: {
@@ -52,6 +61,25 @@ export interface RankingReviewSummary {
     metricKey: string;
     count: number;
   }>;
+}
+
+export interface RankingReviewGroup {
+  runId: string;
+  rankingType: string;
+  metricKey: string;
+  createdAt: string;
+  status: string;
+  headerText: string | null;
+  diagnostics: ReviewRow['run']['diagnostics'] | null;
+  artifact: {
+    id: string;
+    url: string;
+    type: string;
+  } | null;
+  rows: ReviewRow[];
+  statusCounts: Record<IdentityStatus, number>;
+  unresolvedCount: number;
+  totalRows: number;
 }
 
 export interface RankingReviewDraft {
@@ -127,6 +155,28 @@ function normalizeName(value: string): string {
 
 export function parseCandidatePreview(candidates?: Record<string, unknown>) {
   if (!candidates) return [] as string[];
+
+  const suggestionRaw = candidates.identitySuggestions as unknown;
+  if (Array.isArray(suggestionRaw)) {
+    const suggestionPreview = suggestionRaw
+      .map((entry) => {
+        if (!entry || typeof entry !== 'object') return null;
+        const governor = entry as {
+          name?: string;
+          governorGameId?: string;
+          source?: string;
+        };
+        const name = String(governor.name || '').trim();
+        const gameId = String(governor.governorGameId || '').trim();
+        const source = governor.source === 'alias' ? 'alias' : governor.source === 'name' ? 'name' : '';
+        if (!name) return null;
+        const suffix = [gameId ? `ID ${gameId}` : '', source ? source : ''].filter(Boolean).join(' • ');
+        return suffix ? `${name} (${suffix})` : name;
+      })
+      .filter((entry): entry is string => Boolean(entry))
+      .slice(0, 3);
+    if (suggestionPreview.length > 0) return suggestionPreview;
+  }
 
   const rowCandidates = (candidates.rowCandidates || candidates.candidates || candidates.matches) as unknown;
   if (!Array.isArray(rowCandidates)) return [];

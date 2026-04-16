@@ -1268,6 +1268,18 @@ def _classify_ranking_header(header_text: str) -> Tuple[Optional[str], Optional[
 
     return None, None, without_rank_suffix
 
+def _cluster_row_centers(values: List[float], max_gap: float) -> List[float]:
+    cleaned = sorted(value for value in values if isinstance(value, (int, float)))
+    if not cleaned:
+        return []
+    clusters: List[List[float]] = [[cleaned[0]]]
+    for value in cleaned[1:]:
+        if value - clusters[-1][-1] <= max_gap:
+            clusters[-1].append(value)
+        else:
+            clusters.append([value])
+    return [sum(cluster) / max(1, len(cluster)) for cluster in clusters]
+
 def _extract_ranking(lines: List[Dict[str, Any]], width: int, height: int) -> Dict[str, Any]:
     header_lines = [
         line for line in lines
@@ -1298,6 +1310,14 @@ def _extract_ranking(lines: List[Dict[str, Any]], width: int, height: int) -> Di
         else 0.0
     )
 
+    rank_anchors = [
+        line for line in lines
+        if line['cy'] > height * 0.2
+        and line['cy'] < height * 0.95
+        and line['cx'] > width * 0.10
+        and line['cx'] < width * 0.30
+        and re.fullmatch(r'[0-9]{1,4}', _clean_digits(line['text'], 4) or '')
+    ]
     metric_anchors = [
         line for line in lines
         if line['cy'] > height * 0.2
@@ -1306,11 +1326,37 @@ def _extract_ranking(lines: List[Dict[str, Any]], width: int, height: int) -> Di
         and re.search(r'[0-9]', line['text'])
         and len(_clean_digits(line['text'])) >= 1
     ]
+    name_anchors = [
+        line for line in lines
+        if line['cy'] > height * 0.2
+        and line['cy'] < height * 0.95
+        and line['cx'] > width * 0.24
+        and line['cx'] < width * 0.68
+        and re.search(r'[A-Za-z]', line['text'])
+    ]
+    rank_anchors.sort(key=lambda item: item['cy'])
     metric_anchors.sort(key=lambda item: item['cy'])
+    name_anchors.sort(key=lambda item: item['cy'])
+
+    slot_seed = [line['cy'] for line in rank_anchors]
+    if len(slot_seed) < int(rule.get('minRows', 3)):
+        slot_seed.extend([line['cy'] for line in metric_anchors])
+        slot_seed.extend([line['cy'] for line in name_anchors])
+    slot_centers = _cluster_row_centers(slot_seed, max(18.0, height * 0.028))
+    if not slot_centers:
+        fallback_start = height * 0.255
+        fallback_step = height * 0.108
+        slot_centers = [
+            fallback_start + fallback_step * i
+            for i in range(12)
+            if fallback_start + fallback_step * i < height * 0.95
+        ]
+    slot_centers = sorted(slot_centers)[:12]
 
     rows: List[Dict[str, Any]] = []
     seen = set()
     dropped_row_count = 0
+    detected_rows = 0
     dropped_reason_count: Dict[str, int] = {}
 
     def _drop(reason: str):
@@ -1318,9 +1364,24 @@ def _extract_ranking(lines: List[Dict[str, Any]], width: int, height: int) -> Di
         dropped_row_count += 1
         dropped_reason_count[reason] = dropped_reason_count.get(reason, 0) + 1
 
-    for metric_line in metric_anchors:
-        y = metric_line['cy']
-        row_height = max(20, metric_line['h'] * 2.0)
+    for y in slot_centers:
+        detected_rows += 1
+        nearest_line_pool = metric_anchors + name_anchors
+        nearest_reference = min(
+            nearest_line_pool,
+            key=lambda item: abs(item['cy'] - y)
+        ) if nearest_line_pool else None
+        row_height = max(20, (nearest_reference['h'] * 2.0) if nearest_reference else height * 0.085)
+
+        metric_candidates = [
+            line for line in metric_anchors
+            if abs(line['cy'] - y) < row_height
+        ]
+        if not metric_candidates:
+            _drop('metric-missing')
+            continue
+        metric_line = min(metric_candidates, key=lambda item: abs(item['cy'] - y))
+
         name_candidates = [
             line for line in lines
             if abs(line['cy'] - y) < row_height
@@ -1337,10 +1398,8 @@ def _extract_ranking(lines: List[Dict[str, Any]], width: int, height: int) -> Di
             and re.search(r'[A-Za-z]', line['text'])
         ]
         rank_candidates = [
-            line for line in lines
+            line for line in rank_anchors
             if abs(line['cy'] - y) < row_height
-            and line['cx'] < width * 0.28
-            and re.fullmatch(r'[0-9]{1,4}', _clean_digits(line['text'], 4) or '')
         ]
 
         if not name_candidates:
@@ -1465,7 +1524,9 @@ def _extract_ranking(lines: List[Dict[str, Any]], width: int, height: int) -> Di
         'rows': rows,
         'metadata': {
             'lineCount': len(lines),
-            'detectedRows': len(rows),
+            'slotCount': len(slot_centers),
+            'detectedRows': detected_rows,
+            'validRows': len(rows),
             'averageConfidence': avg_conf,
             'classificationConfidence': max(0.0, min(100.0, classification_confidence * 100)),
             'droppedRowCount': dropped_row_count,

@@ -11,8 +11,12 @@ export interface UploadQueueEntry {
   fileName: string;
   status: QueueRowStatus;
   sizeBytes: number;
+  idempotencyKey?: string;
   taskId?: string;
   artifactId?: string;
+  artifactUrl?: string;
+  retryCount?: number;
+  persisted?: boolean;
   updatedAt: string;
   error?: string;
   archetypeHint?: string;
@@ -41,6 +45,16 @@ export interface TaskRow {
     url: string;
     metadata?: Record<string, unknown> | null;
   } | null;
+}
+
+export interface UploadFinalizeManifestEntry {
+  rowId: string;
+  fileName: string;
+  status: QueueRowStatus;
+  taskId?: string;
+  artifactId?: string;
+  idempotencyKey?: string;
+  error?: string;
 }
 
 export interface AwsOcrControlStatus {

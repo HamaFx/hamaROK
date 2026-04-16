@@ -16,7 +16,8 @@
     "test:e2e": "vitest run tests/e2e",
     "test:ocr-regression": "vitest run tests/regression",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "backfill:aliases": "tsx scripts/backfill-governor-aliases.ts"
   },
   "dependencies": {
     "@aws-sdk/client-ec2": "^3.1030.0",

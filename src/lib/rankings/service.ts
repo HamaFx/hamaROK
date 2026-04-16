@@ -108,9 +108,47 @@ interface MergeResult {
   reason: string;
 }
 
+interface IdentitySuggestion {
+  governorId: string;
+  governorGameId: string;
+  name: string;
+  source: 'alias' | 'name';
+}
+
 function toJsonValue(value: unknown): Prisma.InputJsonValue | undefined {
   if (value == null) return undefined;
   return value as Prisma.InputJsonValue;
+}
+
+function parseIdentitySuggestions(candidates: Prisma.JsonValue | null | undefined): IdentitySuggestion[] {
+  const record =
+    candidates && typeof candidates === 'object' && !Array.isArray(candidates)
+      ? (candidates as Record<string, unknown>)
+      : null;
+  const raw = record?.identitySuggestions;
+  if (!Array.isArray(raw)) return [];
+
+  const seen = new Set<string>();
+  const parsed: IdentitySuggestion[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
+    const entry = item as Record<string, unknown>;
+    const governorId = typeof entry.governorId === 'string' ? entry.governorId : '';
+    const governorGameId =
+      typeof entry.governorGameId === 'string' ? entry.governorGameId : '';
+    const name = typeof entry.name === 'string' ? entry.name.trim() : '';
+    const source = entry.source === 'alias' ? 'alias' : entry.source === 'name' ? 'name' : null;
+    if (!governorId || !governorGameId || !name || !source) continue;
+    if (seen.has(governorId)) continue;
+    seen.add(governorId);
+    parsed.push({
+      governorId,
+      governorGameId,
+      name,
+      source,
+    });
+  }
+  return parsed.slice(0, 8);
 }
 
 function parseRunDiagnostics(metadata: Prisma.JsonValue | null | undefined) {
@@ -127,6 +165,9 @@ function parseRunDiagnostics(metadata: Prisma.JsonValue | null | undefined) {
   const uniformityRaw = record.uniformity;
   const workerRaw = record.worker;
   const ocrDurationMsRaw = record.ocrDurationMs;
+  const slotCountRaw = record.slotCount;
+  const detectedRowsRaw = record.detectedRows;
+  const validRowsRaw = record.validRows;
 
   const classificationConfidence =
     typeof classificationConfidenceRaw === 'number' && Number.isFinite(classificationConfidenceRaw)
@@ -155,6 +196,18 @@ function parseRunDiagnostics(metadata: Prisma.JsonValue | null | undefined) {
     typeof ocrDurationMsRaw === 'number' && Number.isFinite(ocrDurationMsRaw)
       ? Math.max(0, Math.floor(ocrDurationMsRaw))
       : null;
+  const slotCount =
+    typeof slotCountRaw === 'number' && Number.isFinite(slotCountRaw)
+      ? Math.max(0, Math.floor(slotCountRaw))
+      : null;
+  const detectedRows =
+    typeof detectedRowsRaw === 'number' && Number.isFinite(detectedRowsRaw)
+      ? Math.max(0, Math.floor(detectedRowsRaw))
+      : null;
+  const validRows =
+    typeof validRowsRaw === 'number' && Number.isFinite(validRowsRaw)
+      ? Math.max(0, Math.floor(validRowsRaw))
+      : null;
 
   const hasDiagnostics =
     classificationConfidence != null ||
@@ -163,7 +216,10 @@ function parseRunDiagnostics(metadata: Prisma.JsonValue | null | undefined) {
     detectedBoardTokens.length > 0 ||
     uniformity != null ||
     worker != null ||
-    ocrDurationMs != null;
+    ocrDurationMs != null ||
+    slotCount != null ||
+    detectedRows != null ||
+    validRows != null;
   if (!hasDiagnostics) return null;
 
   return {
@@ -174,6 +230,9 @@ function parseRunDiagnostics(metadata: Prisma.JsonValue | null | undefined) {
     uniformity,
     worker,
     ocrDurationMs,
+    slotCount,
+    detectedRows,
+    validRows,
   };
 }
 
@@ -1233,6 +1292,7 @@ export async function getRankingRunById(args: {
       identityStatus: entry.item.row.identityStatus,
       ocrTrace: entry.item.row.ocrTrace,
       candidates: entry.item.row.candidates,
+      identitySuggestions: parseIdentitySuggestions(entry.item.row.candidates),
       createdAt: entry.item.row.createdAt.toISOString(),
       updatedAt: entry.item.row.updatedAt.toISOString(),
     })),
@@ -1342,6 +1402,102 @@ async function resolveGovernorRef(
   return null;
 }
 
+async function seedGovernorAliasConflictSafeTx(
+  tx: Prisma.TransactionClient,
+  args: {
+    workspaceId: string;
+    governorDbId: string;
+    aliasRaw: string;
+    source: string;
+  }
+): Promise<'seeded' | 'conflict' | 'skipped'> {
+  const aliasRaw = normalizeGovernorDisplayName(args.aliasRaw);
+  const aliasNormalized = normalizeGovernorAlias(aliasRaw);
+  if (!aliasRaw || !aliasNormalized || aliasNormalized === 'unknown') {
+    return 'skipped';
+  }
+
+  const existing = await tx.governorAlias.findUnique({
+    where: {
+      workspaceId_aliasNormalized: {
+        workspaceId: args.workspaceId,
+        aliasNormalized,
+      },
+    },
+    select: {
+      id: true,
+      governorId: true,
+    },
+  });
+
+  if (existing && existing.governorId !== args.governorDbId) {
+    return 'conflict';
+  }
+
+  await tx.governorAlias.upsert({
+    where: {
+      workspaceId_aliasNormalized: {
+        workspaceId: args.workspaceId,
+        aliasNormalized,
+      },
+    },
+    create: {
+      workspaceId: args.workspaceId,
+      governorId: args.governorDbId,
+      aliasRaw,
+      aliasNormalized,
+      confidence: 1,
+      source: args.source,
+    },
+    update: {
+      governorId: args.governorDbId,
+      aliasRaw,
+      confidence: 1,
+      source: args.source,
+    },
+  });
+
+  return 'seeded';
+}
+
+async function seedRankingManualActionAliasesTx(
+  tx: Prisma.TransactionClient,
+  args: {
+    workspaceId: string;
+    governorDbId: string;
+    governorNameRaw: string;
+    allianceRaw?: string | null;
+    titleRaw?: string | null;
+    source: string;
+  }
+) {
+  const split = splitGovernorNameAndAlliance({
+    governorNameRaw: args.governorNameRaw,
+    allianceRaw: args.allianceRaw || null,
+    subtitleRaw: args.titleRaw || null,
+  });
+  const canonicalName = normalizeGovernorDisplayName(split.governorNameRaw || args.governorNameRaw);
+  if (!canonicalName) return;
+
+  const aliasCandidates = [canonicalName];
+  if (split.trackedAlliance && split.allianceTag) {
+    aliasCandidates.push(`[${split.allianceTag}] ${canonicalName}`);
+  }
+
+  const seen = new Set<string>();
+  for (const aliasCandidate of aliasCandidates) {
+    const normalized = normalizeGovernorAlias(aliasCandidate);
+    if (!normalized || normalized === 'unknown' || seen.has(normalized)) continue;
+    seen.add(normalized);
+    await seedGovernorAliasConflictSafeTx(tx, {
+      workspaceId: args.workspaceId,
+      governorDbId: args.governorDbId,
+      aliasRaw: aliasCandidate,
+      source: args.source,
+    });
+  }
+}
+
 export async function applyRankingReviewAction(args: {
   workspaceId: string;
   rowId: string;
@@ -1393,6 +1549,7 @@ export async function applyRankingReviewAction(args: {
     let titleRaw = row.titleRaw;
     let metricRaw = row.metricRaw;
     let metricValue = row.metricValue;
+    const hasExplicitGovernorRef = Boolean(args.governorDbId || args.governorGameId);
 
     if (args.action === RankingRowReviewAction.LINK_TO_GOVERNOR) {
       const governor = await resolveGovernorRef(tx, {
@@ -1444,27 +1601,11 @@ export async function applyRankingReviewAction(args: {
         );
       }
 
-      await tx.governorAlias.upsert({
-        where: {
-          workspaceId_aliasNormalized: {
-            workspaceId: args.workspaceId,
-            aliasNormalized,
-          },
-        },
-        create: {
-          workspaceId: args.workspaceId,
-          governorId: governor.id,
-          aliasRaw,
-          aliasNormalized,
-          confidence: 1,
-          source: 'review',
-        },
-        update: {
-          governorId: governor.id,
-          aliasRaw,
-          confidence: 1,
-          source: 'review',
-        },
+      await seedGovernorAliasConflictSafeTx(tx, {
+        workspaceId: args.workspaceId,
+        governorDbId: governor.id,
+        aliasRaw,
+        source: 'review',
       });
 
       governorId = governor.id;
@@ -1521,6 +1662,22 @@ export async function applyRankingReviewAction(args: {
       allianceRaw,
       governorNameRaw,
     });
+
+    const shouldSeedManualAliases =
+      Boolean(governorId) &&
+      (args.action === RankingRowReviewAction.LINK_TO_GOVERNOR ||
+        args.action === RankingRowReviewAction.CREATE_ALIAS ||
+        (args.action === RankingRowReviewAction.CORRECT_ROW && hasExplicitGovernorRef));
+    if (shouldSeedManualAliases && governorId) {
+      await seedRankingManualActionAliasesTx(tx, {
+        workspaceId: args.workspaceId,
+        governorDbId: governorId,
+        governorNameRaw,
+        allianceRaw,
+        titleRaw,
+        source: 'ranking-review',
+      });
+    }
 
     const rowHash = computeRankingRowHash({
       sourceRank,
@@ -1702,6 +1859,7 @@ export async function listRankingReviewRows(args: {
       identityStatus: row.identityStatus,
       ocrTrace: row.ocrTrace,
       candidates: row.candidates,
+      identitySuggestions: parseIdentitySuggestions(row.candidates),
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
       run: {

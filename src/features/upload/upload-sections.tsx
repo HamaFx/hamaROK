@@ -265,9 +265,17 @@ export function UploadProcessingPanel({
 export function UploadQueueTable({
   entries,
   onClear,
+  onRetryRow,
+  onRetryFailed,
+  retryingRowId,
+  retryingBulk,
 }: {
   entries: UploadQueueEntry[];
   onClear: () => void;
+  onRetryRow: (rowId: string) => void;
+  onRetryFailed: () => void;
+  retryingRowId: string | null;
+  retryingBulk: boolean;
 }) {
   if (!entries.length) {
     return null;
@@ -278,6 +286,14 @@ export function UploadQueueTable({
       title={`Upload Queue Rows (${entries.length})`}
       actions={
         <FilterBar>
+          <Button
+            variant="outline"
+            className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1"
+            onClick={onRetryFailed}
+            disabled={retryingBulk || entries.every((entry) => entry.status !== 'failed')}
+          >
+            {retryingBulk ? 'Retrying Failed...' : 'Retry Failed'}
+          </Button>
           <Button variant="destructive" className="rounded-full" onClick={onClear}>
             <Trash2 data-icon="inline-start" /> Clear List
           </Button>
@@ -316,6 +332,24 @@ export function UploadQueueTable({
             label: 'Updated',
             className: 'num',
             render: (entry) => new Date(entry.updatedAt).toLocaleTimeString(),
+          },
+          {
+            key: 'actions',
+            label: 'Actions',
+            render: (entry) =>
+              entry.status === 'failed' ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1"
+                  onClick={() => onRetryRow(entry.id)}
+                  disabled={retryingRowId === entry.id || retryingBulk}
+                >
+                  {retryingRowId === entry.id ? 'Retrying...' : 'Retry'}
+                </Button>
+              ) : (
+                <span className="text-xs text-tier-3">—</span>
+              ),
           },
         ]}
       />

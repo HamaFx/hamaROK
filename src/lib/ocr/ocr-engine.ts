@@ -166,6 +166,16 @@ export interface RankingScreenshotResult {
     droppedRowCount: number;
     guardFailures: string[];
     detectedBoardTokens: string[];
+    droppedReasonCount?: Record<string, number>;
+    slotCount?: number;
+    detectedRows?: number;
+    validRows?: number;
+    uniformity?: {
+      suspicious: boolean;
+      dominantValue: string | null;
+      dominantCount: number;
+      dominantRatio: number;
+    };
   };
   totalDurationMs: number;
 }
@@ -941,7 +951,7 @@ function buildRankingLayoutCandidates(aspectRatio: number): RankingLayoutPreset[
         rowStartY,
         rowStep,
         rowHeight: aspectRatio >= 2 ? 0.092 : 0.088,
-        maxRows: 10,
+        maxRows: 12,
         rankRegion: {
           x: 0.176,
           width: 0.09,
@@ -975,13 +985,18 @@ function buildRankingLayoutCandidates(aspectRatio: number): RankingLayoutPreset[
 
 async function recognizeQuickRankingField(args: {
   cropped: HTMLCanvasElement;
-  kind: 'name' | 'metric';
+  kind: 'name' | 'metric' | 'rank';
 }): Promise<{ value: string; confidence: number }> {
   const processed = await preprocessForOCR(args.cropped, {
-    variantId: args.kind === 'name' ? 'rank-quick-name' : 'rank-quick-metric',
+    variantId:
+      args.kind === 'name'
+        ? 'rank-quick-name'
+        : args.kind === 'rank'
+          ? 'rank-quick-rank'
+          : 'rank-quick-metric',
     useOpenCv: false,
-    scale: args.kind === 'name' ? 1.9 : 2.0,
-    threshold: args.kind === 'name' ? 126 : 122,
+    scale: args.kind === 'name' ? 1.9 : args.kind === 'rank' ? 2.2 : 2.0,
+    threshold: args.kind === 'name' ? 126 : args.kind === 'rank' ? 118 : 122,
     contrast: 1.2,
     morphology: 'none',
   });
@@ -996,7 +1011,9 @@ async function recognizeQuickRankingField(args: {
   const value =
     args.kind === 'name'
       ? normalizeRankingName(recognized.rawText)
-      : normalizeMetricDigits(recognized.rawText);
+      : args.kind === 'rank'
+        ? normalizeRankDigits(recognized.rawText)
+        : normalizeMetricDigits(recognized.rawText);
 
   return {
     value,
@@ -1016,6 +1033,130 @@ function cropRankingSubRegion(args: {
     width: args.region.width,
     height: args.rowHeight * args.region.heightFactor,
   });
+}
+
+function clusterSlotIndices(indices: number[]): number[] {
+  if (indices.length === 0) return [];
+  const sorted = [...new Set(indices)].sort((a, b) => a - b);
+  const out: number[] = [];
+  let cluster: number[] = [sorted[0]];
+
+  for (let i = 1; i < sorted.length; i++) {
+    const value = sorted[i];
+    if (value - cluster[cluster.length - 1] <= 1) {
+      cluster.push(value);
+      continue;
+    }
+    out.push(cluster[Math.floor(cluster.length / 2)]);
+    cluster = [value];
+  }
+  out.push(cluster[Math.floor(cluster.length / 2)]);
+  return out;
+}
+
+async function detectRankingRowSlots(args: {
+  img: HTMLImageElement;
+  layout: RankingLayoutPreset;
+  rowRule: RankingRowRule;
+}) {
+  const scored: Array<{
+    index: number;
+    score: number;
+    rankAnchor: boolean;
+    metricAnchor: boolean;
+    nameAnchor: boolean;
+  }> = [];
+  const rankAnchors: number[] = [];
+  const looseAnchors: number[] = [];
+
+  for (let i = 0; i < args.layout.maxRows; i++) {
+    const rowY = args.layout.rowStartY + i * args.layout.rowStep;
+    if (rowY + args.layout.rowHeight > 0.98) break;
+
+    const rankCrop = cropRankingSubRegion({
+      img: args.img,
+      rowY,
+      rowHeight: args.layout.rowHeight,
+      region: args.layout.rankRegion,
+    });
+    const nameCrop = cropRankingSubRegion({
+      img: args.img,
+      rowY,
+      rowHeight: args.layout.rowHeight,
+      region: args.layout.nameMainRegion,
+    });
+    const metricCrop = cropRankingSubRegion({
+      img: args.img,
+      rowY,
+      rowHeight: args.layout.rowHeight,
+      region: args.layout.metricRegion,
+    });
+
+    const [quickRank, quickName, quickMetric] = await Promise.all([
+      recognizeQuickRankingField({ cropped: rankCrop, kind: 'rank' }),
+      recognizeQuickRankingField({ cropped: nameCrop, kind: 'name' }),
+      recognizeQuickRankingField({ cropped: metricCrop, kind: 'metric' }),
+    ]);
+
+    const rankNumber = Number(quickRank.value);
+    const rankAnchor =
+      quickRank.value.length >= 1 &&
+      Number.isFinite(rankNumber) &&
+      rankNumber >= 1 &&
+      rankNumber <= 5000 &&
+      quickRank.confidence >= 52;
+    const nameAnchor = quickName.value.length >= 2 && quickName.confidence >= 52;
+    const metricAnchor =
+      quickMetric.value.length >= Math.min(2, args.rowRule.minMetricDigits) &&
+      quickMetric.confidence >= 50;
+
+    let score = 0;
+    if (rankAnchor) score += 2.4;
+    if (metricAnchor) score += 1.3;
+    if (nameAnchor) score += 0.9;
+    score += (quickRank.confidence + quickMetric.confidence + quickName.confidence) / 270;
+
+    if (rankAnchor) rankAnchors.push(i);
+    if (metricAnchor || nameAnchor || rankAnchor) {
+      looseAnchors.push(i);
+    }
+
+    scored.push({
+      index: i,
+      score,
+      rankAnchor,
+      metricAnchor,
+      nameAnchor,
+    });
+  }
+
+  const fromRank = clusterSlotIndices(rankAnchors);
+  const clusteredLoose = clusterSlotIndices(looseAnchors);
+  const selected = new Set<number>(fromRank);
+
+  if (selected.size < args.rowRule.minRows) {
+    for (const index of clusteredLoose) {
+      selected.add(index);
+      if (selected.size >= args.rowRule.minRows) break;
+    }
+  }
+
+  const rankedScored = [...scored].sort((a, b) => b.score - a.score);
+  for (const candidate of rankedScored) {
+    if (selected.size >= Math.max(args.rowRule.minRows + 2, 6)) break;
+    selected.add(candidate.index);
+  }
+
+  for (const candidate of scored) {
+    if (selected.size >= args.layout.maxRows) break;
+    selected.add(candidate.index);
+  }
+
+  const indices = [...selected].sort((a, b) => a - b).slice(0, args.layout.maxRows);
+  return {
+    indices,
+    scored,
+  };
 }
 
 async function scoreRankingLayoutCandidate(
@@ -1551,9 +1692,21 @@ export async function processRankingScreenshot(
 
     const layoutSelection = await selectBestRankingLayout(img);
     const layout = layoutSelection.selected;
+    const slotSelection = await detectRankingRowSlots({
+      img,
+      layout,
+      rowRule,
+    });
+    const slotIndices = slotSelection.indices;
 
     const rows: RankingRowOcrResult[] = [];
     let droppedRowCount = 0;
+    const droppedReasonCount: Record<string, number> = {};
+    let detectedRows = 0;
+    const dropRow = (reason: string) => {
+      droppedRowCount += 1;
+      droppedReasonCount[reason] = (droppedReasonCount[reason] || 0) + 1;
+    };
     const preprocessingTrace: Record<string, unknown> = {
       header: headerReads.map((read) => read.traces),
       metricHeader: metricHeaderReads.map((read) => read.traces),
@@ -1566,15 +1719,24 @@ export async function processRankingScreenshot(
         rowStep: layout.rowStep,
         rowHeight: layout.rowHeight,
       },
+      slotSelection: slotSelection.scored.map((entry) => ({
+        index: entry.index,
+        score: entry.score,
+        rankAnchor: entry.rankAnchor,
+        metricAnchor: entry.metricAnchor,
+        nameAnchor: entry.nameAnchor,
+      })),
+      selectedSlots: slotIndices,
       classificationConfidence,
       detectedBoardTokens,
     };
     const rowCandidates: Record<string, unknown> = {};
 
     const dedupeKeys = new Set<string>();
-    for (let rowIndex = 0; rowIndex < layout.maxRows; rowIndex++) {
-      const rowY = layout.rowStartY + rowIndex * layout.rowStep;
+    for (const slotIndex of slotIndices) {
+      const rowY = layout.rowStartY + slotIndex * layout.rowStep;
       if (rowY + layout.rowHeight > 0.98) break;
+      detectedRows += 1;
 
       const rankCrop = cropRankingSubRegion({
         img,
@@ -1612,7 +1774,7 @@ export async function processRankingScreenshot(
       let sourceRank: number | null = rankDigits ? Number(rankDigits) : null;
       if (!sourceRank || !Number.isFinite(sourceRank) || sourceRank < 1 || sourceRank > 5000) {
         const previous = rows[rows.length - 1]?.sourceRank ?? null;
-        sourceRank = previous && previous > 0 ? previous + 1 : rowIndex + 1;
+        sourceRank = previous && previous > 0 ? previous + 1 : slotIndex + 1;
       }
 
       const governorNameSource = normalizeRankingName(nameMainField.selectedValue);
@@ -1641,20 +1803,33 @@ export async function processRankingScreenshot(
         !governorNameRaw &&
         !metricValue &&
         (nameMainField.selectedConfidence + metricField.selectedConfidence) / 2 < 55;
-      if (lowSignal) continue;
+      if (lowSignal) {
+        dropRow('low-signal');
+        continue;
+      }
 
-      if (
-        invalidNameToken ||
-        !metricEvidence.hasRawDigit ||
-        metricHeaderArtifact ||
-        metricValue.length < rowRule.minMetricDigits
-      ) {
-        droppedRowCount += 1;
+      if (invalidNameToken) {
+        dropRow('header-row-artifact');
+        continue;
+      }
+      if (!metricEvidence.hasRawDigit) {
+        dropRow(metricHeaderArtifact ? 'header-row-artifact' : 'metric-no-raw-digit');
+        continue;
+      }
+      if (metricHeaderArtifact) {
+        dropRow('header-row-artifact');
+        continue;
+      }
+      if (metricValue.length < rowRule.minMetricDigits) {
+        dropRow('metric-too-short');
         continue;
       }
 
       const dedupeKey = `${sourceRank || 0}:${governorNameNormalized}:${metricValue}`;
-      if (dedupeKeys.has(dedupeKey)) continue;
+      if (dedupeKeys.has(dedupeKey)) {
+        dropRow('duplicate');
+        continue;
+      }
       dedupeKeys.add(dedupeKey);
 
       const failureReasons = [
@@ -1677,7 +1852,7 @@ export async function processRankingScreenshot(
         3.35;
 
       const row: RankingRowOcrResult = {
-        rowIndex,
+        rowIndex: slotIndex,
         sourceRank,
         governorNameRaw,
         governorNameNormalized,
@@ -1708,16 +1883,19 @@ export async function processRankingScreenshot(
       };
 
       rows.push(row);
-      rowCandidates[`row-${rowIndex}`] = {
+      rowCandidates[`row-${slotIndex}`] = {
         ...row.candidates,
         subtitle: nameSubField.candidates,
       };
-      preprocessingTrace[`row-${rowIndex}`] = row.ocrTrace;
+      preprocessingTrace[`row-${slotIndex}`] = row.ocrTrace;
     }
 
     const guardFailures: string[] = [];
     if (rows.length < rowRule.minRows) {
       guardFailures.push('insufficient-valid-rows');
+      if ((droppedReasonCount['header-row-artifact'] || 0) > 0) {
+        guardFailures.push('header-row-artifact');
+      }
     }
     const uniformity = evaluateRankingMetricUniformity(rows.map((row) => row.metricValue), {
       dominanceRatio: rowRule.uniformDominanceRatio,
@@ -1739,6 +1917,10 @@ export async function processRankingScreenshot(
 
     preprocessingTrace.guardFailures = guardFailures;
     preprocessingTrace.droppedRowCount = droppedRowCount;
+    preprocessingTrace.droppedReasonCount = droppedReasonCount;
+    preprocessingTrace.slotCount = slotIndices.length;
+    preprocessingTrace.detectedRows = detectedRows;
+    preprocessingTrace.validRows = rows.length;
     preprocessingTrace.uniformity = uniformity;
 
     if (guardFailures.length > 0) {
@@ -1764,6 +1946,11 @@ export async function processRankingScreenshot(
         droppedRowCount,
         guardFailures,
         detectedBoardTokens,
+        droppedReasonCount,
+        slotCount: slotIndices.length,
+        detectedRows,
+        validRows: rows.length,
+        uniformity,
       },
       totalDurationMs: performance.now() - runStarted,
     };
