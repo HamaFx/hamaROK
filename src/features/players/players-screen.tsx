@@ -533,10 +533,18 @@ export default function PlayersScreen() {
   const columns: DataTableLiteColumn<GovernorRow>[] = useMemo(
     () => [
       {
+        key: 'index',
+        label: '#',
+        sortable: false,
+        className: 'w-[45px] text-center text-sm font-semibold text-tier-3 tabular-nums',
+        thClassName: 'text-center',
+        render: (_, index) => index + 1,
+      },
+      {
         key: 'name',
-        label: 'Player',
+        label: 'Governor',
         sortable: true,
-        className: 'min-w-[180px]',
+        className: 'min-w-[200px]',
         render: (row) => {
           if (editingCell?.rowId === row.id && editingCell.field === 'name') {
             return (
@@ -574,15 +582,15 @@ export default function PlayersScreen() {
             );
           }
 
-          const initial = row.name.charAt(0).toUpperCase() || '?';
           return (
-            <div className="flex items-center gap-2.5">
-              <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-cyan-500/10 border border-cyan-500/20 shadow-[0_0_10px_rgba(6,182,212,0.1)] text-xs font-bold text-cyan-300">
-                {initial}
+            <div className="flex items-center gap-3">
+              <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-[8px] sm:rounded-[10px] border-[1.5px] border-[color:var(--rank-gold)] bg-[#1f2937] shadow-[0_0_12px_rgba(216,184,120,0.15)] ring-1 ring-black/50">
+                {/* Generic styling for commander portrait */}
+                <img src={`https://api.dicebear.com/9.x/adventurer/svg?seed=${row.governorId}&backgroundColor=transparent`} alt="avatar" className="size-full object-cover scale-[1.15] translate-y-[5%]" />
               </div>
-              <div className="min-w-0">
-                <p className="truncate text-sm font-bold text-tier-1 drop-shadow-sm">{row.name}</p>
-                <p className="text-[11px] text-tier-3 font-mono opacity-80 mt-0.5">ID: {row.governorId}</p>
+              <div className="min-w-0 flex flex-col justify-center">
+                <p className="truncate text-[15px] font-bold text-tier-1 tracking-tight drop-shadow-sm">{row.name}</p>
+                <p className="text-[11px] text-tier-3 font-mono opacity-80 mt-0.5">{row.governorId}</p>
               </div>
               <button
                 type="button"
@@ -640,7 +648,12 @@ export default function PlayersScreen() {
           return (
             <div className="flex items-center gap-1.5">
               {row.alliance ? (
-                <StatusPill label={row.alliance} tone={allianceTone(row.alliance)} />
+                <div className="flex flex-col min-w-0">
+                  <span className="truncate text-[13px] font-semibold text-tier-1">{row.alliance.split(' ')[0]}</span>
+                  <span className="truncate text-[11px] text-tier-3">
+                    {row.alliance.includes(' ') ? row.alliance.split(' ').slice(1).join(' ') : '—'}
+                  </span>
+                </div>
               ) : (
                 <span className="text-xs text-tier-4">—</span>
               )}
@@ -662,8 +675,8 @@ export default function PlayersScreen() {
         className: 'text-right min-w-[110px]',
         thClassName: 'text-right',
         render: (row) => (
-          <div className="inline-flex items-center justify-center rounded-lg border border-cyan-500/20 bg-cyan-500/10 px-2.5 py-1 text-sm font-bold text-cyan-100 shadow-[0_0_8px_rgba(6,182,212,0.1)]">
-            {formatCompactNumber(row.latestPower)}
+          <div className="text-[14.5px] font-bold text-tier-1 font-mono tracking-tight drop-shadow-sm">
+            {Number(row.latestPower).toLocaleString()}
           </div>
         ),
       },
@@ -674,8 +687,8 @@ export default function PlayersScreen() {
         className: 'text-right min-w-[110px]',
         thClassName: 'text-right',
         render: (row) => (
-          <div className="inline-flex items-center justify-center rounded-lg border border-rose-500/20 bg-rose-500/10 px-2.5 py-1 text-sm font-bold text-rose-100 shadow-[0_0_8px_rgba(244,63,94,0.1)]">
-            {formatCompactNumber(row.latestKillPoints)}
+          <div className="text-[14.5px] font-bold text-tier-2 font-mono tracking-tight">
+            {Number(row.latestKillPoints).toLocaleString()}
           </div>
         ),
       },
@@ -900,7 +913,7 @@ export default function PlayersScreen() {
             columns={columns}
             rows={filteredRows}
             rowKey={(row) => row.id}
-            rowClassName={() => 'group/row'}
+            rowClassName={() => 'group/row h-[72px] border-b border-white/[0.04] bg-transparent hover:bg-white/[0.02] transition-colors'}
             onSort={handleSort}
             sortKey={sortKey}
             sortDir={sortDir}
