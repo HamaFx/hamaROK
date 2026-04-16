@@ -216,8 +216,8 @@ export function assessProfileMetricSyncSafety(
     reasons.push('power is zero or missing');
   }
 
-  if (payload.killPoints === BigInt(111015) && payload.power === BigInt(0)) {
-    reasons.push('matches known OCR artifact pattern (power=0 & killPoints=111015)');
+  if (payload.killPoints === BigInt(111015)) {
+    reasons.push('matches known OCR artifact pattern (killPoints=111015)');
   }
 
   return {

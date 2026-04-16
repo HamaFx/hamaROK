@@ -943,6 +943,15 @@ def _extract_profile(lines: List[Dict[str, Any]], width: int, height: int, trace
     governor_name = split['governorNameRaw']
     alliance_raw = split['allianceRaw'] or alliance_raw
 
+    known_kp_artifact = False
+    power_digits = _clean_digits(power, 18)
+    kill_points_digits = _clean_digits(kill_points, 18)
+    power_value = int(power_digits) if power_digits else 0
+    if kill_points_digits == '111015' and power_value >= 1_000_000:
+        known_kp_artifact = True
+        kill_points = ''
+        kp_conf = 0.0
+
     confidence_values = [governor_id_conf, name_conf, kp_conf, power_conf, t4_conf, t5_conf, deads_conf, alliance_conf]
     non_zero = [value for value in confidence_values if value > 0]
     overall = sum(non_zero) / len(non_zero) if non_zero else 0.0
@@ -954,6 +963,10 @@ def _extract_profile(lines: List[Dict[str, Any]], width: int, height: int, trace
         failure_reasons.append('missing-governor-name')
     if not power:
         failure_reasons.append('missing-power')
+    if not kill_points:
+        failure_reasons.append('missing-kill-points')
+    if known_kp_artifact:
+        failure_reasons.append('kill-points-known-artifact-111015')
     if not alliance_raw:
         failure_reasons.append('missing-alliance')
     if overall < 0.72:
@@ -966,7 +979,7 @@ def _extract_profile(lines: List[Dict[str, Any]], width: int, height: int, trace
         'governorNameRaw': governor_name,
         'confidence': max(0.0, min(100.0, overall * 100)),
         'engineVersion': 'local-hybrid-opencv-v2',
-        'lowConfidence': overall < 0.82,
+        'lowConfidence': overall < 0.82 or known_kp_artifact or not kill_points,
         'failureReasons': failure_reasons,
         'fields': {
             'governorId': {'value': governor_id, 'confidence': governor_id_conf * 100},

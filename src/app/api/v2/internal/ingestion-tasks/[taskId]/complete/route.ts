@@ -70,6 +70,84 @@ const completeSchema = z.object({
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
+type ProfilePayload = z.infer<typeof profilePayloadSchema>;
+
+function normalizeDigits(value: unknown): string {
+  return String(value ?? '').replace(/[^0-9]/g, '');
+}
+
+function extractFieldValue(fields: Record<string, unknown>, key: string): string {
+  const entry = fields[key];
+  if (typeof entry === 'string') return entry;
+  if (entry && typeof entry === 'object' && !Array.isArray(entry)) {
+    const value = (entry as Record<string, unknown>).value;
+    return String(value ?? '');
+  }
+  return '';
+}
+
+function sanitizeProfilePayload(profile: ProfilePayload): {
+  fields: Record<string, unknown>;
+  normalized: Record<string, unknown>;
+  lowConfidence: boolean;
+  failureReasons: string[];
+  artifactGuards: string[];
+} {
+  const fields =
+    profile.fields && typeof profile.fields === 'object' && !Array.isArray(profile.fields)
+      ? ({ ...(profile.fields as Record<string, unknown>) } as Record<string, unknown>)
+      : {};
+  const normalized =
+    profile.normalized && typeof profile.normalized === 'object' && !Array.isArray(profile.normalized)
+      ? ({ ...(profile.normalized as Record<string, unknown>) } as Record<string, unknown>)
+      : {};
+  const failureReasons = Array.isArray(profile.failureReasons) ? [...profile.failureReasons] : [];
+  const artifactGuards: string[] = [];
+
+  let lowConfidence = profile.lowConfidence ?? normalizeConfidence(profile.confidence) < 0.85;
+
+  const powerRaw =
+    typeof normalized.power === 'string' ? normalized.power : extractFieldValue(fields, 'power');
+  const killPointsRaw =
+    typeof normalized.killPoints === 'string'
+      ? normalized.killPoints
+      : extractFieldValue(fields, 'killPoints');
+
+  const powerDigits = normalizeDigits(powerRaw);
+  const killPointsDigits = normalizeDigits(killPointsRaw);
+  const powerValue = powerDigits ? BigInt(powerDigits) : BigInt(0);
+
+  if (killPointsDigits === '111015' && powerValue >= BigInt(1_000_000)) {
+    const killPointsField =
+      fields.killPoints && typeof fields.killPoints === 'object' && !Array.isArray(fields.killPoints)
+        ? (fields.killPoints as Record<string, unknown>)
+        : {};
+
+    fields.killPoints = {
+      ...killPointsField,
+      value: '',
+      confidence:
+        typeof killPointsField.confidence === 'number'
+          ? Math.min(Math.max(killPointsField.confidence, 0), 20)
+          : 0,
+      artifactGuard: 'kill-points-known-artifact-111015',
+    };
+
+    normalized.killPoints = '';
+    lowConfidence = true;
+    artifactGuards.push('kill-points-known-artifact-111015');
+    failureReasons.push('kill-points-known-artifact-111015');
+  }
+
+  return {
+    fields,
+    normalized,
+    lowConfidence,
+    failureReasons: [...new Set(failureReasons)],
+    artifactGuards,
+  };
+}
+
 function extractProfileAlliance(args: {
   governorNameRaw?: string | null;
   normalized?: Record<string, unknown>;
@@ -152,6 +230,7 @@ export async function POST(
 
     if (inferredDomain === IngestionDomain.PROFILE_SNAPSHOT) {
       const profile = body.profile!;
+      const sanitizedProfile = sanitizeProfilePayload(profile);
 
       const result = await prisma.$transaction(async (tx) => {
         const existing = await tx.ocrExtraction.findFirst({
@@ -183,13 +262,13 @@ export async function POST(
               governorNameRaw: profile.governorNameRaw || null,
               confidence: normalizeConfidence(profile.confidence),
               engineVersion: profile.engineVersion || 'paddleocr-v1',
-              lowConfidence: profile.lowConfidence ?? normalizeConfidence(profile.confidence) < 0.85,
-              failureReasons: profile.failureReasons
-                ? (profile.failureReasons as unknown as Prisma.InputJsonValue)
+              lowConfidence: sanitizedProfile.lowConfidence,
+              failureReasons: sanitizedProfile.failureReasons.length > 0
+                ? (sanitizedProfile.failureReasons as unknown as Prisma.InputJsonValue)
                 : undefined,
-              fields: profile.fields as Prisma.InputJsonValue,
-              normalized: profile.normalized
-                ? (profile.normalized as Prisma.InputJsonValue)
+              fields: sanitizedProfile.fields as Prisma.InputJsonValue,
+              normalized: Object.keys(sanitizedProfile.normalized).length > 0
+                ? (sanitizedProfile.normalized as Prisma.InputJsonValue)
                 : undefined,
               validation: profile.validation
                 ? (profile.validation as unknown as Prisma.InputJsonValue)
@@ -215,14 +294,8 @@ export async function POST(
 
         const profileAlliance = extractProfileAlliance({
           governorNameRaw: profile.governorNameRaw || null,
-          normalized:
-            profile.normalized && typeof profile.normalized === 'object'
-              ? (profile.normalized as Record<string, unknown>)
-              : undefined,
-          fields:
-            profile.fields && typeof profile.fields === 'object'
-              ? (profile.fields as Record<string, unknown>)
-              : {},
+          normalized: sanitizedProfile.normalized,
+          fields: sanitizedProfile.fields,
         });
 
         if (profileAlliance) {
@@ -230,7 +303,7 @@ export async function POST(
             where: { id: extraction.id },
             data: {
               normalized: {
-                ...(profile.normalized || {}),
+                ...sanitizedProfile.normalized,
                 alliance: profileAlliance,
               } as Prisma.InputJsonValue,
             },
@@ -251,6 +324,10 @@ export async function POST(
               screenArchetype: body.screenArchetype || undefined,
               ingestionDomain: inferredDomain,
               extractionId: extraction.id,
+              artifactGuards:
+                sanitizedProfile.artifactGuards.length > 0
+                  ? sanitizedProfile.artifactGuards
+                  : undefined,
             }),
           },
           include: {

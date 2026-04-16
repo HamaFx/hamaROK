@@ -75,7 +75,7 @@ describe('review queue helpers', () => {
     });
 
     expect(bad.shouldSync).toBe(false);
-    expect(bad.reasons.join(' ')).toContain('power is zero or missing');
+    expect(bad.reasons.join(' ')).toContain('killPoints=111015');
 
     const good = assessProfileMetricSyncSafety({
       governorId: '222289750',
@@ -102,5 +102,18 @@ describe('review queue helpers', () => {
 
     expect(noisyOptionalCombatFields.shouldSync).toBe(true);
     expect(noisyOptionalCombatFields.reasons).toEqual([]);
+
+    const knownArtifactWithPower = assessProfileMetricSyncSafety({
+      governorId: '444289750',
+      governorName: 'Lac',
+      power: BigInt(123450000),
+      killPoints: BigInt(111015),
+      t4Kills: BigInt(0),
+      t5Kills: BigInt(0),
+      deads: BigInt(0),
+    });
+
+    expect(knownArtifactWithPower.shouldSync).toBe(false);
+    expect(knownArtifactWithPower.reasons.join(' ')).toContain('killPoints=111015');
   });
 });
