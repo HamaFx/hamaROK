@@ -30,6 +30,7 @@ import {
   DataTableLite,
   EmptyState,
   FilterBar,
+  PageHero,
   Panel,
   StatusPill,
 } from '@/components/ui/primitives';
@@ -39,6 +40,7 @@ import {
   formatMetric,
   formatRelativeDate,
   parseBigIntSafe,
+  toSafeBigInt,
 } from '@/features/shared/formatters';
 import type { CompactControlDrawerState } from '@/features/shared/types';
 
@@ -626,6 +628,28 @@ export default function RankingsScreen() {
 
   return (
     <div className="space-y-4 sm:space-y-5 lg:space-y-6">
+      <PageHero
+        title="Rankings"
+        subtitle="Canonical leaderboard view across all board types, with weekly activity enrichment and multi-board filtering."
+        badges={[
+          selectedWeekKey ? `Week ${selectedWeekKey}` : 'Week pending',
+          `${displayRows.length} rows`,
+          freshness?.label || 'No data yet',
+        ]}
+        actions={
+          <>
+            <Button asChild variant="outline" className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1">
+              <Link href="/activity">
+                Activity
+              </Link>
+            </Button>
+            <Button variant="outline" className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1" onClick={exportLeaderboardCsv} disabled={!displayRows.length}>
+              <Download data-icon="inline-start" /> CSV
+            </Button>
+          </>
+        }
+      />
+
       <SessionGate ready={ready} loading={sessionLoading} error={sessionError} onRetry={() => void refreshSession()}>
         {error ? <InlineError message={error} /> : null}
 
@@ -835,11 +859,13 @@ export default function RankingsScreen() {
 
                    {weeklyActivity?.rows && weeklyActivity.rows.find(r => r.governorId === row.linkedGovernorId) && (() => {
                      const match = weeklyActivity.rows.find(r => r.governorId === row.linkedGovernorId)!;
+                     const kpGrowth = toSafeBigInt(match.killPointsGrowth);
+                     const pwrGrowth = toSafeBigInt(match.powerGrowth);
                      return (
                        <div className="mt-2 grid grid-cols-3 gap-2 rounded-xl bg-white/5 p-3 sm:flex sm:justify-end sm:gap-6">
                          <div className="flex flex-col">
                            <span className="text-[10px] font-medium uppercase tracking-wider text-tier-3">Weekly KP</span>
-                           <span className={`font-heading text-sm font-bold ${match.killPointsGrowth && BigInt(match.killPointsGrowth) > 0 ? 'text-emerald-400' : 'text-tier-2'}`}>
+                           <span className={`font-heading text-sm font-bold ${kpGrowth > BigInt(0) ? 'text-emerald-400' : 'text-tier-2'}`}>
                              {match.killPointsGrowth ? '+' + formatMetric(match.killPointsGrowth) : 'N/A'}
                            </span>
                          </div>
@@ -851,8 +877,8 @@ export default function RankingsScreen() {
                          </div>
                          <div className="flex flex-col">
                            <span className="text-[10px] font-medium uppercase tracking-wider text-tier-3">Power Growth</span>
-                           <span className={`font-heading text-sm font-bold ${match.powerGrowth && BigInt(match.powerGrowth) > 0 ? 'text-emerald-400' : match.powerGrowth && BigInt(match.powerGrowth) < 0 ? 'text-rose-400' : 'text-tier-2'}`}>
-                             {match.powerGrowth ? (BigInt(match.powerGrowth) > 0 ? '+' : '') + formatMetric(match.powerGrowth) : 'N/A'}
+                           <span className={`font-heading text-sm font-bold ${pwrGrowth > BigInt(0) ? 'text-emerald-400' : pwrGrowth < BigInt(0) ? 'text-rose-400' : 'text-tier-2'}`}>
+                             {match.powerGrowth ? (pwrGrowth > BigInt(0) ? '+' : '') + formatMetric(match.powerGrowth) : 'N/A'}
                            </span>
                          </div>
                        </div>

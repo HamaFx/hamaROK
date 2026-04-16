@@ -295,8 +295,8 @@ export default function ActivityScreen() {
   const handleCopyPurgeList = () => {
     const deadweight = sortedRows.filter(r => 
       r.compliance.overall === 'FAIL' && 
-      Number(r.killPointsGrowth || 0) <= 0 && 
-      Number(r.fortDestroying) <= 0
+      toSafeBigInt(r.killPointsGrowth) <= BigInt(0) && 
+      toSafeBigInt(r.fortDestroying) <= BigInt(0)
     );
     if (!deadweight.length) {
       setUiNotice('No deadweights detected this week! 🎉');
@@ -325,10 +325,18 @@ export default function ActivityScreen() {
       return diff > BigInt(0) ? 1 : -1;
     };
 
+    const OVERALL_ORDER: Record<string, number> = { FAIL: 0, PARTIAL: 1, NO_STANDARD: 2, PASS: 3 };
+
     rows.sort((a, b) => {
-      if (sortKey === 'rank') return 0;
+      if (sortKey === 'rank') {
+        // Rank sorts by contribution (descending = top contributor first)
+        const diff = toSafeBigInt(a.contributionPoints) - toSafeBigInt(b.contributionPoints);
+        return diff === BigInt(0) ? 0 : diff > BigInt(0) ? 1 : -1;
+      }
       if (sortKey === 'player') return a.governorName.localeCompare(b.governorName);
-      if (sortKey === 'overall') return a.compliance.overall.localeCompare(b.compliance.overall);
+      if (sortKey === 'overall') {
+        return (OVERALL_ORDER[a.compliance.overall] ?? 4) - (OVERALL_ORDER[b.compliance.overall] ?? 4);
+      }
       if (sortKey === 'contribution') {
         const diff = toSafeBigInt(a.contributionPoints) - toSafeBigInt(b.contributionPoints);
         return diff === BigInt(0) ? 0 : diff > BigInt(0) ? 1 : -1;

@@ -289,8 +289,19 @@ export default function CompareScreen() {
       item.warriorScore?.isDeadweight ? 'YES' : 'NO',
     ]);
 
-    const csv = [headers.join(','), ...rows.map((row) => row.join(','))].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
+    const csvValue = (v: string | number | null | undefined) => {
+      const raw = v == null ? '' : String(v);
+      if (raw.includes(',') || raw.includes('"') || raw.includes('\n')) {
+        return `"${raw.replace(/"/g, '""')}"`;
+      }
+      return raw;
+    };
+
+    const csv = [
+      headers.map((h) => csvValue(h)).join(','),
+      ...rows.map((row) => row.map((cell) => csvValue(cell)).join(',')),
+    ].join('\n');
+    const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement('a');
     anchor.href = url;

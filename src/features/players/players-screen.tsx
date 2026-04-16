@@ -1,17 +1,19 @@
 'use client';
 
-import Link from 'next/link';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Crown,
-  LineChart,
+  ArrowDownUp,
+  Check,
+  Database,
+  Download,
+  Pencil,
+  Plus,
   Search,
-  Swords,
-  TrendingUp,
+  Shield,
+  Trash2,
   Users,
+  X,
 } from 'lucide-react';
-import { motion } from 'framer-motion';
-import { GrowthLineChart, WeeklyActivityLineChart, WeeklyRadarChart } from '@/components/Charts';
 import { InlineError, SessionGate } from '@/components/app/session-gate';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -22,762 +24,899 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   DataTableLite,
+  type DataTableLiteColumn,
   EmptyState,
   FilterBar,
   KpiCard,
-  MetricStrip,
   PageHero,
-  Panel,
-  RowDetailDrawer,
   SkeletonSet,
   StatusPill,
 } from '@/components/ui/primitives';
-import type { PlayerProfileViewModel } from '@/features/shared/types';
-import { formatCompactNumber, formatMetric, formatWeekShort, toSafeBigInt } from '@/features/shared/formatters';
+import { formatCompactNumber, formatMetric, toSafeBigInt, csvValue, downloadCsv } from '@/features/shared/formatters';
 import { cn } from '@/lib/utils';
 import { useWorkspaceSession } from '@/lib/workspace-session';
 
+/* ──────────────────────── Types ──────────────────────── */
+
 const ALL_VALUE = '__all__';
 
-type DirectorySortKey = 'power' | 'contribution' | 'snapshots' | 'name';
+type SortKey = 'name' | 'power' | 'killPoints' | 'contribution' | 'forts' | 'kpGrowth' | 'powerGrowth';
+type SortDir = 'asc' | 'desc';
 
-type ComplianceState = 'PASS' | 'FAIL' | 'PARTIAL' | 'NO_STANDARD';
-
-interface GovernorItem {
+interface GovernorRow {
   id: string;
   governorId: string;
   name: string;
   alliance: string;
   snapshotCount: number;
   latestPower: string;
+  latestKillPoints: string;
+  weeklyStats: Record<string, string>;
+  previousWeekStats: Record<string, string>;
 }
 
-interface WeeklyActivityRow {
-  governorDbId: string;
+interface RegisterForm {
+  name: string;
   governorId: string;
-  governorName: string;
-  allianceTag: string;
-  allianceLabel: string;
-  contributionPoints: string;
-  fortDestroying: string;
-  powerGrowth: string | null;
-  killPointsGrowth: string | null;
-  deadsGrowth?: string | null;
-  t4KillsGrowth?: string | null;
-  t5KillsGrowth?: string | null;
-  compliance: {
-    overall: ComplianceState;
-  };
+  alliance: string;
 }
 
-interface WeeklyActivityResponse {
-  event: {
-    id: string;
-    name: string;
-    weekKey: string | null;
-    startsAt: string | null;
-  };
-  rows: WeeklyActivityRow[];
+interface EditingCell {
+  rowId: string;
+  field: 'name' | 'alliance';
+  value: string;
 }
 
-interface TimelineEntry {
-  event: { id: string; name: string };
-  power: string;
-  killPoints: string;
-  deads: string;
-  date: string;
+/* ────────────────────── Helpers ──────────────────────── */
+
+function parseMetric(value: string | undefined | null): bigint {
+  return toSafeBigInt(value || '0');
 }
 
-interface WeeklyActivityHistoryEntry {
-  weekKey: string;
-  weekName: string;
-  startsAt: string | null;
-  metrics: {
-    contributionPoints: string;
-    fortDestroying: string;
-    powerGrowth: string | null;
-    killPointsGrowth: string | null;
-    t4KillsGrowth?: string | null;
-    t5KillsGrowth?: string | null;
-    deadsGrowth?: string | null;
-    powerBaselineReady: boolean;
-    killPointsBaselineReady: boolean;
-    compliance: {
-      overall: ComplianceState;
-    };
-  } | null;
+function computeGrowth(current: string | undefined, previous: string | undefined): bigint | null {
+  if (!current || !previous) return null;
+  const c = parseMetric(current);
+  const p = parseMetric(previous);
+  if (p === BigInt(0)) return null;
+  return c - p;
 }
 
-interface DirectoryRow extends GovernorItem {
-  weekly: WeeklyActivityRow | null;
+function growthDisplay(growth: bigint | null): string {
+  if (growth === null) return '—';
+  if (growth === BigInt(0)) return '0';
+  const prefix = growth > BigInt(0) ? '+' : '';
+  return `${prefix}${formatCompactNumber(growth.toString())}`;
 }
 
-function statusTone(status: ComplianceState): 'good' | 'bad' | 'warn' | 'neutral' {
-  if (status === 'PASS') return 'good';
-  if (status === 'FAIL') return 'bad';
-  if (status === 'PARTIAL') return 'warn';
-  return 'neutral';
+function growthTone(growth: bigint | null): 'good' | 'bad' | 'neutral' {
+  if (growth === null || growth === BigInt(0)) return 'neutral';
+  return growth > BigInt(0) ? 'good' : 'bad';
 }
 
 function allianceTone(alliance: string): 'warn' | 'info' | 'neutral' {
-  if (alliance === 'GODt') return 'warn';
-  if (alliance === 'V57') return 'info';
+  if (alliance.includes('GODt')) return 'warn';
+  if (alliance.includes('V57')) return 'info';
   return 'neutral';
 }
 
-function compareNullableMetric(a: string | null, b: string | null) {
-  const diff = toSafeBigInt(a) - toSafeBigInt(b);
-  if (diff === BigInt(0)) return 0;
-  return diff > BigInt(0) ? 1 : -1;
+function bigintCmp(a: bigint, b: bigint): number {
+  if (a === b) return 0;
+  return a > b ? 1 : -1;
 }
 
+function compareRows(a: GovernorRow, b: GovernorRow, key: SortKey, dir: SortDir): number {
+  let diff = 0;
+  switch (key) {
+    case 'name':
+      diff = a.name.localeCompare(b.name);
+      break;
+    case 'power':
+      diff = bigintCmp(parseMetric(a.latestPower), parseMetric(b.latestPower));
+      break;
+    case 'killPoints':
+      diff = bigintCmp(parseMetric(a.latestKillPoints), parseMetric(b.latestKillPoints));
+      break;
+    case 'contribution':
+      diff = bigintCmp(
+        parseMetric(a.weeklyStats?.contribution_points),
+        parseMetric(b.weeklyStats?.contribution_points)
+      );
+      break;
+    case 'forts':
+      diff = bigintCmp(
+        parseMetric(a.weeklyStats?.fort_destroying),
+        parseMetric(b.weeklyStats?.fort_destroying)
+      );
+      break;
+    case 'kpGrowth': {
+      const ga = computeGrowth(a.weeklyStats?.kill_points, a.previousWeekStats?.kill_points) ?? BigInt(0);
+      const gb = computeGrowth(b.weeklyStats?.kill_points, b.previousWeekStats?.kill_points) ?? BigInt(0);
+      diff = bigintCmp(ga, gb);
+      break;
+    }
+    case 'powerGrowth': {
+      const pa = computeGrowth(a.weeklyStats?.power, a.previousWeekStats?.power) ?? BigInt(0);
+      const pb = computeGrowth(b.weeklyStats?.power, b.previousWeekStats?.power) ?? BigInt(0);
+      diff = bigintCmp(pa, pb);
+      break;
+    }
+  }
+  return dir === 'asc' ? diff : -diff;
+}
+
+/* ─────────────────── Register Dialog ─────────────────── */
+
+function RegisterPlayerDialog({
+  open,
+  onClose,
+  onRegister,
+  busy,
+  feedbackMessage,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onRegister: (form: RegisterForm) => void;
+  busy: boolean;
+  feedbackMessage: { type: 'success' | 'error'; text: string } | null;
+}) {
+  const [form, setForm] = useState<RegisterForm>({ name: '', governorId: '', alliance: '' });
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={onClose}>
+      <div
+        className="relative mx-4 w-full max-w-md overflow-hidden rounded-[24px] border border-[color:var(--stroke-soft)] bg-card shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-[color:var(--stroke-subtle)] px-5 py-4">
+          <div className="flex items-center gap-2.5">
+            <div className="rounded-xl border border-cyan-400/20 bg-cyan-400/10 p-2">
+              <Plus className="size-4 text-cyan-300" />
+            </div>
+            <div>
+              <h2 className="font-heading text-lg font-semibold text-tier-1">Register Player</h2>
+              <p className="text-xs text-tier-3">Add a new player to the database</p>
+            </div>
+          </div>
+          <button type="button" onClick={onClose} className="rounded-full p-2 text-tier-3 hover:bg-white/5 hover:text-tier-1">
+            <X className="size-4" />
+          </button>
+        </div>
+
+        {/* Form */}
+        <div className="space-y-4 p-5">
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-tier-3" htmlFor="reg-name">Player Name *</label>
+            <Input
+              id="reg-name"
+              value={form.name}
+              onChange={(e) => setForm({ ...form, name: e.target.value })}
+              placeholder="e.g. GdHama"
+              className="border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-tier-3" htmlFor="reg-govid">Governor ID *</label>
+            <Input
+              id="reg-govid"
+              value={form.governorId}
+              onChange={(e) => setForm({ ...form, governorId: e.target.value })}
+              placeholder="e.g. 222067061"
+              className="border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-tier-3" htmlFor="reg-alliance">Alliance</label>
+            <Input
+              id="reg-alliance"
+              value={form.alliance}
+              onChange={(e) => setForm({ ...form, alliance: e.target.value })}
+              placeholder="e.g. [GODt] GOD of Thunder"
+              className="border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1"
+            />
+          </div>
+
+          {feedbackMessage ? (
+            <div
+              className={cn(
+                'rounded-xl border px-3 py-2 text-xs',
+                feedbackMessage.type === 'success'
+                  ? 'border-emerald-400/20 bg-emerald-400/10 text-emerald-200'
+                  : 'border-rose-400/20 bg-rose-400/10 text-rose-200'
+              )}
+            >
+              {feedbackMessage.text}
+            </div>
+          ) : null}
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-2 border-t border-[color:var(--stroke-subtle)] px-5 py-4">
+          <Button
+            variant="outline"
+            onClick={onClose}
+            className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)]"
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={() => onRegister(form)}
+            disabled={busy || !form.name.trim() || !form.governorId.trim()}
+            className="rounded-full bg-cyan-500/20 text-cyan-100 hover:bg-cyan-500/30 border border-cyan-400/30 disabled:opacity-40"
+          >
+            {busy ? 'Registering…' : 'Register'}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────── Main Screen ─────────────────────── */
+
 export default function PlayersScreen() {
-  const { workspaceId, accessToken, ready, loading: sessionLoading, error: sessionError, refreshSession } = useWorkspaceSession();
-  const [governors, setGovernors] = useState<GovernorItem[]>([]);
-  const [weeklyBoard, setWeeklyBoard] = useState<WeeklyActivityResponse | null>(null);
-  const [selectedGovernorId, setSelectedGovernorId] = useState<string>('');
-  const [timeline, setTimeline] = useState<TimelineEntry[] | null>(null);
-  const [weeklyHistory, setWeeklyHistory] = useState<WeeklyActivityHistoryEntry[] | null>(null);
-  const [loadingList, setLoadingList] = useState(false);
-  const [loadingProfile, setLoadingProfile] = useState(false);
-  const [search, setSearch] = useState('');
-  const [allianceFilter, setAllianceFilter] = useState('');
-  const [sortKey, setSortKey] = useState<DirectorySortKey>('power');
+  const {
+    workspaceId,
+    accessToken,
+    ready,
+    loading: sessionLoading,
+    error: sessionError,
+    refreshSession,
+  } = useWorkspaceSession();
+
+  const [rows, setRows] = useState<GovernorRow[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const loadWeeklyBoard = useCallback(async () => {
-    if (!ready) {
-      setWeeklyBoard(null);
-      return;
-    }
+  const [search, setSearch] = useState('');
+  const [allianceFilter, setAllianceFilter] = useState('');
+  const [sortKey, setSortKey] = useState<SortKey>('power');
+  const [sortDir, setSortDir] = useState<SortDir>('desc');
+
+  const [registerOpen, setRegisterOpen] = useState(false);
+  const [registerBusy, setRegisterBusy] = useState(false);
+  const [registerMessage, setRegisterMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
+  const [editBusy, setEditBusy] = useState(false);
+
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+
+  useEffect(() => {
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = setTimeout(() => {
+      setDebouncedSearch(search);
+    }, 300);
+    return () => {
+      if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    };
+  }, [search]);
+
+  /* ─── Fetch list ─── */
+  const loadGovernors = useCallback(async () => {
+    if (!ready) return;
+    setLoading(true);
+    setError(null);
 
     try {
-      const res = await fetch(`/api/v2/activity/weekly?workspaceId=${encodeURIComponent(workspaceId)}`, {
+      const params = new URLSearchParams({
+        workspaceId,
+        limit: '200',
+        includeWeekly: 'true',
+      });
+      if (debouncedSearch) params.set('search', debouncedSearch);
+
+      const res = await fetch(`/api/v2/governors?${params.toString()}`, {
         headers: { 'x-access-token': accessToken },
       });
       const payload = await res.json();
-      setWeeklyBoard(res.ok && payload?.data ? (payload.data as WeeklyActivityResponse) : null);
-    } catch {
-      setWeeklyBoard(null);
-    }
-  }, [workspaceId, accessToken, ready]);
 
-  const loadGovernors = useCallback(
-    async (query = '') => {
-      if (!ready) {
-        setGovernors([]);
-        return;
+      if (!res.ok) {
+        throw new Error(payload?.error?.message || 'Failed to load players.');
       }
 
-      setLoadingList(true);
+      const data = Array.isArray(payload?.data) ? (payload.data as GovernorRow[]) : [];
+      setRows(data);
+      setTotal(payload?.meta?.total ?? data.length);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load players.');
+    } finally {
+      setLoading(false);
+    }
+  }, [ready, workspaceId, accessToken, debouncedSearch]);
+
+  useEffect(() => {
+    void loadGovernors();
+  }, [loadGovernors]);
+
+  /* ─── Alliance list from data ─── */
+  const alliances = useMemo(() => {
+    const set = new Set<string>();
+    for (const row of rows) {
+      if (row.alliance) set.add(row.alliance);
+    }
+    return [...set].sort();
+  }, [rows]);
+
+  /* ─── Filter + Sort ─── */
+  const filteredRows = useMemo(() => {
+    let filtered = rows;
+    if (allianceFilter && allianceFilter !== ALL_VALUE) {
+      filtered = filtered.filter((r) => r.alliance === allianceFilter);
+    }
+    return [...filtered].sort((a, b) => compareRows(a, b, sortKey, sortDir));
+  }, [rows, allianceFilter, sortKey, sortDir]);
+
+  /* ─── KPI calculations ─── */
+  const kpis = useMemo(() => {
+    const totalPlayers = filteredRows.length;
+    const avgPower =
+      totalPlayers > 0
+        ? filteredRows.reduce((sum, r) => sum + Number(parseMetric(r.latestPower)), 0) / totalPlayers
+        : 0;
+    const totalContribution = filteredRows.reduce(
+      (sum, r) => sum + Number(parseMetric(r.weeklyStats?.contribution_points)),
+      0
+    );
+    const totalForts = filteredRows.reduce(
+      (sum, r) => sum + Number(parseMetric(r.weeklyStats?.fort_destroying)),
+      0
+    );
+    return { totalPlayers, avgPower, totalContribution, totalForts };
+  }, [filteredRows]);
+
+  /* ─── Register handler ─── */
+  const handleRegister = useCallback(
+    async (form: RegisterForm) => {
+      if (!ready) return;
+      setRegisterBusy(true);
+      setRegisterMessage(null);
+
       try {
-        setError(null);
-        const params = new URLSearchParams({
-          workspaceId,
-          search: query,
-          limit: '200',
-        });
-        const res = await fetch(`/api/v2/governors?${params.toString()}`, {
-          headers: { 'x-access-token': accessToken },
+        const res = await fetch('/api/v2/governors/register', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-access-token': accessToken,
+          },
+          body: JSON.stringify({
+            workspaceId,
+            name: form.name.trim(),
+            governorId: form.governorId.trim(),
+            alliance: form.alliance.trim(),
+          }),
         });
         const payload = await res.json();
+
         if (!res.ok) {
-          throw new Error(payload?.error?.message || 'Failed to load players.');
+          throw new Error(payload?.error?.message || 'Registration failed.');
         }
-        setGovernors(Array.isArray(payload?.data) ? (payload.data as GovernorItem[]) : []);
-      } catch (cause) {
-        setGovernors([]);
-        setError(cause instanceof Error ? cause.message : 'Failed to load players.');
+
+        setRegisterMessage({
+          type: 'success',
+          text: payload?.data?.registered ? `${form.name} registered successfully!` : `${form.name} already existed; updated.`,
+        });
+
+        // Reload list
+        void loadGovernors();
+      } catch (err) {
+        setRegisterMessage({
+          type: 'error',
+          text: err instanceof Error ? err.message : 'Registration failed.',
+        });
       } finally {
-        setLoadingList(false);
+        setRegisterBusy(false);
       }
     },
-    [workspaceId, accessToken, ready]
+    [ready, accessToken, workspaceId, loadGovernors]
   );
 
-  const loadProfile = useCallback(
-    async (governorId: string) => {
-      if (!ready || !governorId) {
-        setTimeline(null);
-        setWeeklyHistory(null);
-        return;
-      }
+  /* ─── Inline edit handler ─── */
+  const handleSaveEdit = useCallback(
+    async (rowId: string, field: 'name' | 'alliance', value: string) => {
+      if (!ready) return;
+      setEditBusy(true);
 
-      setLoadingProfile(true);
       try {
-        setError(null);
-        const params = new URLSearchParams({ workspaceId });
-        const [timelineRes, weeklyRes] = await Promise.all([
-          fetch(`/api/v2/governors/${governorId}/timeline?${params.toString()}`, {
-            headers: { 'x-access-token': accessToken },
+        const res = await fetch(`/api/v2/governors/${rowId}`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-access-token': accessToken,
+          },
+          body: JSON.stringify({
+            workspaceId,
+            [field]: value.trim(),
           }),
-          fetch(
-            `/api/v2/governors/${governorId}/weekly-activity?${new URLSearchParams({
-              workspaceId,
-              limit: '12',
-            }).toString()}`,
-            {
-              headers: { 'x-access-token': accessToken },
-            }
-          ),
-        ]);
+        });
 
-        const [timelinePayload, weeklyPayload] = await Promise.all([
-          timelineRes.json(),
-          weeklyRes.json(),
-        ]);
-
-        if (!timelineRes.ok) {
-          throw new Error(timelinePayload?.error?.message || 'Failed to load player timeline.');
+        if (!res.ok) {
+          const payload = await res.json();
+          throw new Error(payload?.error?.message || 'Update failed.');
         }
 
-        setTimeline(Array.isArray(timelinePayload?.data?.timeline) ? timelinePayload.data.timeline : []);
-        setWeeklyHistory(
-          weeklyRes.ok && Array.isArray(weeklyPayload?.data?.history)
-            ? (weeklyPayload.data.history as WeeklyActivityHistoryEntry[])
-            : []
+        // Optimistic update
+        setRows((prev) =>
+          prev.map((row) =>
+            row.id === rowId ? { ...row, [field]: value.trim() } : row
+          )
         );
-      } catch (cause) {
-        setTimeline([]);
-        setWeeklyHistory([]);
-        setError(cause instanceof Error ? cause.message : 'Failed to load player profile.');
+        setEditingCell(null);
+      } catch (err) {
+        console.error('Edit failed:', err);
       } finally {
-        setLoadingProfile(false);
+        setEditBusy(false);
       }
     },
-    [workspaceId, accessToken, ready]
+    [ready, accessToken, workspaceId]
   );
 
-  useEffect(() => {
-    if (!ready) return;
-    void Promise.all([loadGovernors(), loadWeeklyBoard()]);
-  }, [ready, loadGovernors, loadWeeklyBoard]);
+  /* ─── Delete handler ─── */
+  const handleDelete = useCallback(
+    async (rowId: string, playerName: string) => {
+      if (!ready) return;
+      if (!window.confirm(`Remove ${playerName} from the database?`)) return;
 
-  useEffect(() => {
-    if (!ready) return;
-    const timer = window.setTimeout(() => {
-      void loadGovernors(search);
-    }, 250);
-    return () => window.clearTimeout(timer);
-  }, [search, ready, loadGovernors]);
+      try {
+        const res = await fetch(`/api/v2/governors/${rowId}?workspaceId=${encodeURIComponent(workspaceId)}`, {
+          method: 'DELETE',
+          headers: { 'x-access-token': accessToken },
+        });
 
-  const weeklyActivityMap = useMemo(() => {
-    const rows = new Map<string, WeeklyActivityRow>();
-    for (const row of weeklyBoard?.rows || []) {
-      rows.set(row.governorDbId, row);
-    }
-    return rows;
-  }, [weeklyBoard?.rows]);
+        if (!res.ok) {
+          const payload = await res.json();
+          throw new Error(payload?.error?.message || 'Delete failed.');
+        }
 
-  const directoryRows = useMemo<DirectoryRow[]>(() => {
-    const mapped = governors.map((governor) => ({
-      ...governor,
-      weekly: weeklyActivityMap.get(governor.id) || null,
-    }));
-
-    const filtered = allianceFilter
-      ? mapped.filter((row) => (row.weekly?.allianceTag || row.alliance || '') === allianceFilter)
-      : mapped;
-
-    return filtered.sort((a, b) => {
-      if (sortKey === 'name') return a.name.localeCompare(b.name);
-      if (sortKey === 'snapshots') return b.snapshotCount - a.snapshotCount;
-      if (sortKey === 'contribution') {
-        const diff = toSafeBigInt(b.weekly?.contributionPoints) - toSafeBigInt(a.weekly?.contributionPoints);
-        if (diff === BigInt(0)) return a.name.localeCompare(b.name);
-        return diff > BigInt(0) ? 1 : -1;
+        setRows((prev) => prev.filter((row) => row.id !== rowId));
+      } catch (err) {
+        console.error('Delete failed:', err);
       }
-      const diff = toSafeBigInt(b.latestPower) - toSafeBigInt(a.latestPower);
-      if (diff === BigInt(0)) return a.name.localeCompare(b.name);
-      return diff > BigInt(0) ? 1 : -1;
-    });
-  }, [governors, weeklyActivityMap, allianceFilter, sortKey]);
-
-  useEffect(() => {
-    if (!directoryRows.length) {
-      setSelectedGovernorId('');
-      return;
-    }
-    if (!selectedGovernorId || !directoryRows.some((row) => row.id === selectedGovernorId)) {
-      setSelectedGovernorId(directoryRows[0].id);
-    }
-  }, [directoryRows, selectedGovernorId]);
-
-  useEffect(() => {
-    if (!selectedGovernorId) return;
-    void loadProfile(selectedGovernorId);
-  }, [selectedGovernorId, loadProfile]);
-
-  const selectedGovernor = useMemo(
-    () => directoryRows.find((row) => row.id === selectedGovernorId) || null,
-    [directoryRows, selectedGovernorId]
+    },
+    [ready, accessToken, workspaceId]
   );
 
-  const profile = useMemo<PlayerProfileViewModel | null>(() => {
-    if (!selectedGovernor) return null;
-    return {
-      id: selectedGovernor.id,
-      name: selectedGovernor.name,
-      governorId: selectedGovernor.governorId,
-      allianceLabel: selectedGovernor.weekly?.allianceLabel || selectedGovernor.alliance || 'No alliance',
-      allianceTag: selectedGovernor.weekly?.allianceTag || selectedGovernor.alliance || null,
-      latestPower: selectedGovernor.latestPower,
-      snapshotCount: selectedGovernor.snapshotCount,
-      currentStatus: selectedGovernor.weekly?.compliance.overall || 'NO_STANDARD',
-      metrics: [
-        {
-          label: 'Contribution',
-          value: selectedGovernor.weekly?.contributionPoints || '0',
-        },
-        {
-          label: 'Fort Destroying',
-          value: selectedGovernor.weekly?.fortDestroying || '0',
-        },
-        {
-          label: 'Power Growth',
-          value: selectedGovernor.weekly?.powerGrowth,
-        },
-        {
-          label: 'KP Growth',
-          value: selectedGovernor.weekly?.killPointsGrowth,
-        },
-      ],
-    };
-  }, [selectedGovernor]);
+  /* ─── CSV Export ─── */
+  const handleExport = useCallback(() => {
+    const headers = [
+      'Name',
+      'Governor ID',
+      'Alliance',
+      'Power',
+      'Kill Points',
+      'Contribution',
+      'Forts Destroyed',
+      'KP Growth',
+      'Power Growth',
+    ];
 
-  const profileSummary = useMemo(() => {
-    const history = weeklyHistory || [];
-    const rowsWithMetrics = history.filter((entry) => entry.metrics);
-    if (!rowsWithMetrics.length) {
-      return {
-        bestContribution: null as WeeklyActivityHistoryEntry | null,
-        bestPower: null as WeeklyActivityHistoryEntry | null,
-      };
-    }
+    const csvRows = filteredRows.map((r) => {
+      const kpGrowth = computeGrowth(r.weeklyStats?.kill_points, r.previousWeekStats?.kill_points);
+      const pwrGrowth = computeGrowth(r.weeklyStats?.power, r.previousWeekStats?.power);
+      return [
+        csvValue(r.name),
+        csvValue(r.governorId),
+        csvValue(r.alliance),
+        csvValue(r.latestPower),
+        csvValue(r.latestKillPoints),
+        csvValue(r.weeklyStats?.contribution_points || '0'),
+        csvValue(r.weeklyStats?.fort_destroying || '0'),
+        csvValue(kpGrowth?.toString() || ''),
+        csvValue(pwrGrowth?.toString() || ''),
+      ].join(',');
+    });
 
-    const bestContribution = [...rowsWithMetrics].sort((a, b) => compareNullableMetric(b.metrics?.contributionPoints || null, a.metrics?.contributionPoints || null))[0] || null;
-    const bestPower = [...rowsWithMetrics].sort((a, b) => compareNullableMetric(b.metrics?.powerGrowth || null, a.metrics?.powerGrowth || null))[0] || null;
+    downloadCsv(`players-export-${new Date().toISOString().slice(0, 10)}.csv`, [headers.join(','), ...csvRows]);
+  }, [filteredRows]);
 
-    return { bestContribution, bestPower };
-  }, [weeklyHistory]);
+  /* ─── Sort toggle ─── */
+  const handleSort = useCallback(
+    (key: string) => {
+      const typedKey = key as SortKey;
+      if (sortKey === typedKey) {
+        setSortDir((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+      } else {
+        setSortKey(typedKey);
+        setSortDir('desc');
+      }
+    },
+    [sortKey]
+  );
 
-  const kpis = useMemo(() => {
-    const highPower = directoryRows.filter((row) => toSafeBigInt(row.latestPower) >= BigInt(100_000_000)).length;
-    const avgSnapshots =
-      directoryRows.length > 0
-        ? Math.round(directoryRows.reduce((sum, row) => sum + row.snapshotCount, 0) / directoryRows.length)
-        : 0;
-
-    return {
-      tracked: governors.length,
-      visible: directoryRows.length,
-      avgSnapshots,
-      highPower,
-    };
-  }, [governors.length, directoryRows]);
-
-  const historyColumns = useMemo(
+  /* ─── Table columns ─── */
+  const columns: DataTableLiteColumn<GovernorRow>[] = useMemo(
     () => [
       {
-        key: 'week',
-        label: 'Week',
-        render: (row: WeeklyActivityHistoryEntry) => (
-          <div className="space-y-1">
-            <strong className="font-heading text-base text-tier-1">{formatWeekShort(row.weekKey)}</strong>
-            <p className="text-xs text-tier-3">{row.weekName}</p>
-          </div>
-        ),
+        key: 'name',
+        label: 'Player',
+        sortable: true,
+        className: 'min-w-[180px]',
+        render: (row) => {
+          if (editingCell?.rowId === row.id && editingCell.field === 'name') {
+            return (
+              <div className="flex items-center gap-1.5">
+                <Input
+                  autoFocus
+                  value={editingCell.value}
+                  onChange={(e) => setEditingCell({ ...editingCell, value: e.target.value })}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      void handleSaveEdit(row.id, 'name', editingCell.value);
+                    } else if (e.key === 'Escape') {
+                      setEditingCell(null);
+                    }
+                  }}
+                  className="h-8 w-36 border-cyan-400/30 bg-[color:var(--surface-4)] text-sm text-tier-1"
+                  disabled={editBusy}
+                />
+                <button
+                  type="button"
+                  onClick={() => void handleSaveEdit(row.id, 'name', editingCell.value)}
+                  disabled={editBusy}
+                  className="rounded-md p-1 text-emerald-400 hover:bg-emerald-400/10"
+                >
+                  <Check className="size-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditingCell(null)}
+                  className="rounded-md p-1 text-tier-3 hover:bg-white/5"
+                >
+                  <X className="size-3.5" />
+                </button>
+              </div>
+            );
+          }
+
+          return (
+            <div className="flex items-center gap-2">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium text-tier-1">{row.name}</p>
+                <p className="text-[11px] text-tier-3 font-mono">{row.governorId}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingCell({ rowId: row.id, field: 'name', value: row.name })}
+                className="shrink-0 rounded-md p-1 opacity-0 transition-opacity group-hover/row:opacity-100 hover:bg-white/5 text-tier-3"
+              >
+                <Pencil className="size-3" />
+              </button>
+            </div>
+          );
+        },
       },
       {
-        key: 'contribution',
-        label: 'Contribution',
-        className: 'text-right',
-        render: (row: WeeklyActivityHistoryEntry) => formatMetric(row.metrics?.contributionPoints || null),
-      },
-      {
-        key: 'fort',
-        label: 'Fort',
-        className: 'text-right',
+        key: 'alliance',
+        label: 'Alliance',
+        sortable: false,
+        className: 'min-w-[120px]',
         mobileHidden: true,
-        render: (row: WeeklyActivityHistoryEntry) => formatMetric(row.metrics?.fortDestroying || null),
+        render: (row) => {
+          if (editingCell?.rowId === row.id && editingCell.field === 'alliance') {
+            return (
+              <div className="flex items-center gap-1.5">
+                <Input
+                  autoFocus
+                  value={editingCell.value}
+                  onChange={(e) => setEditingCell({ ...editingCell, value: e.target.value })}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      void handleSaveEdit(row.id, 'alliance', editingCell.value);
+                    } else if (e.key === 'Escape') {
+                      setEditingCell(null);
+                    }
+                  }}
+                  className="h-8 w-28 border-cyan-400/30 bg-[color:var(--surface-4)] text-sm text-tier-1"
+                  disabled={editBusy}
+                />
+                <button
+                  type="button"
+                  onClick={() => void handleSaveEdit(row.id, 'alliance', editingCell.value)}
+                  disabled={editBusy}
+                  className="rounded-md p-1 text-emerald-400 hover:bg-emerald-400/10"
+                >
+                  <Check className="size-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditingCell(null)}
+                  className="rounded-md p-1 text-tier-3 hover:bg-white/5"
+                >
+                  <X className="size-3.5" />
+                </button>
+              </div>
+            );
+          }
+
+          return (
+            <div className="flex items-center gap-1.5">
+              {row.alliance ? (
+                <StatusPill label={row.alliance} tone={allianceTone(row.alliance)} />
+              ) : (
+                <span className="text-xs text-tier-4">—</span>
+              )}
+              <button
+                type="button"
+                onClick={() => setEditingCell({ rowId: row.id, field: 'alliance', value: row.alliance })}
+                className="shrink-0 rounded-md p-1 opacity-0 transition-opacity group-hover/row:opacity-100 hover:bg-white/5 text-tier-3"
+              >
+                <Pencil className="size-3" />
+              </button>
+            </div>
+          );
+        },
       },
       {
         key: 'power',
         label: 'Power',
-        className: 'text-right',
-        render: (row: WeeklyActivityHistoryEntry) => formatMetric(row.metrics?.powerGrowth || null),
+        sortable: true,
+        className: 'text-right tabular-nums min-w-[100px]',
+        thClassName: 'text-right',
+        render: (row) => (
+          <span className="text-sm font-medium text-tier-1">{formatCompactNumber(row.latestPower)}</span>
+        ),
       },
       {
-        key: 'kp',
-        label: 'KP',
-        className: 'text-right',
+        key: 'killPoints',
+        label: 'Kill Points',
+        sortable: true,
+        className: 'text-right tabular-nums min-w-[100px]',
+        thClassName: 'text-right',
         mobileHidden: true,
-        render: (row: WeeklyActivityHistoryEntry) => formatMetric(row.metrics?.killPointsGrowth || null),
+        render: (row) => (
+          <span className="text-sm text-tier-2">{formatCompactNumber(row.latestKillPoints)}</span>
+        ),
       },
       {
-        key: 'status',
-        label: 'Status',
-        render: (row: WeeklyActivityHistoryEntry) => (
-          <StatusPill
-            label={row.metrics?.compliance.overall || 'NO_DATA'}
-            tone={statusTone(row.metrics?.compliance.overall || 'NO_STANDARD')}
-          />
+        key: 'contribution',
+        label: 'Tech Contrib.',
+        sortable: true,
+        className: 'text-right tabular-nums min-w-[100px]',
+        thClassName: 'text-right',
+        render: (row) => {
+          const val = row.weeklyStats?.contribution_points;
+          return (
+            <span className={cn('text-sm', val && val !== '0' ? 'text-cyan-200 font-medium' : 'text-tier-3')}>
+              {val ? formatMetric(val) : '—'}
+            </span>
+          );
+        },
+      },
+      {
+        key: 'forts',
+        label: 'Forts',
+        sortable: true,
+        className: 'text-right tabular-nums min-w-[70px]',
+        thClassName: 'text-right',
+        render: (row) => {
+          const val = row.weeklyStats?.fort_destroying;
+          return (
+            <span className={cn('text-sm', val && val !== '0' ? 'text-amber-200 font-medium' : 'text-tier-3')}>
+              {val ? formatMetric(val) : '—'}
+            </span>
+          );
+        },
+      },
+      {
+        key: 'kpGrowth',
+        label: 'KP Δ',
+        sortable: true,
+        className: 'text-right tabular-nums min-w-[90px]',
+        thClassName: 'text-right',
+        mobileHidden: true,
+        render: (row) => {
+          const growth = computeGrowth(row.weeklyStats?.kill_points, row.previousWeekStats?.kill_points);
+          const tone = growthTone(growth);
+          return (
+            <span
+              className={cn(
+                'text-sm font-medium',
+                tone === 'good' && 'text-emerald-300',
+                tone === 'bad' && 'text-rose-300',
+                tone === 'neutral' && 'text-tier-3'
+              )}
+            >
+              {growthDisplay(growth)}
+            </span>
+          );
+        },
+      },
+      {
+        key: 'powerGrowth',
+        label: 'Power Δ',
+        sortable: true,
+        className: 'text-right tabular-nums min-w-[90px]',
+        thClassName: 'text-right',
+        mobileHidden: true,
+        render: (row) => {
+          const growth = computeGrowth(row.weeklyStats?.power, row.previousWeekStats?.power);
+          const tone = growthTone(growth);
+          return (
+            <span
+              className={cn(
+                'text-sm font-medium',
+                tone === 'good' && 'text-emerald-300',
+                tone === 'bad' && 'text-rose-300',
+                tone === 'neutral' && 'text-tier-3'
+              )}
+            >
+              {growthDisplay(growth)}
+            </span>
+          );
+        },
+      },
+      {
+        key: 'actions',
+        label: '',
+        className: 'w-[40px]',
+        mobileHidden: true,
+        render: (row) => (
+          <button
+            type="button"
+            onClick={() => void handleDelete(row.id, row.name)}
+            className="rounded-lg p-1.5 text-tier-4 transition-colors hover:bg-rose-400/10 hover:text-rose-300"
+            title="Remove player"
+          >
+            <Trash2 className="size-3.5" />
+          </button>
         ),
       },
     ],
-    []
+    [editingCell, editBusy, handleSaveEdit, handleDelete]
   );
 
-  const progressionContent = loadingProfile ? (
-    <SkeletonSet rows={4} />
-  ) : timeline && timeline.length > 0 ? (
-    <GrowthLineChart
-      timeline={timeline.map((entry) => ({
-        eventName: entry.event.name,
-        power: Number(entry.power),
-        killPoints: Number(entry.killPoints),
-        deads: Number(entry.deads),
-      }))}
-    />
-  ) : (
-    <EmptyState title="No progression history" description="This player does not have enough event snapshots for a timeline yet." />
-  );
-
-  const trendContent = loadingProfile ? (
-    <SkeletonSet rows={4} />
-  ) : weeklyHistory && weeklyHistory.some((entry) => entry.metrics) ? (
-    <div className="space-y-5">
-      <WeeklyActivityLineChart
-        timeline={[...(weeklyHistory || [])]
-          .reverse()
-          .filter((entry) => entry.metrics)
-          .map((entry) => ({
-            weekName: formatWeekShort(entry.weekKey),
-            contributionPoints: Number(entry.metrics?.contributionPoints || 0),
-            fortDestroying: Number(entry.metrics?.fortDestroying || 0),
-            powerGrowth: Number(entry.metrics?.powerGrowth || 0),
-            killPointsGrowth: Number(entry.metrics?.killPointsGrowth || 0),
-          }))}
-      />
-      <WeeklyRadarChart
-        timeline={[...(weeklyHistory || [])]
-          .filter((entry) => entry.metrics)
-          .map((entry) => ({
-            weekName: formatWeekShort(entry.weekKey),
-            contributionPoints: Number(entry.metrics?.contributionPoints || 0),
-            fortDestroying: Number(entry.metrics?.fortDestroying || 0),
-            t4KillsGrowth: Number(entry.metrics?.t4KillsGrowth || 0),
-            t5KillsGrowth: Number(entry.metrics?.t5KillsGrowth || 0),
-            deadsGrowth: Number(entry.metrics?.deadsGrowth || 0),
-          }))}
-      />
-      <MetricStrip
-        items={[
-          {
-            label: 'Best Contribution Week',
-            value: profileSummary.bestContribution ? formatWeekShort(profileSummary.bestContribution.weekKey) : '—',
-            accent: 'teal',
-          },
-          {
-            label: 'Best Power Week',
-            value: profileSummary.bestPower ? formatWeekShort(profileSummary.bestPower.weekKey) : '—',
-            accent: 'gold',
-          },
-          {
-            label: 'History Rows',
-            value: `${weeklyHistory?.length || 0}`,
-            accent: 'slate',
-          },
-        ]}
-      />
-    </div>
-  ) : (
-    <EmptyState title="No weekly trend yet" description="Weekly activity history becomes available after enough weekly boards have been ingested." />
-  );
-
-  const movementContent = loadingProfile ? (
-    <SkeletonSet rows={4} />
-  ) : weeklyHistory && weeklyHistory.length ? (
-    <DataTableLite
-      rows={weeklyHistory}
-      rowKey={(row) => row.weekKey}
-      columns={historyColumns}
-      emptyLabel="No weekly history found for this player."
-    />
-  ) : (
-    <EmptyState title="No weekly history" description="This player has not been captured in the last weekly boards yet." />
-  );
-
+  /* ─── Render ─── */
   return (
-    <div className="space-y-4 sm:space-y-5 lg:space-y-6">
-      <PageHero
-        title="Players"
-        subtitle="Directory, spotlight profile, and week-over-week movement without breaking the existing governor and activity APIs."
-        badges={[
-          weeklyBoard?.event?.weekKey ? `Week ${weeklyBoard.event.weekKey}` : 'Week pending',
-          `${directoryRows.length} visible players`,
-          profile?.allianceTag ? `Spotlight ${profile.allianceTag}` : 'Spotlight pending',
-        ]}
-        actions={
-          <>
-            <Button asChild variant="outline" className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1">
-              <Link href="/rankings">
-                <Crown data-icon="inline-start" /> Rankings
-              </Link>
-            </Button>
-            <Button asChild variant="outline" className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1">
-              <Link href="/compare">
-                <Swords data-icon="inline-start" /> Compare
-              </Link>
-            </Button>
-          </>
-        }
-      />
+    <SessionGate
+      ready={ready}
+      loading={sessionLoading}
+      error={sessionError}
+      loadingLabel="Loading workspace…"
+      notReadyLabel="Sign in to view the player database."
+      onRetry={refreshSession}
+    >
+      <div className="grid gap-5 min-[390px]:gap-6 sm:gap-7">
+        {/* Hero */}
+        <PageHero
+          title="Player Database"
+          subtitle="Manage all registered players, view weekly stats, and track performance. Register players via profile screenshots and update stats via weekly leaderboards."
+          badges={[`${total} players`]}
+          density="balanced-compact"
+          actions={
+            <div className="flex flex-wrap gap-2">
+              <Button
+                onClick={() => {
+                  setRegisterOpen(true);
+                  setRegisterMessage(null);
+                }}
+                className="rounded-full bg-cyan-500/20 text-cyan-100 hover:bg-cyan-500/30 border border-cyan-400/30"
+              >
+                <Plus className="mr-1 size-4" /> Register Player
+              </Button>
+              <Button
+                variant="outline"
+                onClick={handleExport}
+                className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-2 hover:bg-[color:var(--surface-4)] hover:text-tier-1"
+                disabled={filteredRows.length === 0}
+              >
+                <Download className="mr-1 size-4" /> Export CSV
+              </Button>
+            </div>
+          }
+        />
 
-      <SessionGate ready={ready} loading={sessionLoading} error={sessionError} onRetry={() => void refreshSession()}>
+        {/* KPI Strip */}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 min-[390px]:gap-4">
+          <KpiCard label="Total Players" value={kpis.totalPlayers} icon={<Users />} tone="info" density="compact" />
+          <KpiCard
+            label="Avg Power"
+            value={formatCompactNumber(Math.round(kpis.avgPower))}
+            icon={<Shield />}
+            tone="neutral"
+            density="compact"
+          />
+          <KpiCard
+            label="Week Contribution"
+            value={formatCompactNumber(kpis.totalContribution)}
+            icon={<Database />}
+            tone="good"
+            density="compact"
+          />
+          <KpiCard
+            label="Week Forts"
+            value={formatCompactNumber(kpis.totalForts)}
+            icon={<ArrowDownUp />}
+            tone="warn"
+            density="compact"
+          />
+        </div>
+
+        {/* Filters */}
+        <FilterBar density="balanced-compact">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-tier-3" />
+            <Input
+              id="player-search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by name or ID…"
+              className="min-h-11 rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] pl-9 text-tier-1 placeholder:text-tier-4"
+            />
+          </div>
+          <Select
+            value={allianceFilter || ALL_VALUE}
+            onValueChange={(val) => setAllianceFilter(val === ALL_VALUE ? '' : val)}
+          >
+            <SelectTrigger
+              id="alliance-filter"
+              className="min-h-11 w-44 rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-2"
+            >
+              <SelectValue placeholder="All Alliances" />
+            </SelectTrigger>
+            <SelectContent className="border-[color:var(--stroke-soft)] bg-card text-tier-1">
+              <SelectItem value={ALL_VALUE}>All Alliances</SelectItem>
+              {alliances.map((a) => (
+                <SelectItem key={a} value={a}>
+                  {a}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </FilterBar>
+
+        {/* Error */}
         {error ? <InlineError message={error} /> : null}
 
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
-          <KpiCard label="Tracked Players" value={kpis.tracked} hint="Roster identities indexed in this workspace" tone="info" icon={<Users className="size-5" />} />
-          <KpiCard label="Visible in Directory" value={kpis.visible} hint="Rows after current alliance and search filters" tone="neutral" icon={<Search className="size-5" />} />
-          <KpiCard label="Avg Snapshots" value={kpis.avgSnapshots} hint="Average snapshot depth across the visible roster" tone="good" icon={<LineChart className="size-5" />} />
-          <KpiCard label="100M+ Power" value={kpis.highPower} hint="Profiles with high current power in the visible set" tone="warn" icon={<TrendingUp className="size-5" />} />
-        </div>
-
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
-          <Panel
-            className="order-2 xl:order-1"
-            title="Player Directory"
-            subtitle="Search the roster, filter by alliance, and open a profile spotlight."
-            actions={
-              <FilterBar className="w-full items-stretch gap-2.5 sm:items-center">
-                <div className="relative min-w-0 flex-1 sm:min-w-[220px]">
-                  <Search className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-tier-3" />
-                  <Input
-                    value={search}
-                    onChange={(event) => setSearch(event.target.value)}
-                    placeholder="Search player or governor ID"
-                    className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] pl-11 text-tier-1 placeholder:text-tier-3 "
-                  />
-                </div>
-                <Select value={allianceFilter || ALL_VALUE} onValueChange={(value) => setAllianceFilter(value === ALL_VALUE ? '' : value)}>
-                  <SelectTrigger className="w-full min-w-0 rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 sm:min-w-40"><SelectValue placeholder="Alliance" /></SelectTrigger>
-                  <SelectContent className="border-[color:var(--stroke-soft)] bg-popover backdrop-blur-xl shadow-2xl text-tier-1">
-                    <SelectItem value={ALL_VALUE}>All Alliances</SelectItem>
-                    <SelectItem value="GODt">[GODt]</SelectItem>
-                    <SelectItem value="V57">[V57]</SelectItem>
-                    <SelectItem value="P57R">[P57R]</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Select value={sortKey} onValueChange={(value) => setSortKey(value as DirectorySortKey)}>
-                  <SelectTrigger className="w-full min-w-0 rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 sm:min-w-40"><SelectValue placeholder="Sort" /></SelectTrigger>
-                  <SelectContent className="border-[color:var(--stroke-soft)] bg-popover backdrop-blur-xl shadow-2xl text-tier-1">
-                    <SelectItem value="power">Latest Power</SelectItem>
-                    <SelectItem value="contribution">Contribution</SelectItem>
-                    <SelectItem value="snapshots">Snapshots</SelectItem>
-                    <SelectItem value="name">Name</SelectItem>
-                  </SelectContent>
-                </Select>
-              </FilterBar>
+        {/* Table */}
+        {loading ? (
+          <SkeletonSet rows={8} />
+        ) : filteredRows.length === 0 && !debouncedSearch ? (
+          <EmptyState
+            title="No players registered"
+            description="Register players manually or upload profile screenshots to populate the database."
+            action={
+              <Button
+                onClick={() => {
+                  setRegisterOpen(true);
+                  setRegisterMessage(null);
+                }}
+                className="rounded-full bg-cyan-500/20 text-cyan-100 hover:bg-cyan-500/30 border border-cyan-400/30"
+              >
+                <Plus className="mr-1 size-4" /> Register First Player
+              </Button>
             }
-          >
-            {loadingList ? (
-              <SkeletonSet rows={5} />
-            ) : directoryRows.length ? (
-              <div className="grid gap-3">
-                {directoryRows.map((row, index) => (
-                  <button
-                    key={row.id}
-                    type="button"
-                    onClick={() => setSelectedGovernorId(row.id)}
-                    className={cn(
-                      'rounded-[24px] glass-panel p-4 text-left transition-all duration-300 hover:border-white/20 hover:shadow-[0_8px_32px_rgba(0,229,255,0.1)] hover:-translate-y-0.5',
-                      row.id === selectedGovernorId && 'border-[color:var(--rok-gold)] bg-[color:color-mix(in_oklab,var(--rok-gold)_15%,transparent)] shadow-[0_0_24px_rgba(216,184,120,0.2)]'
-                    )}
-                  >
-                    <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                      <div className="min-w-0 flex-1 space-y-3">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <StatusPill label={`#${index + 1}`} tone="neutral" />
-                          <StatusPill label={row.weekly?.allianceTag || row.alliance || 'No alliance'} tone={allianceTone(row.weekly?.allianceTag || row.alliance || '')} />
-                          {row.weekly ? <StatusPill label={row.weekly.compliance.overall} tone={statusTone(row.weekly.compliance.overall)} /> : null}
-                        </div>
-                        <div>
-                          <p className="clamp-title-mobile font-heading text-base text-tier-1 min-[390px]:text-lg sm:text-xl" title={row.name}>{row.name}</p>
-                          <p className="mt-1 text-xs text-tier-3 min-[390px]:text-[13px] sm:text-sm">ID {row.governorId}</p>
-                        </div>
-                      </div>
-                      <div className="text-left sm:text-right">
-                        <p className="font-heading text-xl text-tier-1 sm:text-2xl">{formatCompactNumber(row.latestPower)}</p>
-                        <p className="mt-1 text-xs text-tier-3">power</p>
-                      </div>
-                    </div>
-                    <div className="mt-4 border-t border-white/5 pt-3 grid grid-cols-3 gap-2.5 text-xs min-[390px]:text-[13px] sm:text-sm">
-                      <div>
-                        <p className="text-[10px] uppercase tracking-wider text-tier-3">Forts</p>
-                        <p className="mt-1 font-heading text-lg font-bold text-[color:var(--rok-blue)]">{formatCompactNumber(row.weekly?.fortDestroying || '0')}</p>
-                      </div>
-                      <div>
-                        <p className="text-[10px] uppercase tracking-wider text-tier-3">KP Growth</p>
-                        <p className="mt-1 font-heading text-lg font-bold text-[color:var(--rok-red)]">{formatCompactNumber(row.weekly?.killPointsGrowth || '0')}</p>
-                      </div>
-                      <div>
-                        <p className="text-[10px] uppercase tracking-wider text-tier-3">Deads</p>
-                        <p className="mt-1 font-heading text-lg font-bold text-[color:var(--rok-gold)]">{formatCompactNumber(row.weekly?.deadsGrowth || '0')}</p>
-                      </div>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <EmptyState title="No players found" description="Try another search term or upload profile screenshots to populate the roster." />
-            )}
-          </Panel>
+          />
+        ) : (
+          <DataTableLite
+            columns={columns}
+            rows={filteredRows}
+            rowKey={(row) => row.id}
+            rowClassName={() => 'group/row'}
+            onSort={handleSort}
+            sortKey={sortKey}
+            sortDir={sortDir}
+            stickyFirst
+            dense
+            emptyLabel={debouncedSearch ? `No players matching "${debouncedSearch}"` : 'No players found.'}
+            density="compact"
+          />
+        )}
+      </div>
 
-          <Panel
-            className="order-1 xl:order-2 xl:sticky xl:top-[96px] xl:self-start"
-            title="Spotlight Profile"
-            subtitle={profile ? `${profile.name} • live weekly context plus progression history` : 'Select a player to inspect profile detail'}
-          >
-            {selectedGovernor && profile ? (
-              <motion.div key={selectedGovernor.id} initial={false} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.24 }} className="space-y-4 sm:space-y-5">
-                <div className="space-y-4 rounded-[20px] surface-2 p-3 min-[390px]:rounded-[22px] min-[390px]:p-3.5 sm:rounded-[24px] sm:p-4">
-                  <div className="flex flex-wrap items-start justify-between gap-4">
-                    <div className="space-y-3">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <StatusPill label={profile.allianceTag || 'No alliance'} tone={allianceTone(profile.allianceTag || '')} />
-                        <StatusPill label={profile.currentStatus} tone={statusTone(profile.currentStatus as ComplianceState)} />
-                        <StatusPill label={`ID ${profile.governorId || 'unknown'}`} tone="neutral" />
-                      </div>
-                      <div>
-                        <h2 className="clamp-title-mobile font-heading text-xl text-tier-1 min-[390px]:text-2xl sm:text-3xl" title={profile.name}>{profile.name}</h2>
-                        <p className="clamp-secondary mt-1.5 text-xs text-tier-3 min-[390px]:text-[13px] sm:mt-2 sm:text-sm" title={profile.allianceLabel || ''}>{profile.allianceLabel}</p>
-                      </div>
-                    </div>
-                    <div className="rounded-[20px] border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] px-4 py-3 text-left min-[390px]:rounded-[22px] sm:rounded-[24px] sm:px-5 sm:py-4 sm:text-right">
-                      <p className="text-xs  text-tier-3">Latest Power</p>
-                      <p className="mt-2 font-heading text-2xl text-tier-1 sm:text-3xl">{formatCompactNumber(profile.latestPower)}</p>
-                      <p className="mt-1.5 text-xs text-tier-3 min-[390px]:text-[13px] sm:mt-2 sm:text-sm">{profile.snapshotCount} snapshots tracked</p>
-                    </div>
-                  </div>
-                  <MetricStrip
-                    items={[
-                      {
-                        label: 'Best Contribution',
-                        value: profileSummary.bestContribution?.metrics?.contributionPoints
-                          ? formatCompactNumber(profileSummary.bestContribution.metrics.contributionPoints)
-                          : '—',
-                        accent: 'teal',
-                      },
-                      {
-                        label: 'Best Power Week',
-                        value: profileSummary.bestPower?.metrics?.powerGrowth
-                          ? formatCompactNumber(profileSummary.bestPower.metrics.powerGrowth)
-                          : '—',
-                        accent: 'gold',
-                      },
-                      {
-                        label: 'Current Week',
-                        value: weeklyBoard?.event?.weekKey ? formatWeekShort(weeklyBoard.event.weekKey) : '—',
-                        accent: 'slate',
-                      },
-                    ]}
-                  />
-                </div>
-
-                <div className="rounded-[20px] border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] p-3 min-[390px]:rounded-[22px] min-[390px]:p-3.5 sm:rounded-[24px] sm:p-4">
-                  <MetricStrip
-                    items={[
-                      {
-                        label: 'Contribution',
-                        value: formatCompactNumber(profile.metrics[0]?.value || '0'),
-                        accent: 'teal',
-                      },
-                      {
-                        label: 'Power Growth',
-                        value: profile.metrics[2]?.value ? formatCompactNumber(profile.metrics[2].value) : 'N/A',
-                        accent: 'gold',
-                      },
-                      {
-                        label: 'KP Growth',
-                        value: profile.metrics[3]?.value ? formatCompactNumber(profile.metrics[3].value) : 'N/A',
-                        accent: 'slate',
-                      },
-                    ]}
-                  />
-                  <div className="mt-3">
-                    <RowDetailDrawer
-                      triggerLabel="Open Full Metric Breakdown"
-                      title={`${profile.name} Weekly Metrics`}
-                      description="Current week metrics are compact by default and fully expanded in this drawer."
-                    >
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        {profile.metrics.map((metric) => (
-                          <div key={metric.label} className="rounded-2xl border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] p-3">
-                            <p className="text-xs  text-tier-3">{metric.label}</p>
-                            <p className="mt-2 font-heading text-lg text-tier-1">{metric.value != null ? formatCompactNumber(metric.value) : 'N/A'}</p>
-                          </div>
-                        ))}
-                      </div>
-                    </RowDetailDrawer>
-                  </div>
-                </div>
-              </motion.div>
-            ) : loadingList ? (
-              <SkeletonSet rows={5} />
-            ) : (
-              <EmptyState title="No player selected" description="Search the directory or upload profile data to build a spotlight-ready roster." />
-            )}
-          </Panel>
-        </div>
-
-        {selectedGovernor ? (
-          <Panel
-            title="Performance"
-            subtitle={`${selectedGovernor.name} progression, weekly trend, and movement in a compact reveal-first layout.`}
-          >
-            <div className="grid gap-2.5 md:hidden">
-              <RowDetailDrawer
-                triggerLabel="Event Progression"
-                title="Event Progression"
-                description="Power, kill points, and deads across recorded snapshots."
-              >
-                {progressionContent}
-              </RowDetailDrawer>
-              <RowDetailDrawer
-                triggerLabel="Weekly Trend"
-                title="Weekly Trend"
-                description="Rolling weekly metrics for contribution, fort, power, and KP growth."
-              >
-                {trendContent}
-              </RowDetailDrawer>
-              <RowDetailDrawer
-                triggerLabel="Recent Movement"
-                title="Recent Movement"
-                description={`${selectedGovernor.name} across the latest weekly checkpoints.`}
-              >
-                {movementContent}
-              </RowDetailDrawer>
-            </div>
-
-            <div className="hidden md:block">
-              <Tabs defaultValue="progression" className="space-y-4">
-                <TabsList className="flex w-full justify-start gap-2 rounded-full border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] p-1 overflow-x-auto no-scrollbar whitespace-nowrap">
-                  <TabsTrigger value="progression" className="rounded-full px-4 text-xs  data-[state=active]:bg-sky-300/15 data-[state=active]:text-tier-1">Event Progression</TabsTrigger>
-                  <TabsTrigger value="trend" className="rounded-full px-4 text-xs  data-[state=active]:bg-sky-300/15 data-[state=active]:text-tier-1">Weekly Trend</TabsTrigger>
-                  <TabsTrigger value="movement" className="rounded-full px-4 text-xs  data-[state=active]:bg-sky-300/15 data-[state=active]:text-tier-1">Recent Movement</TabsTrigger>
-                </TabsList>
-                <TabsContent value="progression">{progressionContent}</TabsContent>
-                <TabsContent value="trend">{trendContent}</TabsContent>
-                <TabsContent value="movement">{movementContent}</TabsContent>
-              </Tabs>
-            </div>
-          </Panel>
-        ) : null}
-      </SessionGate>
-    </div>
+      {/* Registration Modal */}
+      <RegisterPlayerDialog
+        open={registerOpen}
+        onClose={() => setRegisterOpen(false)}
+        onRegister={handleRegister}
+        busy={registerBusy}
+        feedbackMessage={registerMessage}
+      />
+    </SessionGate>
   );
 }

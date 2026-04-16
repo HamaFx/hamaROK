@@ -418,7 +418,7 @@ export default function HomeScreen() {
         ]}
         actions={
           <>
-            <Button asChild className="rounded-full bg-[color:var(--primary)] text-primary-foreground hover:opacity-90 shadow-lg hover:opacity-95">
+            <Button asChild className="rounded-full bg-[color:var(--primary)] text-primary-foreground hover:opacity-95 shadow-lg">
               <Link href="/rankings">
                 <Trophy data-icon="inline-start" />
                 Open Rankings
