@@ -862,29 +862,46 @@ export default function RankingReviewPage() {
                     </div>
                   ) : null}
 
-                  {/* MOBILE VIEW: Review Cards */}
-                  <div className="mt-4 grid gap-3 md:hidden">
+                  {/* COMPACT UNIFIED MOBILE VIEW */}
+                  <div className="mt-4 flex flex-col gap-2 md:hidden">
                     {group.rows.map((row) => {
-                      const draft = drafts[row.id] || defaultRankingReviewDraft;
                       return (
-                        <RankingReviewItemCard
-                          key={`${row.id}:mobile`}
-                          row={row}
-                          draft={draft}
-                          rankingProfiles={rankingProfiles}
-                          rerunProfileId={rerunProfileByRow[row.id] || ''}
-                          rerunHint={rerunHints[row.id] || null}
-                          busyRow={busyRow}
-                          onUpdateDraft={(field, value) => updateDraft(row.id, field, value)}
-                          onRerunProfileChange={(value) =>
-                            setRerunProfileByRow((prev) => ({
-                              ...prev,
-                              [row.id]: value,
-                            }))
-                          }
-                          onRerun={() => void rerunOcr(row)}
-                          onAction={(action) => void runAction(row, action)}
-                        />
+                        <div key={`${row.id}:mobile`} className="rounded-xl border border-[color:var(--stroke-soft)] bg-black/20 p-3 flex flex-col gap-3">
+                          
+                          <div className="flex justify-between items-start">
+                             <div>
+                               <div className="flex items-center gap-2">
+                                 <h4 className="font-heading font-medium text-tier-1">{row.governorNameRaw}</h4>
+                                 {row.allianceRaw && <span className="text-xs text-cyan-200">[{row.allianceRaw}]</span>}
+                               </div>
+                               <div className="text-xs text-tier-3 mt-1 font-mono">
+                                  Rank {row.sourceRank} • {row.metricValue} {row.run.metricKey === "kill_points_growth" ? "KP" : "Score"}
+                               </div>
+                             </div>
+                             <StatusPill label={row.identityStatus.replace("_", " ")} tone={row.identityStatus === "UNRESOLVED" ? "warn" : "good"} />
+                          </div>
+
+                          <div className="flex items-center gap-2 mt-1">
+                             <Button
+                               size="sm"
+                               className="h-8 flex-1 rounded-lg bg-[color:color-mix(in_oklab,var(--primary)_15%,transparent)] text-[color:var(--primary)] hover:bg-[color:var(--primary)] hover:text-white"
+                               onClick={() => void runAction(row, "LINK_TO_GOVERNOR")}
+                               disabled={!!busyRow}
+                             >
+                               Link
+                             </Button>
+                             <Button
+                               size="sm"
+                               variant="destructive"
+                               className="h-8 flex-1 rounded-lg opacity-80"
+                               onClick={() => void runAction(row, "REJECT_ROW")}
+                               disabled={!!busyRow}
+                             >
+                               Reject
+                             </Button>
+                          </div>
+
+                        </div>
                       );
                     })}
                   </div>
