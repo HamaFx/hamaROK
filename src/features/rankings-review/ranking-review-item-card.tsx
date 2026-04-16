@@ -139,63 +139,60 @@ export function RankingReviewItemCard({
 
   return (
     <article className="rounded-[20px] surface-2 p-3 min-[390px]:rounded-[22px] min-[390px]:p-3.5 sm:rounded-[24px] sm:p-4">
+      {/* Header Profile Unification */}
       <header className="space-y-3">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h3 className="clamp-title-mobile font-heading text-base text-tier-1 min-[390px]:text-lg sm:text-xl" title={row.governorNameRaw || 'Unknown'}>{row.governorNameRaw || 'Unknown'}</h3>
-            <p className="mt-1 text-xs text-tier-3">
-              Row #{row.id.slice(-8)} • {formatWhen(row.createdAt)}
-            </p>
+        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[color:var(--stroke-subtle)] pb-3 min-[390px]:pb-3.5 sm:pb-4">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+              <h3 className="clamp-title-mobile font-heading text-lg font-bold text-tier-1 sm:text-xl" title={row.governorNameRaw || 'Unknown'}>{row.governorNameRaw || 'Unknown'}</h3>
+              <StatusPill label={`${Math.round(row.confidence)}% text match`} tone={confidenceTone(row.confidence)} />
+            </div>
+            
+            <div className="flex flex-wrap gap-2 text-sm text-tier-2 font-medium">
+              <span className="bg-white/5 border border-white/10 rounded-lg px-2 py-0.5">Rank {row.sourceRank ?? '—'}</span>
+              <span className="bg-white/5 border border-white/10 rounded-lg px-2 py-0.5">{row.metricValue || '—'} {metricLabel}</span>
+              {row.allianceRaw && <span className="bg-white/5 border border-white/10 rounded-lg px-2 py-0.5 text-cyan-200">[{row.allianceRaw}]</span>}
+              {row.titleRaw && <span className="bg-white/5 border border-white/10 rounded-lg px-2 py-0.5 text-rank-gold">({row.titleRaw})</span>}
+            </div>
+
+            <div className="mt-2.5 flex flex-wrap gap-1.5 text-xs text-tier-3">
+              <span>Row #{row.id.slice(-8)}</span>
+              <span>•</span>
+              <span>{formatWhen(row.createdAt)}</span>
+              <span>•</span>
+              <span className={supportedBoard ? 'text-tier-3' : 'text-rose-400'}>{boardLabel}</span>
+              {(runDiagnostics?.classificationConfidence != null || runDiagnostics?.droppedRowCount != null) && (
+                <>
+                  <span>•</span>
+                  <span>Board ID: {Math.round(runDiagnostics?.classificationConfidence || 0)}%</span>
+                  {runDiagnostics?.droppedRowCount ? ` • Dropped ${runDiagnostics.droppedRowCount}` : ''}
+                </>
+              )}
+            </div>
+            
+            {candidatePreview.length > 0 && (
+              <p className="mt-2.5 text-xs text-tier-3 bg-[color:var(--surface-3)] border border-[color:var(--stroke-soft)] p-2 rounded-xl">
+                <strong className="text-tier-2 block mb-0.5"><Sparkles className="size-3 inline-block mr-1 -mt-0.5 text-cyan-300"/> Known Candidates Matched:</strong> {candidatePreview.join(' • ')}
+              </p>
+            )}
           </div>
-          <div className="flex flex-wrap justify-end gap-1.5">
-            <StatusPill label={row.identityStatus} tone={identityTone(row.identityStatus)} />
-            <StatusPill label={boardLabel} tone={supportedBoard ? 'info' : 'bad'} />
-            <StatusPill label={`${Math.round(row.confidence)}%`} tone={confidenceTone(row.confidence)} />
+          
+          <div className="shrink-0 flex flex-col items-end gap-2">
+            <StatusPill label={row.identityStatus.replace('_', ' ')} tone={identityTone(row.identityStatus)} />
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-1.5">
-          <StatusPill label={metricLabel} tone="neutral" />
-          <StatusPill label={`Rank ${row.sourceRank ?? '—'}`} tone="neutral" />
-          <StatusPill label={`Metric ${row.metricValue || '—'}`} tone="neutral" />
-          {runDiagnostics?.classificationConfidence != null ? (
-            <StatusPill
-              label={`Classify ${Math.round(runDiagnostics.classificationConfidence)}%`}
-              tone={runDiagnostics.classificationConfidence >= 75 ? 'good' : 'warn'}
-            />
-          ) : null}
-          {runDiagnostics?.droppedRowCount != null ? (
-            <StatusPill
-              label={`Dropped ${runDiagnostics.droppedRowCount}`}
-              tone={runDiagnostics.droppedRowCount > 0 ? 'warn' : 'info'}
-            />
-          ) : null}
-        </div>
-
-        {row.run.headerText ? (
-          <p className="text-sm text-tier-3">Header: {row.run.headerText}</p>
-        ) : null}
-        {(row.allianceRaw || row.titleRaw) ? (
-          <p className="text-sm text-tier-3">
-            {row.allianceRaw ? `Alliance ${row.allianceRaw}` : `Title ${row.titleRaw}`}
-          </p>
-        ) : null}
-        {candidatePreview.length > 0 ? (
-          <p className="text-sm text-tier-3">Candidates: {candidatePreview.join(' • ')}</p>
-        ) : null}
-        {runBoardTokens.length > 0 ? (
-          <p className="text-sm text-tier-3">Detected board tokens: {runBoardTokens.join(' • ')}</p>
-        ) : null}
-        {!supportedBoard ? (
-          <div className="rounded-2xl border border-rose-300/16 bg-rose-400/10 px-3 py-2.5 text-xs text-rose-100">
-            Unsupported ranking type/metric pair. Validate OCR header classification before approving.
+        {/* Clean OCR Diagnostics Box */}
+        {(!supportedBoard || runGuardFailures.length > 0 || runBoardTokens.length > 0) && (
+          <div className="rounded-2xl border border-rose-300/20 bg-rose-400/10 p-3 text-sm text-rose-100 flex flex-col gap-1.5">
+            <div className="flex items-center gap-1.5 font-semibold">
+              <ShieldAlert className="size-4 text-rose-400"/> OCR Integrity Warnings
+            </div>
+            {!supportedBoard && <p className="text-xs opacity-90">• Unsupported ranking type/metric pair.</p>}
+            {runGuardFailures.length > 0 && <p className="text-xs opacity-90">• Guard failures: {runGuardFailures.join(', ')}</p>}
+            {runBoardTokens.length > 0 && <p className="text-xs opacity-70 mt-1">Detected Board Tokens: {runBoardTokens.join(' • ')}</p>}
           </div>
-        ) : null}
-        {runGuardFailures.length > 0 ? (
-          <div className="rounded-2xl border border-rose-300/16 bg-rose-400/10 px-3 py-2.5 text-xs text-rose-100">
-            Guard failures: {runGuardFailures.join(' • ')}
-          </div>
-        ) : null}
+        )}
       </header>
 
       <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,0.88fr)_minmax(0,1.12fr)]">
@@ -242,20 +239,20 @@ export function RankingReviewItemCard({
             </RowDetailDrawer>
           </div>
 
-          <div className="rounded-2xl border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] p-3.5">
-            <div className="grid gap-2.5 sm:grid-cols-[minmax(0,1fr)_auto]">
+          <div className="rounded-2xl border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] p-3.5 sm:p-4 lg:p-5">
+            <div className="flex items-center gap-2 mb-4 pb-4 border-b border-[color:var(--stroke-subtle)]">
               <Select
                 value={rerunProfileId || AUTO_PROFILE}
                 onValueChange={(value) => onRerunProfileChange(value === AUTO_PROFILE ? '' : value)}
               >
-                <SelectTrigger className="w-full rounded-xl border-[color:var(--stroke-soft)] bg-black/20 text-tier-1">
-                  <SelectValue placeholder="Auto-select rankboard profile" />
+                <SelectTrigger className="flex-1 rounded-xl border-[color:var(--stroke-soft)] bg-black/20 text-tier-1 focus:ring-0">
+                  <SelectValue placeholder="Auto-select profile" />
                 </SelectTrigger>
                 <SelectContent className="border-[color:var(--stroke-soft)] bg-popover backdrop-blur-xl shadow-2xl text-tier-1">
-                  <SelectItem value={AUTO_PROFILE}>Auto-select rankboard profile</SelectItem>
+                  <SelectItem value={AUTO_PROFILE}>Auto-select profile</SelectItem>
                   {rankingProfiles.map((profile) => (
                     <SelectItem key={profile.id} value={profile.id}>
-                      {profile.name} ({profile.profileKey} v{profile.version})
+                      {profile.name} (v{profile.version})
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -263,52 +260,51 @@ export function RankingReviewItemCard({
 
               <Button
                 variant="outline"
-                className="rounded-full border-[color:var(--stroke-soft)] bg-black/20 text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1"
+                className="shrink-0 rounded-xl border-[color:var(--stroke-soft)] bg-black/40 text-tier-1 hover:bg-[color:var(--surface-4)]"
                 onClick={onRerun}
                 disabled={busy || !row.run.artifact?.url}
               >
-                <RefreshCw data-icon="inline-start" />
+                <RefreshCw className="mr-1.5 size-4" />
                 {busyRow === `${row.id}:RERUN_OCR` ? 'Re-running...' : 'Re-run OCR'}
               </Button>
             </div>
 
-            <ActionFooter className="mt-3 border-[color:var(--stroke-subtle)]">
+            {/* Thumb-Friendly 2x2 Action Grid */}
+            <div className="grid grid-cols-2 gap-2 sm:gap-3">
               <Button
-                variant="outline"
-                className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1"
+                className="h-12 w-full rounded-2xl bg-[color:color-mix(in_oklab,var(--primary)_15%,transparent)] text-[color:var(--primary)] hover:bg-[color:color-mix(in_oklab,var(--primary)_25%,transparent)] border border-[color:color-mix(in_oklab,var(--primary)_30%,transparent)] shadow-none text-xs sm:text-sm font-medium transition-all"
                 onClick={() => onAction('LINK_TO_GOVERNOR')}
                 disabled={busy}
               >
-                <Link2 data-icon="inline-start" />
+                <Link2 className="mr-1.5 size-4 opacity-80" />
                 {busyRow === `${row.id}:LINK_TO_GOVERNOR` ? 'Linking...' : 'Link Governor'}
               </Button>
               <Button
-                variant="outline"
-                className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1"
+                className="h-12 w-full rounded-2xl bg-cyan-500/10 text-cyan-300 hover:bg-cyan-500/20 border border-cyan-500/20 shadow-none text-xs sm:text-sm font-medium transition-all"
                 onClick={() => onAction('CREATE_ALIAS')}
                 disabled={busy}
               >
-                <UserPlus data-icon="inline-start" />
+                <UserPlus className="mr-1.5 size-4 opacity-80" />
                 {busyRow === `${row.id}:CREATE_ALIAS` ? 'Saving...' : 'Create Alias'}
               </Button>
               <Button
-                className="rounded-full bg-[color:var(--primary)] text-primary-foreground hover:opacity-90 shadow-lg hover:opacity-95"
+                className="h-12 w-full rounded-2xl bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 border border-amber-500/30 shadow-none text-xs sm:text-sm font-medium transition-all"
                 onClick={() => onAction('CORRECT_ROW')}
                 disabled={busy}
               >
-                <PencilLine data-icon="inline-start" />
+                <PencilLine className="mr-1.5 size-4 opacity-80" />
                 {busyRow === `${row.id}:CORRECT_ROW` ? 'Applying...' : 'Correct Row'}
               </Button>
               <Button
                 variant="destructive"
-                className="rounded-full"
+                className="h-12 w-full rounded-2xl shadow-none text-xs sm:text-sm font-medium focus-visible:ring-0"
                 onClick={() => onAction('REJECT_ROW')}
                 disabled={busy}
               >
-                <XCircle data-icon="inline-start" />
-                {busyRow === `${row.id}:REJECT_ROW` ? 'Rejecting...' : 'Reject'}
+                <XCircle className="mr-1.5 size-4 opacity-80" />
+                {busyRow === `${row.id}:REJECT_ROW` ? 'Rejecting...' : 'Reject Row'}
               </Button>
-            </ActionFooter>
+            </div>
           </div>
 
           {rerunHint ? (

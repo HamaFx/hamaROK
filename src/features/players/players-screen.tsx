@@ -905,6 +905,103 @@ export default function PlayersScreen() {
             dense
             emptyLabel={debouncedSearch ? `No players matching "${debouncedSearch}"` : 'No players found.'}
             density="compact"
+            renderMobileCard={(row) => {
+              const isEditingName = editingCell?.rowId === row.id && editingCell.field === 'name';
+              const isEditingAlliance = editingCell?.rowId === row.id && editingCell.field === 'alliance';
+              
+              const kpGrowth = computeGrowth(row.weeklyStats?.kill_points, row.previousWeekStats?.kill_points);
+              const pwrGrowth = computeGrowth(row.weeklyStats?.power, row.previousWeekStats?.power);
+              const kpTone = growthTone(kpGrowth);
+              const pwrTone = growthTone(pwrGrowth);
+
+              return (
+                <article className="relative overflow-hidden rounded-[20px] border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] p-4 shadow-lg min-[390px]:rounded-[22px] min-[390px]:p-5">
+                  {/* Header: Name, ID, Alliance */}
+                  <div className="flex items-start justify-between pb-4 border-b border-[color:var(--stroke-subtle)]">
+                    <div className="min-w-0 pr-4">
+                      {isEditingName ? (
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <Input
+                            autoFocus
+                            value={editingCell.value}
+                            onChange={(e) => setEditingCell({ ...editingCell, value: e.target.value })}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') void handleSaveEdit(row.id, 'name', editingCell.value);
+                              else if (e.key === 'Escape') setEditingCell(null);
+                            }}
+                            className="h-8 w-32 border-cyan-400/30 bg-[color:var(--surface-4)] text-sm text-tier-1"
+                            disabled={editBusy}
+                          />
+                          <button type="button" onClick={() => void handleSaveEdit(row.id, 'name', editingCell.value)} disabled={editBusy} className="text-emerald-400 p-1 hover:bg-emerald-400/10 rounded-md transition-colors"><Check className="size-3.5"/></button>
+                          <button type="button" onClick={() => setEditingCell(null)} disabled={editBusy} className="text-tier-3 p-1 hover:bg-white/5 rounded-md transition-colors"><X className="size-3.5"/></button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2 mb-1">
+                          <h3 className="truncate font-heading text-base font-medium text-tier-1">{row.name}</h3>
+                          <button type="button" onClick={() => setEditingCell({ rowId: row.id, field: 'name', value: row.name })} className="text-tier-3 hover:text-tier-1 rounded p-1 transition-colors hover:bg-white/5"><Pencil className="size-3"/></button>
+                        </div>
+                      )}
+                      <p className="text-[11px] font-mono text-tier-3">ID: {row.governorId}</p>
+                      
+                      <div className="mt-2.5 flex items-center gap-1.5">
+                        {isEditingAlliance ? (
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <Input
+                              autoFocus
+                              value={editingCell.value}
+                              onChange={(e) => setEditingCell({ ...editingCell, value: e.target.value })}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') void handleSaveEdit(row.id, 'alliance', editingCell.value);
+                                else if (e.key === 'Escape') setEditingCell(null);
+                              }}
+                              className="h-8 w-28 border-cyan-400/30 bg-[color:var(--surface-4)] text-xs text-tier-1"
+                              disabled={editBusy}
+                            />
+                            <button type="button" onClick={() => void handleSaveEdit(row.id, 'alliance', editingCell.value)} disabled={editBusy} className="text-emerald-400 p-1 hover:bg-emerald-400/10 rounded-md transition-colors"><Check className="size-3.5"/></button>
+                            <button type="button" onClick={() => setEditingCell(null)} disabled={editBusy} className="text-tier-3 p-1 hover:bg-white/5 rounded-md transition-colors"><X className="size-3.5"/></button>
+                          </div>
+                        ) : (
+                          <>
+                            {row.alliance ? <StatusPill label={row.alliance} tone={allianceTone(row.alliance)} /> : <span className="text-xs text-tier-4">—</span>}
+                            <button type="button" onClick={() => setEditingCell({ rowId: row.id, field: 'alliance', value: row.alliance })} className="text-tier-3 hover:text-tier-1 rounded p-1 transition-colors hover:bg-white/5"><Pencil className="size-3"/></button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                    <button type="button" onClick={() => void handleDelete(row.id, row.name)} className="shrink-0 rounded-full bg-rose-500/10 p-2 text-rose-400 border border-rose-500/20 active:scale-95 transition-all hover:bg-rose-500/20 hover:text-rose-300" aria-label="Delete Player">
+                      <Trash2 className="size-4"/>
+                    </button>
+                  </div>
+
+                  {/* Body: Stats Grid */}
+                  <div className="mt-4 grid grid-cols-2 gap-3 min-[390px]:gap-4">
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-medium uppercase tracking-wider text-tier-4">Power</span>
+                      <p className="font-heading text-sm font-bold text-tier-1">{formatCompactNumber(row.latestPower)}</p>
+                      <div className={cn('text-[11px] font-semibold flex items-center gap-1 mt-0.5', pwrTone === 'good' ? 'text-emerald-400' : pwrTone === 'bad' ? 'text-rose-400' : 'text-tier-4')}>
+                        {growthDisplay(pwrGrowth)} <span className="font-normal text-[10px] opacity-70 truncate">this week</span>
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-medium uppercase tracking-wider text-tier-4">Kill Points</span>
+                      <p className="font-heading text-sm font-bold text-tier-1">{formatCompactNumber(row.latestKillPoints)}</p>
+                      <div className={cn('text-[11px] font-semibold flex items-center gap-1 mt-0.5', kpTone === 'good' ? 'text-emerald-400' : kpTone === 'bad' ? 'text-rose-400' : 'text-tier-4')}>
+                        {growthDisplay(kpGrowth)} <span className="font-normal text-[10px] opacity-70 truncate">this week</span>
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-1 bg-black/20 rounded-xl p-3 border border-[color:var(--stroke-soft)]">
+                      <span className="text-[10px] font-medium uppercase tracking-wider text-tier-3">Tech Contrib</span>
+                      <p className="font-heading text-sm font-bold text-cyan-200">{row.weeklyStats?.contribution_points ? formatMetric(row.weeklyStats.contribution_points) : '—'}</p>
+                    </div>
+                    <div className="space-y-1 bg-black/20 rounded-xl p-3 border border-[color:var(--stroke-soft)]">
+                      <span className="text-[10px] font-medium uppercase tracking-wider text-tier-3">Forts</span>
+                      <p className="font-heading text-sm font-bold text-amber-200">{row.weeklyStats?.fort_destroying ? formatMetric(row.weeklyStats.fort_destroying) : '—'}</p>
+                    </div>
+                  </div>
+                </article>
+              );
+            }}
           />
         )}
       </div>

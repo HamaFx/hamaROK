@@ -613,6 +613,7 @@ export function DataTableLite<T>({
   stickyFirst = false,
   dense = false,
   mobileCards = true,
+  renderMobileCard,
   emptyLabel = 'No records found.',
   density = 'balanced-compact',
 }: {
@@ -626,6 +627,7 @@ export function DataTableLite<T>({
   stickyFirst?: boolean;
   dense?: boolean;
   mobileCards?: boolean;
+  renderMobileCard?: (row: T, index: number) => React.ReactNode;
   emptyLabel?: string;
   density?: UiDensity;
 }) {
@@ -719,28 +721,38 @@ export function DataTableLite<T>({
       {rows.length === 0 ? (
         <div className="rounded-[20px] border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] px-4 py-6 text-center text-sm text-tier-3 min-[390px]:rounded-[22px]">{emptyLabel}</div>
       ) : (
-        rows.map((row, idx) => (
-          <article
-            key={rowKey(row, idx)}
-            className={cn(
-              activeDensity === 'compact'
-                ? 'rounded-[18px] surface-2 p-2.5 shadow-md min-[390px]:rounded-[20px] min-[390px]:p-3'
-                : 'rounded-[20px] surface-2 p-3 shadow-lg min-[390px]:rounded-[22px] min-[390px]:p-3.5',
-              rowClassName?.(row, idx)
-            )}
-          >
-            <div className="grid gap-3">
-              {columns
-                .filter((column) => !column.mobileHidden)
-                .map((column) => (
-                  <div key={`${rowKey(row, idx)}-${column.key}-mobile`} className="grid gap-1.5">
-                    <span className="text-xs font-medium tracking-[0.06em] text-tier-3">{column.label}</span>
-                    <div className="text-sm text-tier-2">{column.render(row, idx)}</div>
-                  </div>
-                ))}
-            </div>
-          </article>
-        ))
+        rows.map((row, idx) => {
+          if (renderMobileCard) {
+            return (
+              <div key={rowKey(row, idx)} className={rowClassName?.(row, idx)}>
+                {renderMobileCard(row, idx)}
+              </div>
+            );
+          }
+
+          return (
+            <article
+              key={rowKey(row, idx)}
+              className={cn(
+                activeDensity === 'compact'
+                  ? 'rounded-[18px] surface-2 p-2.5 shadow-md min-[390px]:rounded-[20px] min-[390px]:p-3'
+                  : 'rounded-[20px] surface-2 p-3 shadow-lg min-[390px]:rounded-[22px] min-[390px]:p-3.5',
+                rowClassName?.(row, idx)
+              )}
+            >
+              <div className="grid gap-3">
+                {columns
+                  .filter((column) => !column.mobileHidden)
+                  .map((column) => (
+                    <div key={`${rowKey(row, idx)}-${column.key}-mobile`} className="grid gap-1.5">
+                      <span className="text-xs font-medium tracking-[0.06em] text-tier-3">{column.label}</span>
+                      <div className="text-sm text-tier-2">{column.render(row, idx)}</div>
+                    </div>
+                  ))}
+              </div>
+            </article>
+          );
+        })
       )}
     </div>
   );
