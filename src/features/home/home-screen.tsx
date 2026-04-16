@@ -407,7 +407,7 @@ export default function HomeScreen() {
   ];
 
   return (
-    <div className="space-y-5 sm:space-y-6">
+    <div className="space-y-4 sm:space-y-5 lg:space-y-6">
       <PageHero
         title="Live Weekly Boards"
         subtitle="A rankings-first home that surfaces current leaders, rising players, and the statboards worth checking next."
@@ -424,7 +424,7 @@ export default function HomeScreen() {
                 Open Rankings
               </Link>
             </Button>
-            <Button asChild variant="outline" className="rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white">
+            <Button asChild variant="outline" className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1">
               <Link href="/compare">
                 <Swords data-icon="inline-start" />
                 Compare Events
@@ -437,7 +437,7 @@ export default function HomeScreen() {
       <SessionGate ready={ready} loading={sessionLoading} error={sessionError} onRetry={() => void refreshSession()}>
         {error ? <InlineError message={error} /> : null}
 
-        <div className="grid gap-6 xl:grid-cols-[1.4fr_1fr]">
+        <div className="grid gap-5 xl:grid-cols-[1.4fr_1fr]">
           <motion.div initial={false} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}>
             <Panel
               title="Podium Spotlight"
@@ -448,7 +448,7 @@ export default function HomeScreen() {
                     <ToggleGroupItem
                       key={option.key}
                       value={option.key}
-                      className="shrink-0 rounded-full border border-white/10 bg-white/4 px-3 text-xs text-white/64 data-[state=on]:border-sky-300/22 data-[state=on]:bg-sky-300/12 data-[state=on]:text-white"
+                      className="shrink-0 rounded-full border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] px-3 text-xs text-tier-2 data-[state=on]:border-sky-300/22 data-[state=on]:bg-sky-300/12 data-[state=on]:text-tier-1"
                     >
                       {option.short}
                     </ToggleGroupItem>
@@ -461,12 +461,12 @@ export default function HomeScreen() {
                   {podiumRows.map((row, index) => {
                     if (!row) {
                       return (
-                        <Card key={`podium-empty-${index}`} className="h-full min-h-[220px] border-dashed border-white/14 bg-[rgba(11,15,24,0.6)]">
-                          <CardContent className="flex h-full flex-col justify-between gap-4 p-4 max-[390px]:p-3.5 sm:p-5">
+                        <Card key={`podium-empty-${index}`} className="border-dashed border-[color:var(--stroke-strong)] bg-[rgba(11,15,24,0.6)]">
+                          <CardContent className="flex flex-col justify-between gap-3 p-3 min-[390px]:p-3.5 sm:p-4">
                             <StatusPill label={`#${index + 1}`} tone="neutral" />
                             <div>
-                              <p className="font-heading text-base text-white/80 sm:text-lg">Open Podium Slot</p>
-                              <p className="mt-2 text-[13px] text-white/52 max-[390px]:text-xs sm:text-sm">Upload and score this week to populate additional leaderboard positions.</p>
+                              <p className="font-heading text-base text-tier-2 sm:text-lg">Open Podium Slot</p>
+                              <p className="clamp-secondary mt-2 text-xs text-tier-3 min-[390px]:text-[13px] sm:text-sm">Upload and score this week to populate additional leaderboard positions.</p>
                             </div>
                           </CardContent>
                         </Card>
@@ -487,24 +487,24 @@ export default function HomeScreen() {
                         key={row.governorDbId}
                         className={
                           index === 0
-                            ? 'h-full min-h-[220px] border-[#ffd57d]/18 bg-[linear-gradient(145deg,rgba(29,21,7,0.86),rgba(10,12,18,0.96))]'
-                            : 'h-full min-h-[220px] border-white/10 bg-[rgba(11,15,24,0.92)]'
+                            ? 'border-[#ffd57d]/18 bg-[linear-gradient(145deg,rgba(29,21,7,0.86),rgba(10,12,18,0.96))]'
+                            : 'border-[color:var(--stroke-soft)] bg-[rgba(11,15,24,0.92)]'
                         }
                       >
-                        <CardContent className="flex h-full flex-col gap-4 p-4 max-[390px]:p-3.5 sm:p-5">
+                        <CardContent className="flex flex-col gap-3 p-3 min-[390px]:p-3.5 sm:p-4">
                           <div className="flex items-center justify-between">
                             <StatusPill label={`#${index + 1}`} tone={index === 0 ? 'warn' : 'neutral'} />
                             {index === 0 ? <Crown className="size-5 text-[#ffd57d]" /> : null}
                           </div>
                           <div>
-                            <p className="font-heading text-base text-white sm:text-lg">{row.governorName}</p>
-                            <p className="mt-1 text-[13px] text-white/52 max-[390px]:text-xs sm:text-sm">{row.allianceLabel}</p>
+                            <p className="clamp-title-mobile font-heading text-base text-tier-1 sm:text-lg" title={row.governorName}>{row.governorName}</p>
+                            <p className="clamp-secondary mt-1 text-xs text-tier-3 min-[390px]:text-[13px] sm:text-sm" title={row.allianceLabel}>{row.allianceLabel}</p>
                           </div>
-                          <div className="mt-auto">
-                            <p className="text-[11px] uppercase tracking-[0.18em] text-white/38">
+                          <div>
+                            <p className="text-xs  text-tier-3">
                               {METRIC_OPTIONS.find((option) => option.key === spotlightMetric)?.label}
                             </p>
-                            <p className="mt-1.5 font-heading text-xl text-white max-[390px]:text-lg sm:text-2xl">{formatMetric(value)}</p>
+                            <p className="mt-1.5 font-heading text-lg text-tier-1 min-[390px]:text-xl sm:text-2xl">{formatMetric(value)}</p>
                           </div>
                         </CardContent>
                       </Card>
@@ -512,17 +512,17 @@ export default function HomeScreen() {
                   })}
                 </div>
 
-                <Card className="border-white/10 bg-[linear-gradient(145deg,rgba(14,18,30,0.98),rgba(8,11,19,0.98))]">
+                <Card className="border-[color:var(--stroke-soft)] bg-[linear-gradient(145deg,rgba(14,18,30,0.98),rgba(8,11,19,0.98))]">
                   <CardHeader>
-                    <CardTitle className="font-heading text-white">Featured Player</CardTitle>
+                    <CardTitle className="font-heading text-tier-1">Featured Player</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     {featuredPlayer ? (
                       <>
                         <div>
-                          <p className="text-[11px] uppercase tracking-[0.18em] text-white/38">Current spotlight</p>
-                          <h2 className="mt-2 font-heading text-2xl text-white">{featuredPlayer.name}</h2>
-                          <p className="mt-1 text-sm text-white/56">{featuredPlayer.allianceLabel}</p>
+                          <p className="text-xs  text-tier-3">Current spotlight</p>
+                          <h2 className="clamp-title-mobile mt-2 font-heading text-2xl text-tier-1" title={featuredPlayer.name}>{featuredPlayer.name}</h2>
+                          <p className="clamp-secondary mt-1 text-sm text-tier-3" title={featuredPlayer.allianceLabel || ''}>{featuredPlayer.allianceLabel}</p>
                         </div>
                         <MetricStrip
                           items={[
@@ -536,12 +536,12 @@ export default function HomeScreen() {
                               : { label: 'Week', value: formatWeekShort(weeklyEvent?.weekKey), accent: 'slate' as const },
                           ]}
                         />
-                        <p className="text-sm leading-6 text-white/58">{featuredPlayer.note}</p>
+                        <p className="text-sm leading-6 text-tier-3">{featuredPlayer.note}</p>
                         <div className="grid gap-2 md:grid-cols-2">
                           {quickActions.map((action) => {
                             const Icon = action.icon;
                             return (
-                              <Button key={action.href} asChild variant="outline" className="h-10 justify-between rounded-2xl border-white/10 bg-white/4 text-white hover:bg-white/8 hover:text-white sm:h-11">
+                              <Button key={action.href} asChild variant="outline" className="h-11 justify-between rounded-2xl border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1">
                                 <Link href={action.href}>
                                   <span className="flex items-center gap-2">
                                     <Icon className="size-4" />
@@ -555,7 +555,7 @@ export default function HomeScreen() {
                         </div>
                       </>
                     ) : (
-                      <p className="text-sm text-white/56">Upload and score a weekly cycle to unlock the featured-player spotlight.</p>
+                      <p className="text-sm text-tier-3">Upload and score a weekly cycle to unlock the featured-player spotlight.</p>
                     )}
                   </CardContent>
                 </Card>
@@ -563,7 +563,7 @@ export default function HomeScreen() {
             </Panel>
           </motion.div>
 
-          <motion.div initial={false} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, delay: 0.03 }} className="space-y-6">
+          <motion.div initial={false} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, delay: 0.03 }} className="space-y-4 sm:space-y-5">
             <Panel title="Week Pulse" subtitle="A compact read on the current board state.">
               <div className="grid gap-3 sm:grid-cols-2">
                 <KpiCard label="Tracked Players" value={weeklyActivity?.summary.membersTracked ?? 0} hint="Rows in the active weekly board" tone="info" icon={<Users className="size-5" />} />
@@ -575,41 +575,41 @@ export default function HomeScreen() {
 
             <Panel title="Alliance Leader" subtitle="Best pass-rate alliance in the active week.">
               {weeklyInsights?.topAlliance ? (
-                <div className="rounded-[26px] border border-white/10 bg-white/4 p-4 max-[390px]:rounded-[20px] max-[390px]:p-3.5 sm:p-5">
+                <div className="rounded-[20px] border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] p-3 min-[390px]:rounded-[22px] min-[390px]:p-3.5 sm:rounded-[24px] sm:p-4">
                   <div className="flex items-center justify-between gap-4">
                     <div>
-                      <p className="font-heading text-lg text-white sm:text-xl">{weeklyInsights.topAlliance.allianceLabel}</p>
-                      <p className="mt-1 text-[13px] text-white/54 max-[390px]:text-xs sm:text-sm">{weeklyInsights.topAlliance.passCount} passing players out of {weeklyInsights.topAlliance.members}</p>
+                      <p className="font-heading text-lg text-tier-1 sm:text-xl">{weeklyInsights.topAlliance.allianceLabel}</p>
+                      <p className="mt-1 text-xs text-tier-3 min-[390px]:text-[13px] sm:text-sm">{weeklyInsights.topAlliance.passCount} passing players out of {weeklyInsights.topAlliance.members}</p>
                     </div>
                     <StatusPill label={`${weeklyInsights.topAlliance.passRate}%`} tone="good" />
                   </div>
-                  <div className="mt-5 h-2 overflow-hidden rounded-full bg-white/8">
+                  <div className="mt-5 h-2 overflow-hidden rounded-full bg-[color:var(--surface-4)]">
                     <div className="h-full rounded-full bg-[linear-gradient(90deg,#6aa4ff,#8ee7ff)]" style={{ width: `${weeklyInsights.topAlliance.passRate}%` }} />
                   </div>
                 </div>
               ) : (
-                <p className="text-sm text-white/56">Alliance pass-rate data appears once weekly scoring is available.</p>
+                <p className="text-sm text-tier-3">Alliance pass-rate data appears once weekly scoring is available.</p>
               )}
             </Panel>
           </motion.div>
         </div>
 
-        <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+        <div className="grid gap-5 xl:grid-cols-[1.15fr_0.85fr]">
           <Panel title="Movement Watch" subtitle="The players climbing or dropping fastest since the previous scored week.">
             {weekMovement ? (
               <div className="grid gap-4 lg:grid-cols-2">
                 <Card className="border-emerald-400/16 bg-emerald-400/6">
                   <CardHeader>
-                    <CardTitle className="flex items-center gap-2 font-heading text-base text-white">
+                    <CardTitle className="flex items-center gap-2 font-heading text-base text-tier-1">
                       <TrendingUp className="size-4 text-emerald-200" /> Top Risers
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-3">
                     {weekMovement.risers.map((row) => (
-                      <div key={row.governorDbId} className="flex items-center justify-between gap-3 rounded-2xl border border-white/8 bg-black/10 px-3.5 py-2.5 sm:px-4 sm:py-3">
+                      <div key={row.governorDbId} className="flex items-center justify-between gap-3 rounded-2xl border border-[color:var(--stroke-subtle)] bg-black/10 px-3.5 py-2.5 sm:px-4 sm:py-3">
                         <div>
-                          <p className="text-sm font-medium text-white">{row.governorName}</p>
-                          <p className="text-xs text-white/52">{row.allianceLabel}</p>
+                          <p className="text-sm font-medium text-tier-1">{row.governorName}</p>
+                          <p className="text-xs text-tier-3">{row.allianceLabel}</p>
                         </div>
                         <p className="font-heading text-lg text-emerald-100">+{row.delta.toFixed(1)}</p>
                       </div>
@@ -618,79 +618,69 @@ export default function HomeScreen() {
                 </Card>
                 <Card className="border-rose-400/16 bg-rose-400/6">
                   <CardHeader>
-                    <CardTitle className="flex items-center gap-2 font-heading text-base text-white">
+                    <CardTitle className="flex items-center gap-2 font-heading text-base text-tier-1">
                       <TrendingDown className="size-4 text-rose-200" /> Top Fallers
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-3">
                     {weekMovement.fallers.length ? weekMovement.fallers.map((row) => (
-                      <div key={row.governorDbId} className="flex items-center justify-between gap-3 rounded-2xl border border-white/8 bg-black/10 px-3.5 py-2.5 sm:px-4 sm:py-3">
+                      <div key={row.governorDbId} className="flex items-center justify-between gap-3 rounded-2xl border border-[color:var(--stroke-subtle)] bg-black/10 px-3.5 py-2.5 sm:px-4 sm:py-3">
                         <div>
-                          <p className="text-sm font-medium text-white">{row.governorName}</p>
-                          <p className="text-xs text-white/52">{row.allianceLabel}</p>
+                          <p className="text-sm font-medium text-tier-1">{row.governorName}</p>
+                          <p className="text-xs text-tier-3">{row.allianceLabel}</p>
                         </div>
                         <p className="font-heading text-lg text-rose-100">{row.delta.toFixed(1)}</p>
                       </div>
-                    )) : <p className="text-sm text-white/56">No fallers were detected in the current comparison window.</p>}
+                    )) : <p className="text-sm text-tier-3">No fallers were detected in the current comparison window.</p>}
                   </CardContent>
                 </Card>
               </div>
             ) : (
-              <div className="rounded-[24px] border border-dashed border-white/12 bg-white/5 p-5">
-                <p className="font-heading text-lg text-white">Movement Tracking Locked</p>
-                <p className="mt-2 text-sm text-white/58">Score at least two weekly cycles to unlock risers and fallers with week-over-week deltas.</p>
+              <div className="rounded-[20px] border border-dashed border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] p-3 min-[390px]:rounded-[22px] min-[390px]:p-3.5 sm:rounded-[24px] sm:p-4">
+                <p className="font-heading text-lg text-tier-1">Movement Tracking Locked</p>
+                <p className="mt-2 text-sm text-tier-3">Score at least two weekly cycles to unlock risers and fallers with week-over-week deltas.</p>
               </div>
             )}
           </Panel>
 
-          <Panel title="Board Quick Read" subtitle="Snapshots, events, and MVP context in one place.">
-            <div className="space-y-4">
-              <Card className="border-white/10 bg-white/4">
-                <CardContent className="flex items-center justify-between gap-4 p-4 max-[390px]:p-3.5 sm:p-5">
-                  <div>
-                    <p className="text-[11px] uppercase tracking-[0.18em] text-white/36">Weekly MVP</p>
-                    <p className="mt-2 font-heading text-xl text-white">{weeklyMvp?.row.governorName ?? 'Pending'}</p>
-                    <p className="mt-1 text-sm text-white/54">{weeklyMvp?.row.allianceLabel ?? 'No scored week yet'}</p>
+          <Panel title="Board Quick Read" subtitle="MVP and system totals with collapsible event history.">
+            <div className="space-y-3">
+              <div className="rounded-[20px] border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] p-3 min-[390px]:rounded-[22px] min-[390px]:p-3.5 sm:rounded-[24px] sm:p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-xs  text-tier-3">Weekly MVP</p>
+                    <p className="clamp-title-mobile mt-1.5 font-heading text-lg text-tier-1" title={weeklyMvp?.row.governorName || 'Pending'}>{weeklyMvp?.row.governorName ?? 'Pending'}</p>
+                    <p className="clamp-secondary mt-1 text-xs text-tier-3" title={weeklyMvp?.row.allianceLabel || 'No scored week yet'}>{weeklyMvp?.row.allianceLabel ?? 'No scored week yet'}</p>
                   </div>
                   {weeklyMvp ? <StatusPill label={`${weeklyMvp.score.toFixed(1)} pts`} tone="good" /> : null}
-                </CardContent>
-              </Card>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Card className="border-white/10 bg-white/4">
-                  <CardContent className="p-4 max-[390px]:p-3.5 sm:p-5">
-                    <p className="text-[11px] uppercase tracking-[0.18em] text-white/36">Total Players</p>
-                    <p className="mt-2 font-heading text-2xl text-white">{governorCount.toLocaleString()}</p>
-                  </CardContent>
-                </Card>
-                <Card className="border-white/10 bg-white/4">
-                  <CardContent className="p-4 max-[390px]:p-3.5 sm:p-5">
-                    <p className="text-[11px] uppercase tracking-[0.18em] text-white/36">Snapshots Indexed</p>
-                    <p className="mt-2 font-heading text-2xl text-white">{totalSnapshots.toLocaleString()}</p>
-                  </CardContent>
-                </Card>
-              </div>
-              <div className="rounded-[26px] border border-white/10 bg-white/4 p-4 max-[390px]:rounded-[20px] max-[390px]:p-3.5 sm:p-5">
-                <div className="flex items-center justify-between gap-4">
-                  <div>
-                    <p className="text-[11px] uppercase tracking-[0.18em] text-white/36">Recent Events</p>
-                    <p className="mt-2 text-sm text-white/56">Latest windows available for compare and board building.</p>
-                  </div>
-                  <Button asChild variant="outline" className="rounded-full border-white/10 bg-white/4 text-white hover:bg-white/8 hover:text-white">
-                    <Link href="/events">View all</Link>
-                  </Button>
                 </div>
-                <div className="mt-4 space-y-3">
+              </div>
+
+              <MetricStrip
+                items={[
+                  { label: 'Total Players', value: governorCount.toLocaleString(), accent: 'slate' },
+                  { label: 'Snapshots', value: totalSnapshots.toLocaleString(), accent: 'teal' },
+                  { label: 'Events', value: events.length, accent: 'gold' },
+                ]}
+              />
+
+              <details className="rounded-[20px] border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] p-3 min-[390px]:rounded-[22px] min-[390px]:p-3.5 sm:rounded-[24px] sm:p-4">
+                <summary className="cursor-pointer list-none text-sm font-medium text-tier-1">Recent Events</summary>
+                <div className="mt-3 space-y-2.5">
                   {events.slice(0, 4).map((event) => (
-                    <div key={event.id} className="flex items-center justify-between gap-3 rounded-2xl border border-white/8 bg-black/10 px-4 py-3">
-                      <div>
-                        <p className="text-sm font-medium text-white">{event.name}</p>
-                        <p className="text-xs text-white/50">{new Date(event.createdAt).toLocaleDateString()}</p>
+                    <div key={event.id} className="flex items-center justify-between gap-3 rounded-2xl border border-[color:var(--stroke-subtle)] bg-black/10 px-3.5 py-2.5">
+                      <div className="min-w-0">
+                        <p className="clamp-title-mobile text-sm font-medium text-tier-1" title={event.name}>{event.name}</p>
+                        <p className="text-xs text-tier-3">{new Date(event.createdAt).toLocaleDateString()}</p>
                       </div>
                       <StatusPill label={`${event.snapshotCount} rows`} tone="neutral" />
                     </div>
                   ))}
+                  <Button asChild variant="outline" className="w-full rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1 sm:w-auto">
+                    <Link href="/events">View all events</Link>
+                  </Button>
                 </div>
-              </div>
+              </details>
             </div>
           </Panel>
         </div>

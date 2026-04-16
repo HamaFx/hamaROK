@@ -1,19 +1,19 @@
 import type { Metadata, Viewport } from 'next';
 import localFont from 'next/font/local';
-import { Manrope, Sora } from 'next/font/google';
+import { Outfit, Plus_Jakarta_Sans } from 'next/font/google';
 import './globals.css';
 import AppShell from '@/components/AppShell';
 import { TooltipProvider } from '@/components/ui/tooltip';
 
-const sora = Sora({
+const outfit = Outfit({
   subsets: ['latin'],
-  variable: '--font-sora',
+  variable: '--font-outfit',
   display: 'swap',
 });
 
-const manrope = Manrope({
+const plusJakartaSans = Plus_Jakarta_Sans({
   subsets: ['latin'],
-  variable: '--font-manrope',
+  variable: '--font-plus-jakarta',
   display: 'swap',
 });
 
@@ -44,7 +44,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="dark">
-      <body className={`${sora.variable} ${manrope.variable} ${geistMono.variable} antialiased`}>
+      <body className={`${outfit.variable} ${plusJakartaSans.variable} ${geistMono.variable} antialiased`}>
         <TooltipProvider delayDuration={120}>
           <AppShell>{children}</AppShell>
         </TooltipProvider>

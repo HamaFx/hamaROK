@@ -29,13 +29,13 @@ import {
   pickBestRerunRowMatch,
 } from './ranking-review-model';
 import {
+  CompactControlDrawer,
+  CompactControlRow,
   EmptyState,
-  FilterBar,
   KpiCard,
   PageHero,
   Panel,
   SkeletonSet,
-  StickyControlBar,
   StatusPill,
 } from '@/components/ui/primitives';
 
@@ -432,7 +432,7 @@ export default function RankingReviewPage() {
   );
 
   return (
-    <div className="space-y-5 sm:space-y-6">
+    <div className="space-y-4 sm:space-y-5 lg:space-y-6">
       <PageHero
         title="Ranking Review Queue"
         subtitle="Resolve identity links and corrections for ranking screenshots with a mobile card-first triage board."
@@ -440,50 +440,62 @@ export default function RankingReviewPage() {
       />
 
       <SessionGate ready={workspaceReady} loading={sessionLoading} error={sessionError}>
-        <StickyControlBar className="space-y-3">
-          <div className="grid gap-2.5 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
-            <Select
-              value={statusSelectValue}
-              onValueChange={(value) =>
-                setStatusFilter(value === ALL_STATUS ? RANKING_REVIEW_STATUS_OPTIONS.join(',') : value)
-              }
-            >
-              <SelectTrigger className="w-full rounded-full border-white/10 bg-white/4 text-white">
-                <SelectValue placeholder="Status Filter" />
-              </SelectTrigger>
-              <SelectContent className="border-white/10 bg-[rgba(8,10,16,0.98)] text-white">
-                <SelectItem value="UNRESOLVED">Unresolved</SelectItem>
-                <SelectItem value="AUTO_LINKED,MANUAL_LINKED">Linked (Auto + Manual)</SelectItem>
-                <SelectItem value="REJECTED">Rejected</SelectItem>
-                <SelectItem value={ALL_STATUS}>All Statuses</SelectItem>
-              </SelectContent>
-            </Select>
+        <CompactControlRow>
+          <Select
+            value={statusSelectValue}
+            onValueChange={(value) =>
+              setStatusFilter(value === ALL_STATUS ? RANKING_REVIEW_STATUS_OPTIONS.join(',') : value)
+            }
+          >
+            <SelectTrigger className="w-[196px] min-w-[196px] rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1">
+              <SelectValue placeholder="Status Filter" />
+            </SelectTrigger>
+            <SelectContent className="border-[color:var(--stroke-soft)] bg-[rgba(8,10,16,0.98)] text-tier-1">
+              <SelectItem value="UNRESOLVED">Unresolved</SelectItem>
+              <SelectItem value="AUTO_LINKED,MANUAL_LINKED">Linked (Auto + Manual)</SelectItem>
+              <SelectItem value="REJECTED">Rejected</SelectItem>
+              <SelectItem value={ALL_STATUS}>All Statuses</SelectItem>
+            </SelectContent>
+          </Select>
 
-            <Select
-              value={rankingTypeFilter || ALL_RANKING_TYPE}
-              onValueChange={(value) => setRankingTypeFilter(value === ALL_RANKING_TYPE ? '' : value)}
-            >
-              <SelectTrigger className="w-full rounded-full border-white/10 bg-white/4 text-white">
-                <SelectValue placeholder="Ranking Type" />
-              </SelectTrigger>
-              <SelectContent className="border-white/10 bg-[rgba(8,10,16,0.98)] text-white">
-                <SelectItem value={ALL_RANKING_TYPE}>All Ranking Types</SelectItem>
-                {RANKING_TYPE_FILTERS.filter((option) => option.value).map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <Select
+            value={rankingTypeFilter || ALL_RANKING_TYPE}
+            onValueChange={(value) => setRankingTypeFilter(value === ALL_RANKING_TYPE ? '' : value)}
+          >
+            <SelectTrigger className="w-[196px] min-w-[196px] rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1">
+              <SelectValue placeholder="Ranking Type" />
+            </SelectTrigger>
+            <SelectContent className="border-[color:var(--stroke-soft)] bg-[rgba(8,10,16,0.98)] text-tier-1">
+              <SelectItem value={ALL_RANKING_TYPE}>All Ranking Types</SelectItem>
+              {RANKING_TYPE_FILTERS.filter((option) => option.value).map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
+          <Button
+            className="rounded-full bg-[linear-gradient(135deg,#5a7fff,#7ce6ff)] text-black hover:opacity-95"
+            onClick={() => void loadRows()}
+            disabled={loading}
+          >
+            {loading ? 'Loading...' : 'Apply'}
+          </Button>
+
+          <CompactControlDrawer
+            triggerLabel="Review Actions"
+            title="Rank Review Actions"
+            description="Metric filters and bulk actions are compacted inside this drawer."
+          >
             <Select
               value={metricFilter || ALL_METRIC}
               onValueChange={(value) => setMetricFilter(value === ALL_METRIC ? '' : value)}
             >
-              <SelectTrigger className="w-full rounded-full border-white/10 bg-white/4 text-white">
+              <SelectTrigger className="w-full rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1">
                 <SelectValue placeholder="Metric Key" />
               </SelectTrigger>
-              <SelectContent className="border-white/10 bg-[rgba(8,10,16,0.98)] text-white">
+              <SelectContent className="border-[color:var(--stroke-soft)] bg-[rgba(8,10,16,0.98)] text-tier-1">
                 <SelectItem value={ALL_METRIC}>All Metrics</SelectItem>
                 {METRIC_FILTERS.filter((option) => option.value).map((option) => (
                   <SelectItem key={option.value} value={option.value}>
@@ -494,18 +506,8 @@ export default function RankingReviewPage() {
             </Select>
 
             <Button
-              className="rounded-full bg-[linear-gradient(135deg,#5a7fff,#7ce6ff)] text-black hover:opacity-95"
-              onClick={() => void loadRows()}
-              disabled={loading}
-            >
-              {loading ? 'Loading...' : 'Apply'}
-            </Button>
-          </div>
-
-          <FilterBar className="border-white/8 bg-black/20 p-2.5">
-            <Button
               variant="outline"
-              className="rounded-full border-white/12 bg-white/6 text-white hover:bg-white/10 hover:text-white"
+              className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1"
               onClick={() => void runBulkAction('accept_linked')}
               disabled={loading || Boolean(busyRow)}
             >
@@ -520,8 +522,8 @@ export default function RankingReviewPage() {
               {busyRow === 'bulk:reject_all' ? 'Rejecting...' : 'Reject All'}
             </Button>
             <StatusPill label={`${rows.length} rows`} tone="info" />
-          </FilterBar>
-        </StickyControlBar>
+          </CompactControlDrawer>
+        </CompactControlRow>
 
         {error ? <InlineError message={error} /> : null}
 
@@ -546,7 +548,7 @@ export default function RankingReviewPage() {
             })}
           </div>
           {summaryData?.total != null ? (
-            <p className="mt-3 text-sm text-white/58">
+            <p className="mt-3 text-sm text-tier-3">
               Total rows in selected status set: {summaryData.total.toLocaleString()}.
             </p>
           ) : null}

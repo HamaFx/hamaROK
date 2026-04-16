@@ -5,18 +5,16 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ArrowLeft,
   ArrowRight,
-  Crown,
   Download,
+  Filter,
   RefreshCcw,
   Search,
-  Sparkles,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useWorkspaceSession } from '@/lib/workspace-session';
 import { splitGovernorNameAndAlliance } from '@/lib/alliances';
 import { InlineError, SessionGate } from '@/components/app/session-gate';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import {
   Select,
@@ -27,11 +25,11 @@ import {
 } from '@/components/ui/select';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import {
-  ActionToolbar,
+  CompactControlDrawer,
+  CompactControlRow,
   DataTableLite,
   EmptyState,
   FilterBar,
-  PageHero,
   Panel,
   StatusPill,
 } from '@/components/ui/primitives';
@@ -42,6 +40,7 @@ import {
   formatRelativeDate,
   parseBigIntSafe,
 } from '@/features/shared/formatters';
+import type { CompactControlDrawerState } from '@/features/shared/types';
 
 const ALL_VALUE = '__all__';
 const PRESET_NONE = '__none__';
@@ -197,7 +196,6 @@ export default function RankingsScreen() {
   const { workspaceId, accessToken, ready, loading: sessionLoading, error: sessionError, refreshSession } = useWorkspaceSession();
   const [search, setSearch] = useState('');
   const [rows, setRows] = useState<CanonicalRow[]>([]);
-  const [weeklyEvent, setWeeklyEvent] = useState<WeeklyEventInfo | null>(null);
   const [weeks, setWeeks] = useState<WeeklyEventInfo[]>([]);
   const [selectedWeekKey, setSelectedWeekKey] = useState<string>('');
   const [rankingTypeFilter, setRankingTypeFilter] = useState('');
@@ -218,13 +216,15 @@ export default function RankingsScreen() {
   const [presetName, setPresetName] = useState('');
   const [uiNotice, setUiNotice] = useState<string | null>(null);
   const [syncBusy, setSyncBusy] = useState(false);
+  const [drawerState, setDrawerState] = useState<Pick<CompactControlDrawerState, 'rankingsFilters'>>({
+    rankingsFilters: false,
+  });
 
   const presetStorageKey = useMemo(() => `hama:rankings:presets:${workspaceId || 'unknown'}`, [workspaceId]);
 
   const loadWeekOptions = useCallback(async () => {
     if (!ready) {
       setWeeks([]);
-      setWeeklyEvent(null);
       return null;
     }
 
@@ -239,7 +239,6 @@ export default function RankingsScreen() {
         setWeeks(weekRows);
         const preferred = weekRows.find((week) => week.weekKey === selectedWeekKey) || weekRows[0];
         setSelectedWeekKey(preferred.weekKey || '');
-        setWeeklyEvent(preferred);
         return preferred.weekKey || null;
       }
 
@@ -249,7 +248,6 @@ export default function RankingsScreen() {
       const weeklyPayload = await weeklyRes.json();
       if (!weeklyRes.ok || !weeklyPayload?.data?.id) {
         setWeeks([]);
-        setWeeklyEvent(null);
         setSelectedWeekKey('');
         return null;
       }
@@ -263,12 +261,10 @@ export default function RankingsScreen() {
         isClosed: Boolean(weeklyPayload.data.isClosed),
       };
       setWeeks([week]);
-      setWeeklyEvent(week);
       setSelectedWeekKey(week.weekKey || '');
       return week.weekKey || null;
     } catch {
       setWeeks([]);
-      setWeeklyEvent(null);
       return null;
     }
   }, [workspaceId, accessToken, ready, selectedWeekKey]);
@@ -352,8 +348,6 @@ export default function RankingsScreen() {
 
   useEffect(() => {
     if (!ready || !selectedWeekKey) return;
-    const selectedWeek = weeks.find((week) => week.weekKey === selectedWeekKey) || null;
-    if (selectedWeek) setWeeklyEvent(selectedWeek);
     setCursorStack([null]);
     setNextCursor(null);
     void Promise.all([loadWeeklyActivity(selectedWeekKey), loadData(null, selectedWeekKey)]);
@@ -467,12 +461,6 @@ export default function RankingsScreen() {
       };
     });
   }, [rows]);
-
-  const spotlightRows = useMemo(() => {
-    const activeRows = displayRows.filter((row) => row.status === 'ACTIVE');
-    const base = activeRows.length >= 3 ? activeRows : displayRows;
-    return base.slice(0, 3);
-  }, [displayRows]);
 
   const freshness = useMemo(() => {
     if (!displayRows.length) return null;
@@ -611,7 +599,7 @@ export default function RankingsScreen() {
         render: (row: DisplayRankingRow) => (
           <div className="flex flex-col items-start gap-2">
             <StatusPill label={`#${row.stableRank}`} tone={row.stableRank <= 3 ? 'warn' : 'neutral'} />
-            {row.conflictFlags?.tie ? <span className="text-xs text-white/46">Tie group {row.tieGroup}</span> : <span className="text-xs text-white/46">Stable rank</span>}
+            {row.conflictFlags?.tie ? <span className="text-xs text-tier-3">Tie group {row.tieGroup}</span> : <span className="text-xs text-tier-3">Stable rank</span>}
           </div>
         ),
       },
@@ -621,7 +609,7 @@ export default function RankingsScreen() {
         render: (row: DisplayRankingRow) => (
           <div className="flex min-w-0 flex-col gap-2">
             <div className="flex flex-wrap items-center gap-2">
-              <strong className="font-heading text-base text-white">{row.displayName}</strong>
+              <strong className="font-heading text-base text-tier-1">{row.displayName}</strong>
               {row.titleRaw ? <StatusPill label={row.titleRaw} tone="info" /> : null}
             </div>
             <div className="flex flex-wrap gap-2">
@@ -638,11 +626,11 @@ export default function RankingsScreen() {
         render: (row: DisplayRankingRow) => (
           <div className="flex flex-col items-end gap-2 text-right">
             <div>
-              <p className="font-heading text-lg text-white">{formatMetric(row.metricValue)}</p>
-              <p className="text-xs uppercase tracking-[0.18em] text-white/38">{row.metricLabel}</p>
+              <p className="font-heading text-lg text-tier-1">{formatMetric(row.metricValue)}</p>
+              <p className="text-xs  text-tier-3">{row.metricLabel}</p>
             </div>
             {metricVisualMode === 'bars' ? (
-              <div className="w-full max-w-40 overflow-hidden rounded-full bg-white/8">
+              <div className="w-full max-w-40 overflow-hidden rounded-full bg-[color:var(--surface-4)]">
                 <div className="h-2 rounded-full bg-[linear-gradient(90deg,#5a7fff,#7ce6ff)]" style={{ width: `${Math.max(4, row.metricRatio)}%` }} />
               </div>
             ) : null}
@@ -653,13 +641,13 @@ export default function RankingsScreen() {
         key: 'board',
         label: 'Board',
         mobileHidden: true,
-        render: (row: DisplayRankingRow) => <span className="text-sm text-white/56">{row.boardLabel}</span>,
+        render: (row: DisplayRankingRow) => <span className="text-sm text-tier-3">{row.boardLabel}</span>,
       },
       {
         key: 'source',
         label: 'Source',
         mobileHidden: true,
-        render: (row: DisplayRankingRow) => <span className="text-sm text-white/56">{row.sourceRank ? `#${row.sourceRank}` : '—'}</span>,
+        render: (row: DisplayRankingRow) => <span className="text-sm text-tier-3">{row.sourceRank ? `#${row.sourceRank}` : '—'}</span>,
       },
       {
         key: 'status',
@@ -670,102 +658,88 @@ export default function RankingsScreen() {
         key: 'updated',
         label: 'Updated',
         mobileHidden: true,
-        render: (row: DisplayRankingRow) => <span className="text-sm text-white/46">{formatRelativeDate(row.updatedAt)}</span>,
+        render: (row: DisplayRankingRow) => <span className="text-sm text-tier-3">{formatRelativeDate(row.updatedAt)}</span>,
       },
     ],
     [metricVisualMode]
   );
 
   return (
-    <div className="space-y-5 sm:space-y-6">
-      <PageHero
-        title="Rankings"
-        subtitle="A cleaner, faster leaderboard surface for the current week, with spotlight cards, saved filter states, and mobile-friendly board browsing."
-        badges={[
-          weeklyEvent?.weekKey ? `Week ${weeklyEvent.weekKey}` : 'Week pending',
-          `${displayRows.length} visible rows`,
-          `${pendingSyncCount} pending sync`,
-        ]}
-        actions={
-          <>
-            <Button onClick={exportLeaderboardCsv} variant="outline" className="rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white" disabled={!displayRows.length}>
-              <Download data-icon="inline-start" /> Export
-            </Button>
-            <Button onClick={runMetricSync} className="rounded-full bg-[linear-gradient(135deg,#5a7fff,#7ce6ff)] text-black hover:opacity-95" disabled={loading || syncBusy || !ready}>
-              <RefreshCcw data-icon="inline-start" className={syncBusy ? 'animate-spin' : ''} />
-              {syncBusy ? 'Syncing...' : 'Run Sync'}
-            </Button>
-          </>
-        }
-      />
-
+    <div className="space-y-4 sm:space-y-5 lg:space-y-6">
       <SessionGate ready={ready} loading={sessionLoading} error={sessionError} onRetry={() => void refreshSession()}>
         {error ? <InlineError message={error} /> : null}
 
-        <motion.section initial={false} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }} className="relative z-10">
-          <Panel title="Board Controls" subtitle="Week-aware filters and saved leaderboard presets.">
-            <div className="space-y-4">
-              <div className="sticky top-[76px] z-20 -mx-1 rounded-[24px] border border-white/10 bg-[rgba(8,11,19,0.94)] p-3.5 shadow-[0_14px_36px_rgba(0,0,0,0.32)] backdrop-blur max-[390px]:top-[72px] max-[390px]:rounded-[20px] max-[390px]:p-2.5 xl:static xl:mx-0 xl:border-white/8 xl:bg-black/20 xl:shadow-none xl:backdrop-blur-none">
-                <div className="grid gap-2.5 sm:grid-cols-[auto_minmax(0,1fr)_auto]">
-                  <Button type="button" variant="outline" className="w-full rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white sm:w-auto" onClick={goPreviousWeek} disabled={loading || currentWeekIndex >= weeks.length - 1}>
-                    <ArrowLeft data-icon="inline-start" /> Older
-                  </Button>
-                  <Select value={selectedWeekKey || ALL_VALUE} onValueChange={(value) => setSelectedWeekKey(value === ALL_VALUE ? '' : value)}>
-                    <SelectTrigger className="w-full min-w-0 rounded-full border-white/10 bg-white/4 text-white">
-                      <SelectValue placeholder="Select week" />
-                    </SelectTrigger>
-                    <SelectContent className="border-white/10 bg-[rgba(8,10,16,0.98)] text-white">
-                      {weeks.map((week) => (
-                        <SelectItem key={week.id} value={week.weekKey || ALL_VALUE}>
-                          {week.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Button type="button" variant="outline" className="w-full rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white sm:w-auto" onClick={goNextWeek} disabled={loading || currentWeekIndex <= 0}>
-                    Newer <ArrowRight data-icon="inline-end" />
-                  </Button>
-                </div>
-                <div className="relative mt-2.5">
-                  <Search className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-white/34" />
-                  <Input
-                    value={search}
-                    onChange={(event) => setSearch(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter') {
-                        event.preventDefault();
-                        setCursorStack([null]);
-                        setNextCursor(null);
-                        void loadData(null, selectedWeekKey || null);
-                      }
-                    }}
-                    placeholder="Search player name or governor ID"
-                    className="rounded-full border-white/10 bg-white/4 pl-11 text-white placeholder:text-white/28 max-[390px]:h-9"
-                  />
-                </div>
-                <div className="mt-2.5 grid gap-2.5 sm:grid-cols-3">
-                  <Select value={rankingTypeFilter || ALL_VALUE} onValueChange={(value) => setRankingTypeFilter(value === ALL_VALUE ? '' : value)}>
-                    <SelectTrigger className="w-full min-w-0 rounded-full border-white/10 bg-white/4 text-white"><SelectValue placeholder="Board" /></SelectTrigger>
-                    <SelectContent className="border-white/10 bg-[rgba(8,10,16,0.98)] text-white">
-                      {RANKING_TYPE_FILTERS.map((item) => <SelectItem key={item.label} value={item.value || ALL_VALUE}>{item.label}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                  <Select value={metricFilter || ALL_VALUE} onValueChange={(value) => setMetricFilter(value === ALL_VALUE ? '' : value)}>
-                    <SelectTrigger className="w-full min-w-0 rounded-full border-white/10 bg-white/4 text-white"><SelectValue placeholder="Metric" /></SelectTrigger>
-                    <SelectContent className="border-white/10 bg-[rgba(8,10,16,0.98)] text-white">
-                      {METRIC_FILTERS.map((item) => <SelectItem key={item.label} value={item.value || ALL_VALUE}>{item.label}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                  <Select value={allianceFilter || ALL_VALUE} onValueChange={(value) => setAllianceFilter(value === ALL_VALUE ? '' : value)}>
-                    <SelectTrigger className="w-full min-w-0 rounded-full border-white/10 bg-white/4 text-white"><SelectValue placeholder="Alliance" /></SelectTrigger>
-                    <SelectContent className="border-white/10 bg-[rgba(8,10,16,0.98)] text-white">
-                      {ALLIANCE_FILTERS.map((item) => <SelectItem key={item.label} value={item.value || ALL_VALUE}>{item.label}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
+        <motion.section initial={false} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }} className="relative z-10 space-y-2">
+          <CompactControlRow>
+            <Button type="button" variant="outline" className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1" onClick={goPreviousWeek} disabled={loading || currentWeekIndex >= weeks.length - 1}>
+              <ArrowLeft data-icon="inline-start" /> Older
+            </Button>
+            <Select value={selectedWeekKey || ALL_VALUE} onValueChange={(value) => setSelectedWeekKey(value === ALL_VALUE ? '' : value)}>
+              <SelectTrigger className="w-[168px] rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1">
+                <SelectValue placeholder="Select week" />
+              </SelectTrigger>
+              <SelectContent className="border-[color:var(--stroke-soft)] bg-[rgba(8,10,16,0.98)] text-tier-1">
+                {weeks.map((week) => (
+                  <SelectItem key={week.id} value={week.weekKey || ALL_VALUE}>
+                    {week.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button type="button" variant="outline" className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1" onClick={goNextWeek} disabled={loading || currentWeekIndex <= 0}>
+              Newer <ArrowRight data-icon="inline-end" />
+            </Button>
+            <div className="relative w-[240px] min-w-[240px]">
+              <Search className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-tier-3" />
+              <Input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault();
+                    setCursorStack([null]);
+                    setNextCursor(null);
+                    void loadData(null, selectedWeekKey || null);
+                  }
+                }}
+                placeholder="Search player or ID"
+                className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] pl-11 text-tier-1 placeholder:text-tier-3"
+              />
+            </div>
+            <CompactControlDrawer
+              open={drawerState.rankingsFilters}
+              onOpenChange={(open) => setDrawerState((prev) => ({ ...prev, rankingsFilters: open }))}
+              triggerLabel={
+                <>
+                  <Filter className="mr-2 size-4" />
+                  Filters
+                </>
+              }
+              title="Ranking Filters"
+              description="Filters, status chips, presets, and layout options."
+            >
+              <div className="grid gap-2.5 sm:grid-cols-3">
+                <Select value={rankingTypeFilter || ALL_VALUE} onValueChange={(value) => setRankingTypeFilter(value === ALL_VALUE ? '' : value)}>
+                  <SelectTrigger className="w-full min-w-0 rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1"><SelectValue placeholder="Board" /></SelectTrigger>
+                  <SelectContent className="border-[color:var(--stroke-soft)] bg-[rgba(8,10,16,0.98)] text-tier-1">
+                    {RANKING_TYPE_FILTERS.map((item) => <SelectItem key={item.label} value={item.value || ALL_VALUE}>{item.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <Select value={metricFilter || ALL_VALUE} onValueChange={(value) => setMetricFilter(value === ALL_VALUE ? '' : value)}>
+                  <SelectTrigger className="w-full min-w-0 rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1"><SelectValue placeholder="Metric" /></SelectTrigger>
+                  <SelectContent className="border-[color:var(--stroke-soft)] bg-[rgba(8,10,16,0.98)] text-tier-1">
+                    {METRIC_FILTERS.map((item) => <SelectItem key={item.label} value={item.value || ALL_VALUE}>{item.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <Select value={allianceFilter || ALL_VALUE} onValueChange={(value) => setAllianceFilter(value === ALL_VALUE ? '' : value)}>
+                  <SelectTrigger className="w-full min-w-0 rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1"><SelectValue placeholder="Alliance" /></SelectTrigger>
+                  <SelectContent className="border-[color:var(--stroke-soft)] bg-[rgba(8,10,16,0.98)] text-tier-1">
+                    {ALLIANCE_FILTERS.map((item) => <SelectItem key={item.label} value={item.value || ALL_VALUE}>{item.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
               </div>
 
-              <FilterBar className="rounded-[22px] bg-black/20 p-3.5 max-[390px]:rounded-[18px] max-[390px]:p-2.5">
+              <FilterBar className="border-[color:var(--stroke-subtle)] bg-black/20">
                 {weeklyActivity ? <StatusPill label={`${weeklyActivity.summary.membersTracked} tracked`} tone="info" /> : null}
                 <StatusPill label={`Pending sync ${pendingSyncCount}`} tone={pendingSyncCount > 0 ? 'warn' : 'good'} />
                 {isHistoricalWeek ? <StatusPill label="Historical week" tone="neutral" /> : null}
@@ -774,99 +748,78 @@ export default function RankingsScreen() {
                 {sourceCoverage ? <StatusPill label={`KP P${sourceCoverage.killPoints.profile}/R${sourceCoverage.killPoints.rankboard}`} tone="neutral" /> : null}
               </FilterBar>
 
-              <details className="rounded-[22px] border border-white/10 bg-black/20 p-4 max-[390px]:rounded-[18px] max-[390px]:p-3">
-                <summary className="cursor-pointer list-none text-sm font-medium text-white">
-                  Advanced layout and presets
-                </summary>
-                <div className="mt-4 space-y-4">
-                  <div className="grid gap-3.5 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:grid-cols-[minmax(0,1fr)_11rem]">
-                    <Select value={selectedPresetId || PRESET_NONE} onValueChange={(value) => applyPreset(value === PRESET_NONE ? '' : value)}>
-                      <SelectTrigger className="w-full min-w-0 rounded-full border-white/10 bg-white/4 text-white"><SelectValue placeholder="Saved presets" /></SelectTrigger>
-                      <SelectContent className="border-white/10 bg-[rgba(8,10,16,0.98)] text-white">
-                        <SelectItem value={PRESET_NONE}>Saved presets</SelectItem>
-                        {presets.map((preset) => <SelectItem key={preset.id} value={preset.id}>{preset.name}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                    <Input value={presetName} onChange={(event) => setPresetName(event.target.value)} placeholder="Preset name" className="w-full rounded-full border-white/10 bg-white/4 text-white placeholder:text-white/28 max-[390px]:h-9" />
+              <div className="grid gap-2.5 sm:grid-cols-2">
+                <Button onClick={exportLeaderboardCsv} variant="outline" className="w-full rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1" disabled={!displayRows.length}>
+                  <Download data-icon="inline-start" /> Export
+                </Button>
+                <Button onClick={runMetricSync} className="w-full rounded-full bg-[linear-gradient(135deg,#5a7fff,#7ce6ff)] text-black hover:opacity-95" disabled={loading || syncBusy || !ready}>
+                  <RefreshCcw data-icon="inline-start" className={syncBusy ? 'animate-spin' : ''} />
+                  {syncBusy ? 'Syncing...' : 'Run Sync'}
+                </Button>
+              </div>
+
+              <div className="space-y-4 rounded-[20px] border border-[color:var(--stroke-soft)] bg-black/20 p-3 min-[390px]:rounded-[22px] min-[390px]:p-3.5 sm:rounded-[24px] sm:p-4">
+                <div className="grid gap-3.5 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:grid-cols-[minmax(0,1fr)_11rem]">
+                  <Select value={selectedPresetId || PRESET_NONE} onValueChange={(value) => applyPreset(value === PRESET_NONE ? '' : value)}>
+                    <SelectTrigger className="w-full min-w-0 rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1"><SelectValue placeholder="Saved presets" /></SelectTrigger>
+                    <SelectContent className="border-[color:var(--stroke-soft)] bg-[rgba(8,10,16,0.98)] text-tier-1">
+                      <SelectItem value={PRESET_NONE}>Saved presets</SelectItem>
+                      {presets.map((preset) => <SelectItem key={preset.id} value={preset.id}>{preset.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <Input value={presetName} onChange={(event) => setPresetName(event.target.value)} placeholder="Preset name" className="w-full rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 placeholder:text-tier-3" />
+                </div>
+
+                <div className="grid gap-2.5 sm:grid-cols-3">
+                  <Button variant="outline" className="w-full rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1" onClick={savePreset}>Save Preset</Button>
+                  <Button variant="outline" className="w-full rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1" onClick={deleteSelectedPreset} disabled={!selectedPresetId}>Delete</Button>
+                  <Button variant="outline" className="w-full rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1" onClick={resetFilters}>Reset</Button>
+                </div>
+
+                <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto]">
+                  <div>
+                    <p className="mb-2 text-xs  text-tier-3">Leaderboard layout</p>
+                    <ToggleGroup className="w-full flex-wrap justify-start" type="single" value={viewMode} onValueChange={(value) => value && setViewMode(value as RankingsViewMode)}>
+                      {['auto', 'table', 'cards'].map((item) => (
+                        <ToggleGroupItem key={item} value={item} className="rounded-full border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] px-4 text-xs font-medium  text-tier-2 data-[state=on]:border-sky-300/20 data-[state=on]:bg-sky-300/12 data-[state=on]:text-tier-1">
+                          {item}
+                        </ToggleGroupItem>
+                      ))}
+                    </ToggleGroup>
                   </div>
-                  <div className="grid gap-2.5 sm:grid-cols-3">
-                    <Button variant="outline" className="w-full rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white" onClick={savePreset}>Save Preset</Button>
-                    <Button variant="outline" className="w-full rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white" onClick={deleteSelectedPreset} disabled={!selectedPresetId}>Delete</Button>
-                    <Button variant="outline" className="w-full rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white" onClick={resetFilters}>Reset</Button>
-                  </div>
-                  <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto]">
-                    <div>
-                      <p className="mb-2 text-[11px] uppercase tracking-[0.22em] text-white/38">Leaderboard layout</p>
-                      <ToggleGroup className="w-full flex-wrap justify-start" type="single" value={viewMode} onValueChange={(value) => value && setViewMode(value as RankingsViewMode)}>
-                        {['auto', 'table', 'cards'].map((item) => (
-                          <ToggleGroupItem key={item} value={item} className="rounded-full border border-white/10 bg-white/5 px-4 text-xs font-medium uppercase tracking-[0.16em] text-white/64 data-[state=on]:border-sky-300/20 data-[state=on]:bg-sky-300/12 data-[state=on]:text-white">
-                            {item}
-                          </ToggleGroupItem>
-                        ))}
-                      </ToggleGroup>
-                    </div>
-                    <div>
-                      <p className="mb-2 text-[11px] uppercase tracking-[0.22em] text-white/38">Metric rendering</p>
-                      <ToggleGroup className="w-full flex-wrap justify-start sm:w-auto" type="single" value={metricVisualMode} onValueChange={(value) => value && setMetricVisualMode(value as MetricVisualMode)}>
-                        {['numeric', 'bars'].map((item) => (
-                          <ToggleGroupItem key={item} value={item} className="rounded-full border border-white/10 bg-white/5 px-4 text-xs font-medium uppercase tracking-[0.16em] text-white/64 data-[state=on]:border-sky-300/20 data-[state=on]:bg-sky-300/12 data-[state=on]:text-white">
-                            {item}
-                          </ToggleGroupItem>
-                        ))}
-                      </ToggleGroup>
-                    </div>
+                  <div>
+                    <p className="mb-2 text-xs  text-tier-3">Metric rendering</p>
+                    <ToggleGroup className="w-full flex-wrap justify-start sm:w-auto" type="single" value={metricVisualMode} onValueChange={(value) => value && setMetricVisualMode(value as MetricVisualMode)}>
+                      {['numeric', 'bars'].map((item) => (
+                        <ToggleGroupItem key={item} value={item} className="rounded-full border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] px-4 text-xs font-medium  text-tier-2 data-[state=on]:border-sky-300/20 data-[state=on]:bg-sky-300/12 data-[state=on]:text-tier-1">
+                          {item}
+                        </ToggleGroupItem>
+                      ))}
+                    </ToggleGroup>
                   </div>
                 </div>
-              </details>
+              </div>
+            </CompactControlDrawer>
+          </CompactControlRow>
 
-              {uiNotice ? <p className="text-sm text-white/56">{uiNotice}</p> : null}
-            </div>
-          </Panel>
+          {uiNotice ? <p className="text-sm text-tier-3">{uiNotice}</p> : null}
         </motion.section>
-
-        {spotlightRows.length ? (
-          <section className="grid gap-2.5 md:grid-cols-3">
-            {spotlightRows.map((row, index) => (
-              <motion.div key={row.id} initial={false} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.28, delay: index * 0.04 }}>
-                <Card className={index === 0 ? 'border-[#ffd57d]/20 bg-[linear-gradient(145deg,rgba(26,20,8,0.9),rgba(8,10,18,0.98))]' : 'border-white/10 bg-[rgba(11,15,24,0.92)]'}>
-                  <CardContent className="space-y-3.5 p-4 max-[390px]:space-y-3 max-[390px]:p-3.5 sm:p-5">
-                    <div className="flex items-center justify-between">
-                      <StatusPill label={`#${row.stableRank}`} tone={index === 0 ? 'warn' : 'neutral'} />
-                      {index === 0 ? <Crown className="size-5 text-[#ffd57d]" /> : <Sparkles className="size-4 text-white/32" />}
-                    </div>
-                    <div>
-                      <p className="font-heading text-lg text-white max-[390px]:text-base sm:text-xl">{row.displayName}</p>
-                      <p className="mt-1 text-[13px] text-white/56 max-[390px]:text-xs">{row.allianceLabel || 'No alliance'}</p>
-                    </div>
-                    <div className="flex items-end justify-between gap-3">
-                      <div>
-                        <p className="text-[11px] uppercase tracking-[0.18em] text-white/38">{row.metricLabel}</p>
-                        <p className="mt-1.5 font-heading text-[1.85rem] text-white max-[390px]:text-[1.45rem] sm:text-3xl">{formatMetric(row.metricValue)}</p>
-                      </div>
-                      <StatusPill label={row.status} tone={statusTone(row.status)} />
-                    </div>
-                    <p className="text-[13px] text-white/54 max-[390px]:text-xs">{row.boardLabel}</p>
-                  </CardContent>
-                </Card>
-              </motion.div>
-            ))}
-          </section>
-        ) : null}
 
         <Panel
           title="Leaderboard"
-          subtitle="Canonical board rows with the current filters, week selection, and saved presets applied."
-          actions={
-            <ActionToolbar>
-              <Button variant="outline" className="w-full rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white sm:w-auto" onClick={goBack} disabled={loading || cursorStack.length <= 1}>
+          subtitle="Canonical board rows with current filters applied."
+        >
+          <div className="mb-3 flex items-center justify-between gap-2 overflow-x-auto whitespace-nowrap">
+            <p className="text-xs text-tier-3 min-[390px]:text-sm">{displayRows.length} rows visible</p>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1" onClick={goBack} disabled={loading || cursorStack.length <= 1}>
                 <ArrowLeft data-icon="inline-start" /> Prev
               </Button>
-              <Button variant="outline" className="w-full rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white sm:w-auto" onClick={goNext} disabled={loading || !nextCursor}>
+              <Button variant="outline" className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1" onClick={goNext} disabled={loading || !nextCursor}>
                 Next <ArrowRight data-icon="inline-end" />
               </Button>
-            </ActionToolbar>
-          }
-        >
+            </div>
+          </div>
           {displayRows.length ? (
             viewMode === 'cards' ? (
               <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-3">
@@ -875,10 +828,10 @@ export default function RankingsScreen() {
                     key={row.id}
                     className={
                       row.status === 'ACTIVE'
-                        ? 'rounded-[24px] border border-white/10 bg-[rgba(11,15,24,0.92)] p-4 shadow-[0_12px_28px_rgba(0,0,0,0.24)] max-[390px]:rounded-[20px] max-[390px]:p-3.5'
+                        ? 'rounded-[20px] border border-[color:var(--stroke-soft)] bg-[rgba(11,15,24,0.92)] p-3 shadow-[0_12px_28px_rgba(0,0,0,0.24)] min-[390px]:rounded-[22px] min-[390px]:p-3.5 sm:rounded-[24px] sm:p-4'
                         : row.status === 'UNRESOLVED'
-                          ? 'rounded-[24px] border border-sky-300/20 bg-[rgba(76,127,197,0.14)] p-4 shadow-[0_12px_28px_rgba(0,0,0,0.24)] max-[390px]:rounded-[20px] max-[390px]:p-3.5'
-                          : 'rounded-[24px] border border-rose-300/20 bg-[rgba(150,62,90,0.15)] p-4 shadow-[0_12px_28px_rgba(0,0,0,0.24)] max-[390px]:rounded-[20px] max-[390px]:p-3.5'
+                          ? 'rounded-[20px] border border-sky-300/20 bg-[rgba(76,127,197,0.14)] p-3 shadow-[0_12px_28px_rgba(0,0,0,0.24)] min-[390px]:rounded-[22px] min-[390px]:p-3.5 sm:rounded-[24px] sm:p-4'
+                          : 'rounded-[20px] border border-rose-300/20 bg-[rgba(150,62,90,0.15)] p-3 shadow-[0_12px_28px_rgba(0,0,0,0.24)] min-[390px]:rounded-[22px] min-[390px]:p-3.5 sm:rounded-[24px] sm:p-4'
                     }
                   >
                     <div className="flex items-center justify-between gap-3">
@@ -886,23 +839,23 @@ export default function RankingsScreen() {
                       <StatusPill label={row.status} tone={statusTone(row.status)} />
                     </div>
                     <div className="mt-4 space-y-2">
-                      <p className="font-heading text-lg text-white max-[390px]:text-base sm:text-xl">{row.displayName}</p>
+                      <p className="clamp-title-mobile font-heading text-base text-tier-1 min-[390px]:text-lg sm:text-xl" title={row.displayName}>{row.displayName}</p>
                       <div className="flex flex-wrap gap-2">
                         <StatusPill label={row.allianceLabel || 'No alliance'} tone={allianceTone(row.allianceTag)} />
                         <StatusPill label={row.linkedGovernorId ? `ID ${row.linkedGovernorId}` : 'Unlinked'} tone="neutral" />
                       </div>
                     </div>
                     <div className="mt-4 grid grid-cols-2 gap-3">
-                      <div className="rounded-2xl border border-white/8 bg-white/4 p-3">
-                        <p className="text-[11px] uppercase tracking-[0.16em] text-white/36">{row.metricLabel}</p>
-                        <p className="mt-1.5 font-heading text-base text-white sm:text-lg">{formatMetric(row.metricValue)}</p>
+                      <div className="rounded-2xl border border-[color:var(--stroke-subtle)] bg-[color:var(--surface-3)] p-3">
+                        <p className="text-xs  text-tier-3">{row.metricLabel}</p>
+                        <p className="mt-1.5 font-heading text-base text-tier-1 sm:text-lg">{formatMetric(row.metricValue)}</p>
                       </div>
-                      <div className="rounded-2xl border border-white/8 bg-white/4 p-3">
-                        <p className="text-[11px] uppercase tracking-[0.16em] text-white/36">Board</p>
-                        <p className="mt-1.5 text-[13px] text-white/78 max-[390px]:text-xs">{formatTokenLabel(row.rankingType)}</p>
+                      <div className="rounded-2xl border border-[color:var(--stroke-subtle)] bg-[color:var(--surface-3)] p-3">
+                        <p className="text-xs  text-tier-3">Board</p>
+                        <p className="clamp-secondary mt-1.5 text-xs text-tier-2 min-[390px]:text-[13px]" title={formatTokenLabel(row.rankingType)}>{formatTokenLabel(row.rankingType)}</p>
                       </div>
                     </div>
-                    <p className="mt-3 text-xs text-white/46">Updated {formatRelativeDate(row.updatedAt)}</p>
+                    <p className="mt-3 text-xs text-tier-3">Updated {formatRelativeDate(row.updatedAt)}</p>
                   </article>
                 ))}
               </div>
@@ -930,10 +883,10 @@ export default function RankingsScreen() {
               description="Adjust the current filters or upload more ranking screenshots for the selected week."
               action={
                 <div className="flex flex-wrap justify-center gap-2">
-                  <Button asChild variant="outline" className="rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white">
+                  <Button asChild variant="outline" className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1">
                     <Link href="/upload">Upload Screenshots</Link>
                   </Button>
-                  <Button variant="outline" className="rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white" onClick={resetFilters}>
+                  <Button variant="outline" className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1" onClick={resetFilters}>
                     Reset Filters
                   </Button>
                 </div>

@@ -329,7 +329,7 @@ export default function SettingsPage() {
   }, [standards]);
 
   return (
-    <div className="space-y-5 sm:space-y-6">
+    <div className="space-y-4 sm:space-y-5 lg:space-y-6">
       <PageHero
         title="Settings"
         subtitle="Configure combat scoring, weekly standards, and Discord delivery."
@@ -362,7 +362,7 @@ export default function SettingsPage() {
             actions={
               <Button
                 variant="outline"
-                className="rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white"
+                className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1"
                 onClick={() => setConfig(DEFAULTS)}
               >
                 Reset Formula
@@ -371,7 +371,7 @@ export default function SettingsPage() {
           >
             <div className="space-y-5">
               <div className="space-y-2.5">
-                <label className="flex items-center justify-between gap-3 text-[11px] uppercase tracking-[0.18em] text-white/42">
+                <label className="flex items-center justify-between gap-3 text-xs  text-tier-3">
                   <span>T4 Kill Weight</span>
                   <span>{config.t4Weight} DKP</span>
                 </label>
@@ -387,7 +387,7 @@ export default function SettingsPage() {
                 />
               </div>
               <div className="space-y-2.5">
-                <label className="flex items-center justify-between gap-3 text-[11px] uppercase tracking-[0.18em] text-white/42">
+                <label className="flex items-center justify-between gap-3 text-xs  text-tier-3">
                   <span>T5 Kill Weight</span>
                   <span>{config.t5Weight} DKP</span>
                 </label>
@@ -403,7 +403,7 @@ export default function SettingsPage() {
                 />
               </div>
               <div className="space-y-2.5">
-                <label className="flex items-center justify-between gap-3 text-[11px] uppercase tracking-[0.18em] text-white/42">
+                <label className="flex items-center justify-between gap-3 text-xs  text-tier-3">
                   <span>Dead Troops Weight</span>
                   <span>{config.deadWeight} DKP</span>
                 </label>
@@ -419,7 +419,7 @@ export default function SettingsPage() {
                 />
               </div>
               <div className="space-y-2.5">
-                <label className="flex items-center justify-between gap-3 text-[11px] uppercase tracking-[0.18em] text-white/42">
+                <label className="flex items-center justify-between gap-3 text-xs  text-tier-3">
                   <span>Expected KP per 1M power</span>
                   <span>{(config.kpPerPowerRatio * 1000).toLocaleString()}k</span>
                 </label>
@@ -435,7 +435,7 @@ export default function SettingsPage() {
                 />
               </div>
               <div className="space-y-2.5">
-                <label className="flex items-center justify-between gap-3 text-[11px] uppercase tracking-[0.18em] text-white/42">
+                <label className="flex items-center justify-between gap-3 text-xs  text-tier-3">
                   <span>Expected Deads per 1M power</span>
                   <span>{(config.deadPerPowerRatio * 1000).toLocaleString()}k</span>
                 </label>
@@ -454,7 +454,7 @@ export default function SettingsPage() {
 
             <FilterBar className="mt-4">
               <Settings2 className="size-4" />
-              <span className="text-sm text-white/60">Engagement mix score: {formulaPreview.engagementWeight}</span>
+              <span className="text-sm text-tier-2">Engagement mix score: {formulaPreview.engagementWeight}</span>
             </FilterBar>
           </Panel>
 
@@ -463,7 +463,7 @@ export default function SettingsPage() {
             subtitle="Minimum thresholds reset weekly using the configured game reset offset."
           >
             <div className="space-y-2">
-              <label className="flex items-center justify-between gap-3 text-[11px] uppercase tracking-[0.18em] text-white/42">
+              <label className="flex items-center justify-between gap-3 text-xs  text-tier-3">
                 <span>Week Reset UTC Offset</span>
                 <span>{config.weekResetUtcOffset}</span>
               </label>
@@ -474,18 +474,18 @@ export default function SettingsPage() {
                 onChange={handleConfigChange}
                 placeholder="+00:00"
                 pattern="^[+-](0\\d|1[0-4]):[0-5]\\d$"
-                className="rounded-2xl border-white/10 bg-white/4 text-white placeholder:text-white/30"
+                className="rounded-2xl border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 placeholder:text-tier-3"
               />
-              <p className="text-xs text-white/54">Format `+HH:MM` or `-HH:MM` (example `+03:00`).</p>
+              <p className="text-xs text-tier-3">Format `+HH:MM` or `-HH:MM` (example `+03:00`).</p>
             </div>
 
             <div className="mt-4 space-y-3 md:hidden">
               {standards.map((row) => (
                 <div
                   key={row.allianceTag}
-                  className="rounded-[22px] border border-white/10 bg-white/4 p-3.5"
+                  className="rounded-[22px] border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] p-3.5"
                 >
-                  <p className="font-heading text-sm text-white">{row.allianceLabel}</p>
+                  <p className="font-heading text-sm text-tier-1">{row.allianceLabel}</p>
                   <div className="mt-3 grid gap-2.5 grid-cols-2">
                     <Input
                       type="text"
@@ -494,7 +494,7 @@ export default function SettingsPage() {
                       onChange={(e) => handleStandardChange(row.allianceTag, 'contributionPoints', e.target.value)}
                       aria-label={`${row.allianceLabel} contribution minimum`}
                       placeholder="Contribution"
-                      className="rounded-xl border-white/10 bg-white/4 text-white placeholder:text-white/30"
+                      className="rounded-xl border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 placeholder:text-tier-3"
                     />
                     <Input
                       type="text"
@@ -503,7 +503,7 @@ export default function SettingsPage() {
                       onChange={(e) => handleStandardChange(row.allianceTag, 'fortDestroying', e.target.value)}
                       aria-label={`${row.allianceLabel} fort destroying minimum`}
                       placeholder="Fort"
-                      className="rounded-xl border-white/10 bg-white/4 text-white placeholder:text-white/30"
+                      className="rounded-xl border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 placeholder:text-tier-3"
                     />
                     <Input
                       type="text"
@@ -512,7 +512,7 @@ export default function SettingsPage() {
                       onChange={(e) => handleStandardChange(row.allianceTag, 'powerGrowth', e.target.value)}
                       aria-label={`${row.allianceLabel} power growth minimum`}
                       placeholder="Power"
-                      className="rounded-xl border-white/10 bg-white/4 text-white placeholder:text-white/30"
+                      className="rounded-xl border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 placeholder:text-tier-3"
                     />
                     <Input
                       type="text"
@@ -521,16 +521,16 @@ export default function SettingsPage() {
                       onChange={(e) => handleStandardChange(row.allianceTag, 'killPointsGrowth', e.target.value)}
                       aria-label={`${row.allianceLabel} kill points growth minimum`}
                       placeholder="KP"
-                      className="rounded-xl border-white/10 bg-white/4 text-white placeholder:text-white/30"
+                      className="rounded-xl border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 placeholder:text-tier-3"
                     />
                   </div>
                 </div>
               ))}
             </div>
 
-            <div className="mt-4 hidden overflow-hidden rounded-[22px] border border-white/10 md:block">
-              <table className="w-full border-collapse text-sm text-white/78">
-                <thead className="bg-white/6 text-[11px] uppercase tracking-[0.16em] text-white/45">
+            <div className="mt-4 hidden overflow-hidden rounded-[22px] border border-[color:var(--stroke-soft)] md:block">
+              <table className="w-full border-collapse text-sm text-tier-2">
+                <thead className="bg-[color:var(--surface-3)] text-xs  text-tier-3">
                   <tr>
                     <th className="px-3 py-2 text-left">Alliance</th>
                     <th className="px-3 py-2 text-left">Contribution Min</th>
@@ -541,8 +541,8 @@ export default function SettingsPage() {
                 </thead>
                 <tbody>
                   {standards.map((row) => (
-                    <tr key={row.allianceTag} className="border-t border-white/8">
-                      <td className="px-3 py-2.5 font-medium text-white">{row.allianceLabel}</td>
+                    <tr key={row.allianceTag} className="border-t border-[color:var(--stroke-subtle)]">
+                      <td className="px-3 py-2.5 font-medium text-tier-1">{row.allianceLabel}</td>
                       <td className="px-3 py-2.5">
                         <Input
                           type="text"
@@ -550,7 +550,7 @@ export default function SettingsPage() {
                           value={row.contributionPoints}
                           onChange={(e) => handleStandardChange(row.allianceTag, 'contributionPoints', e.target.value)}
                           aria-label={`${row.allianceLabel} contribution minimum`}
-                          className="h-10 rounded-xl border-white/10 bg-white/4 text-white"
+                          className="h-11 rounded-xl border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1"
                         />
                       </td>
                       <td className="px-3 py-2.5">
@@ -560,7 +560,7 @@ export default function SettingsPage() {
                           value={row.fortDestroying}
                           onChange={(e) => handleStandardChange(row.allianceTag, 'fortDestroying', e.target.value)}
                           aria-label={`${row.allianceLabel} fort destroying minimum`}
-                          className="h-10 rounded-xl border-white/10 bg-white/4 text-white"
+                          className="h-11 rounded-xl border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1"
                         />
                       </td>
                       <td className="px-3 py-2.5">
@@ -570,7 +570,7 @@ export default function SettingsPage() {
                           value={row.powerGrowth}
                           onChange={(e) => handleStandardChange(row.allianceTag, 'powerGrowth', e.target.value)}
                           aria-label={`${row.allianceLabel} power growth minimum`}
-                          className="h-10 rounded-xl border-white/10 bg-white/4 text-white"
+                          className="h-11 rounded-xl border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1"
                         />
                       </td>
                       <td className="px-3 py-2.5">
@@ -580,7 +580,7 @@ export default function SettingsPage() {
                           value={row.killPointsGrowth}
                           onChange={(e) => handleStandardChange(row.allianceTag, 'killPointsGrowth', e.target.value)}
                           aria-label={`${row.allianceLabel} kill points growth minimum`}
-                          className="h-10 rounded-xl border-white/10 bg-white/4 text-white"
+                          className="h-11 rounded-xl border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1"
                         />
                       </td>
                     </tr>
@@ -591,7 +591,7 @@ export default function SettingsPage() {
 
             <FilterBar className="mt-4">
               <Shield className="size-4" />
-              <span className="text-sm text-white/60">
+              <span className="text-sm text-tier-2">
                 Totals: Contribution {formatInt(weeklySummary.totalContribution)} • Fort {formatInt(weeklySummary.totalFort)} • Power Growth {formatInt(weeklySummary.totalGrowth)} • KP Growth {formatInt(weeklySummary.totalKpGrowth)}
               </span>
             </FilterBar>
@@ -600,19 +600,19 @@ export default function SettingsPage() {
 
         <Panel title="Discord Integration">
           <div className="space-y-2">
-            <label className="text-[11px] uppercase tracking-[0.18em] text-white/42">Webhook URL</label>
+            <label className="text-xs  text-tier-3">Webhook URL</label>
             <Input
               type="text"
               name="discordWebhook"
               value={config.discordWebhook}
               onChange={handleConfigChange}
               placeholder="https://discord.com/api/webhooks/..."
-              className="rounded-2xl border-white/10 bg-white/4 text-white placeholder:text-white/30"
+              className="rounded-2xl border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 placeholder:text-tier-3"
             />
           </div>
           <FilterBar className="mt-4">
             <Webhook className="size-4" />
-            <span className="text-sm text-white/60">Used by Discord publish endpoints and delivery retries.</span>
+            <span className="text-sm text-tier-2">Used by Discord publish endpoints and delivery retries.</span>
           </FilterBar>
         </Panel>
 

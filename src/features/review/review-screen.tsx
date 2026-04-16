@@ -29,13 +29,13 @@ import {
 } from './review-model';
 import {
   CompactAlert,
+  CompactControlDrawer,
+  CompactControlRow,
   EmptyState,
-  FilterBar,
   KpiCard,
   PageHero,
   Panel,
   SkeletonSet,
-  StickyControlBar,
   StatusPill,
 } from '@/components/ui/primitives';
 
@@ -449,7 +449,7 @@ export default function ReviewQueuePage() {
   };
 
   return (
-    <div className="space-y-5 sm:space-y-6">
+    <div className="space-y-4 sm:space-y-5 lg:space-y-6">
       <PageHero
         title="OCR Review Queue"
         subtitle="Validate OCR profile extractions with card-first review, then approve, reject, or rerun."
@@ -460,67 +460,71 @@ export default function ReviewQueuePage() {
       />
 
       <SessionGate ready={workspaceReady} loading={sessionLoading} error={sessionError}>
-        <StickyControlBar className="space-y-3">
-          <div className="grid gap-2.5 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
-            <Select
-              value={severity || ALL_SEVERITY}
-              onValueChange={(value) => setSeverity(value === ALL_SEVERITY ? '' : (value as Severity))}
-            >
-              <SelectTrigger className="w-full rounded-full border-white/10 bg-white/4 text-white">
-                <SelectValue placeholder="Severity" />
-              </SelectTrigger>
-              <SelectContent className="border-white/10 bg-[rgba(8,10,16,0.98)] text-white">
-                <SelectItem value={ALL_SEVERITY}>All Severities</SelectItem>
-                <SelectItem value="HIGH">High Severity</SelectItem>
-                <SelectItem value="MEDIUM">Medium Severity</SelectItem>
-                <SelectItem value="LOW">Low Severity</SelectItem>
-              </SelectContent>
-            </Select>
+        <CompactControlRow>
+          <Select
+            value={severity || ALL_SEVERITY}
+            onValueChange={(value) => setSeverity(value === ALL_SEVERITY ? '' : (value as Severity))}
+          >
+            <SelectTrigger className="w-[168px] min-w-[168px] rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1">
+              <SelectValue placeholder="Severity" />
+            </SelectTrigger>
+            <SelectContent className="border-[color:var(--stroke-soft)] bg-[rgba(8,10,16,0.98)] text-tier-1">
+              <SelectItem value={ALL_SEVERITY}>All Severities</SelectItem>
+              <SelectItem value="HIGH">High Severity</SelectItem>
+              <SelectItem value="MEDIUM">Medium Severity</SelectItem>
+              <SelectItem value="LOW">Low Severity</SelectItem>
+            </SelectContent>
+          </Select>
 
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-full rounded-full border-white/10 bg-white/4 text-white">
-                <SelectValue placeholder="Status" />
-              </SelectTrigger>
-              <SelectContent className="border-white/10 bg-[rgba(8,10,16,0.98)] text-white">
-                {REVIEW_STATUS_PRESETS.map((preset) => (
-                  <SelectItem key={preset.value} value={preset.value}>
-                    {preset.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="w-[196px] min-w-[196px] rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1">
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent className="border-[color:var(--stroke-soft)] bg-[rgba(8,10,16,0.98)] text-tier-1">
+              {REVIEW_STATUS_PRESETS.map((preset) => (
+                <SelectItem key={preset.value} value={preset.value}>
+                  {preset.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
-            <Button
-              className="rounded-full bg-[linear-gradient(135deg,#5a7fff,#7ce6ff)] text-black hover:opacity-95"
-              onClick={() => void loadQueue()}
-              disabled={loading}
-            >
-              {loading ? 'Loading...' : 'Apply'}
-            </Button>
-          </div>
+          <Button
+            className="rounded-full bg-[linear-gradient(135deg,#5a7fff,#7ce6ff)] text-black hover:opacity-95"
+            onClick={() => void loadQueue()}
+            disabled={loading}
+          >
+            {loading ? 'Loading...' : 'Apply'}
+          </Button>
 
-          <FilterBar className="border-white/8 bg-black/20 p-2.5">
-            <Button
-              variant="outline"
-              className="rounded-full border-white/12 bg-white/6 text-white hover:bg-white/10 hover:text-white"
-              onClick={() => void submitReviewBulk('APPROVED')}
-              disabled={loading || Boolean(actionBusy) || items.length === 0}
-            >
-              <ShieldCheck data-icon="inline-start" />
-              {actionBusy === 'bulk:APPROVED' ? 'Approving...' : 'Accept Visible'}
-            </Button>
-            <Button
-              variant="destructive"
-              className="rounded-full"
-              onClick={() => void submitReviewBulk('REJECTED')}
-              disabled={loading || Boolean(actionBusy) || items.length === 0}
-            >
-              <XCircle data-icon="inline-start" />
-              {actionBusy === 'bulk:REJECTED' ? 'Rejecting...' : 'Reject Visible'}
-            </Button>
+          <CompactControlDrawer
+            triggerLabel="Queue Actions"
+            title="Queue Actions"
+            description="Bulk actions and queue visibility are compacted into this drawer."
+          >
+            <div className="grid gap-2.5 sm:grid-cols-2">
+              <Button
+                variant="outline"
+                className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1"
+                onClick={() => void submitReviewBulk('APPROVED')}
+                disabled={loading || Boolean(actionBusy) || items.length === 0}
+              >
+                <ShieldCheck data-icon="inline-start" />
+                {actionBusy === 'bulk:APPROVED' ? 'Approving...' : 'Accept Visible'}
+              </Button>
+              <Button
+                variant="destructive"
+                className="rounded-full"
+                onClick={() => void submitReviewBulk('REJECTED')}
+                disabled={loading || Boolean(actionBusy) || items.length === 0}
+              >
+                <XCircle data-icon="inline-start" />
+                {actionBusy === 'bulk:REJECTED' ? 'Rejecting...' : 'Reject Visible'}
+              </Button>
+            </div>
             <StatusPill label={`${items.length} rows`} tone="info" />
-          </FilterBar>
-        </StickyControlBar>
+          </CompactControlDrawer>
+        </CompactControlRow>
 
         {error ? <InlineError message={error} /> : null}
         {actionNotice ? (
@@ -567,7 +571,7 @@ export default function ReviewQueuePage() {
             <Button
               asChild
               variant="outline"
-              className="rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white"
+              className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1"
             >
               <Link href="/rankings/review">Open Ranking Review</Link>
             </Button>
@@ -586,7 +590,7 @@ export default function ReviewQueuePage() {
               );
             })}
           </div>
-          <p className="mt-3 text-sm text-white/58">
+          <p className="mt-3 text-sm text-tier-3">
             Pending ranking rows: {rankingQueueSummary?.total?.toLocaleString() || 0}
           </p>
         </Panel>

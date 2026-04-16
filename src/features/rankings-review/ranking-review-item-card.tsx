@@ -87,57 +87,57 @@ export function RankingReviewItemCard({
 
   const correctionFields = (
     <div className="grid gap-3 sm:grid-cols-2">
-      <div className="space-y-1.5 rounded-2xl border border-white/10 bg-white/4 p-3">
-        <p className="text-[11px] uppercase tracking-[0.16em] text-white/45">Governor Game ID</p>
+      <div className="space-y-1.5 rounded-2xl border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] p-3">
+        <p className="text-xs  text-tier-3">Governor Game ID</p>
         <Input
           value={draft.governorGameId}
           onChange={(event) => onUpdateDraft('governorGameId', event.target.value)}
           placeholder="e.g. 222067061"
-          className="rounded-xl border-white/10 bg-black/20 text-white placeholder:text-white/28"
+          className="rounded-xl border-[color:var(--stroke-soft)] bg-black/20 text-tier-1 placeholder:text-tier-3"
         />
       </div>
-      <div className="space-y-1.5 rounded-2xl border border-white/10 bg-white/4 p-3">
-        <p className="text-[11px] uppercase tracking-[0.16em] text-white/45">Alias For Create Alias</p>
+      <div className="space-y-1.5 rounded-2xl border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] p-3">
+        <p className="text-xs  text-tier-3">Alias For Create Alias</p>
         <Input
           value={draft.aliasRaw}
           onChange={(event) => onUpdateDraft('aliasRaw', event.target.value)}
-          className="rounded-xl border-white/10 bg-black/20 text-white placeholder:text-white/28"
+          className="rounded-xl border-[color:var(--stroke-soft)] bg-black/20 text-tier-1 placeholder:text-tier-3"
         />
       </div>
-      <div className="space-y-1.5 rounded-2xl border border-white/10 bg-white/4 p-3">
-        <p className="text-[11px] uppercase tracking-[0.16em] text-white/45">Corrected Rank</p>
+      <div className="space-y-1.5 rounded-2xl border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] p-3">
+        <p className="text-xs  text-tier-3">Corrected Rank</p>
         <Input
           value={draft.sourceRank}
           onChange={(event) => onUpdateDraft('sourceRank', event.target.value)}
-          className="rounded-xl border-white/10 bg-black/20 text-white placeholder:text-white/28"
+          className="rounded-xl border-[color:var(--stroke-soft)] bg-black/20 text-tier-1 placeholder:text-tier-3"
         />
       </div>
-      <div className="space-y-1.5 rounded-2xl border border-white/10 bg-white/4 p-3">
-        <p className="text-[11px] uppercase tracking-[0.16em] text-white/45">Corrected Name</p>
+      <div className="space-y-1.5 rounded-2xl border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] p-3">
+        <p className="text-xs  text-tier-3">Corrected Name</p>
         <Input
           value={draft.governorNameRaw}
           onChange={(event) => onUpdateDraft('governorNameRaw', event.target.value)}
-          className="rounded-xl border-white/10 bg-black/20 text-white placeholder:text-white/28"
+          className="rounded-xl border-[color:var(--stroke-soft)] bg-black/20 text-tier-1 placeholder:text-tier-3"
         />
       </div>
-      <div className="space-y-1.5 rounded-2xl border border-white/10 bg-white/4 p-3 sm:col-span-2">
-        <p className="text-[11px] uppercase tracking-[0.16em] text-white/45">Corrected Metric</p>
+      <div className="space-y-1.5 rounded-2xl border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] p-3 sm:col-span-2">
+        <p className="text-xs  text-tier-3">Corrected Metric</p>
         <Input
           value={draft.metricRaw}
           onChange={(event) => onUpdateDraft('metricRaw', event.target.value)}
-          className="rounded-xl border-white/10 bg-black/20 text-white placeholder:text-white/28"
+          className="rounded-xl border-[color:var(--stroke-soft)] bg-black/20 text-tier-1 placeholder:text-tier-3"
         />
       </div>
     </div>
   );
 
   return (
-    <article className="rounded-[26px] border border-white/12 bg-[rgba(10,14,24,0.92)] p-4 shadow-[0_16px_32px_rgba(0,0,0,0.24)] max-[390px]:rounded-[22px] max-[390px]:p-3.5 sm:p-5">
+    <article className="rounded-[20px] border border-[color:var(--stroke-soft)] bg-[rgba(10,14,24,0.92)] p-3 shadow-[0_16px_32px_rgba(0,0,0,0.24)] min-[390px]:rounded-[22px] min-[390px]:p-3.5 sm:rounded-[24px] sm:p-4">
       <header className="space-y-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
-            <h3 className="truncate font-heading text-lg text-white sm:text-xl">{row.governorNameRaw || 'Unknown'}</h3>
-            <p className="mt-1 text-xs text-white/48">
+            <h3 className="clamp-title-mobile font-heading text-base text-tier-1 min-[390px]:text-lg sm:text-xl" title={row.governorNameRaw || 'Unknown'}>{row.governorNameRaw || 'Unknown'}</h3>
+            <p className="mt-1 text-xs text-tier-3">
               Row #{row.id.slice(-8)} • {formatWhen(row.createdAt)}
             </p>
           </div>
@@ -155,15 +155,15 @@ export function RankingReviewItemCard({
         </div>
 
         {row.run.headerText ? (
-          <p className="text-sm text-white/58">Header: {row.run.headerText}</p>
+          <p className="text-sm text-tier-3">Header: {row.run.headerText}</p>
         ) : null}
         {(row.allianceRaw || row.titleRaw) ? (
-          <p className="text-sm text-white/58">
+          <p className="text-sm text-tier-3">
             {row.allianceRaw ? `Alliance ${row.allianceRaw}` : `Title ${row.titleRaw}`}
           </p>
         ) : null}
         {candidatePreview.length > 0 ? (
-          <p className="text-sm text-white/58">Candidates: {candidatePreview.join(' • ')}</p>
+          <p className="text-sm text-tier-3">Candidates: {candidatePreview.join(' • ')}</p>
         ) : null}
         {!supportedBoard ? (
           <div className="rounded-2xl border border-rose-300/16 bg-rose-400/10 px-3 py-2.5 text-xs text-rose-100">
@@ -173,19 +173,19 @@ export function RankingReviewItemCard({
       </header>
 
       <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,0.88fr)_minmax(0,1.12fr)]">
-        <section className="space-y-3 rounded-2xl border border-white/10 bg-white/4 p-3.5">
+        <section className="space-y-3 rounded-2xl border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] p-3.5">
           {row.run.artifact?.url ? (
             <>
               <a
                 href={row.run.artifact.url}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex min-h-11 items-center gap-2 rounded-full border border-white/12 bg-black/20 px-3.5 text-sm text-white/82 hover:bg-black/30"
+                className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[color:var(--stroke-soft)] bg-black/20 px-3.5 text-sm text-tier-2 hover:bg-black/30"
               >
                 <ExternalLink className="size-4" />
                 Open Screenshot
               </a>
-              <div className="overflow-hidden rounded-2xl border border-white/10 bg-black/20">
+              <div className="overflow-hidden rounded-2xl border border-[color:var(--stroke-soft)] bg-black/20">
                 <Image
                   src={row.run.artifact.url}
                   alt={`Ranking screenshot for ${row.governorNameRaw}`}
@@ -197,7 +197,7 @@ export function RankingReviewItemCard({
               </div>
             </>
           ) : (
-            <div className="rounded-2xl border border-dashed border-white/12 bg-black/20 px-4 py-8 text-center text-sm text-white/52">
+            <div className="rounded-2xl border border-dashed border-[color:var(--stroke-soft)] bg-black/20 px-4 py-8 text-center text-sm text-tier-3">
               Screenshot artifact is missing for this ranking row.
             </div>
           )}
@@ -216,16 +216,16 @@ export function RankingReviewItemCard({
             </RowDetailDrawer>
           </div>
 
-          <div className="rounded-2xl border border-white/10 bg-white/4 p-3.5">
+          <div className="rounded-2xl border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] p-3.5">
             <div className="grid gap-2.5 sm:grid-cols-[minmax(0,1fr)_auto]">
               <Select
                 value={rerunProfileId || AUTO_PROFILE}
                 onValueChange={(value) => onRerunProfileChange(value === AUTO_PROFILE ? '' : value)}
               >
-                <SelectTrigger className="w-full rounded-xl border-white/10 bg-black/20 text-white">
+                <SelectTrigger className="w-full rounded-xl border-[color:var(--stroke-soft)] bg-black/20 text-tier-1">
                   <SelectValue placeholder="Auto-select rankboard profile" />
                 </SelectTrigger>
-                <SelectContent className="border-white/10 bg-[rgba(8,10,16,0.98)] text-white">
+                <SelectContent className="border-[color:var(--stroke-soft)] bg-[rgba(8,10,16,0.98)] text-tier-1">
                   <SelectItem value={AUTO_PROFILE}>Auto-select rankboard profile</SelectItem>
                   {rankingProfiles.map((profile) => (
                     <SelectItem key={profile.id} value={profile.id}>
@@ -237,7 +237,7 @@ export function RankingReviewItemCard({
 
               <Button
                 variant="outline"
-                className="rounded-full border-white/12 bg-black/20 text-white hover:bg-white/8 hover:text-white"
+                className="rounded-full border-[color:var(--stroke-soft)] bg-black/20 text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1"
                 onClick={onRerun}
                 disabled={busy || !row.run.artifact?.url}
               >
@@ -246,10 +246,10 @@ export function RankingReviewItemCard({
               </Button>
             </div>
 
-            <ActionFooter className="mt-3 border-white/8">
+            <ActionFooter className="mt-3 border-[color:var(--stroke-subtle)]">
               <Button
                 variant="outline"
-                className="rounded-full border-white/12 bg-white/6 text-white hover:bg-white/10 hover:text-white"
+                className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1"
                 onClick={() => onAction('LINK_TO_GOVERNOR')}
                 disabled={busy}
               >
@@ -258,7 +258,7 @@ export function RankingReviewItemCard({
               </Button>
               <Button
                 variant="outline"
-                className="rounded-full border-white/12 bg-white/6 text-white hover:bg-white/10 hover:text-white"
+                className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1"
                 onClick={() => onAction('CREATE_ALIAS')}
                 disabled={busy}
               >
@@ -286,7 +286,7 @@ export function RankingReviewItemCard({
           </div>
 
           {rerunHint ? (
-            <div className="rounded-2xl border border-white/10 bg-black/20 p-3.5 text-sm text-white/65">
+            <div className="rounded-2xl border border-[color:var(--stroke-soft)] bg-black/20 p-3.5 text-sm text-tier-2">
               <div className="flex flex-wrap gap-1.5">
                 <StatusPill
                   label={`Detected: ${getRankingTypeDisplayName(rerunHint.detectedRankingType)} / ${getMetricDisplayName(rerunHint.detectedMetricKey)}`}
@@ -315,7 +315,7 @@ export function RankingReviewItemCard({
                 </p>
               ) : null}
               {rerunHint.failureReasons.length > 0 ? (
-                <p className="mt-2 text-white/58">
+                <p className="mt-2 text-tier-3">
                   <Sparkles className="mr-1 inline size-4" />
                   {rerunHint.failureReasons.join(' • ')}
                 </p>

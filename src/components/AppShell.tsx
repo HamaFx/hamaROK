@@ -39,23 +39,23 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 
 function BrandLockup() {
   return (
-    <Link href="/" className="group flex items-center gap-2.5 max-[390px]:gap-2">
-      <div className="relative overflow-hidden rounded-2xl border border-white/12 bg-white/5 p-2 shadow-[0_0_0_1px_rgba(255,255,255,0.02)] transition-colors group-hover:border-white/20 group-hover:bg-white/8 max-[390px]:rounded-xl max-[390px]:p-1.5">
+    <Link href="/" className="group flex items-center gap-2 min-[390px]:gap-2.5">
+      <div className="relative overflow-hidden rounded-xl border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] p-1.5 shadow-[0_0_0_1px_rgba(255,255,255,0.02)] transition-colors group-hover:border-[color:var(--stroke-strong)] group-hover:bg-[color:var(--surface-4)] min-[390px]:rounded-2xl min-[390px]:p-2">
         <Image
           src="/hama-logo.svg"
           alt="HamaROK"
           width={112}
           height={28}
           priority
-          className="h-7 w-auto max-[390px]:h-6"
+          className="h-6 w-auto min-[390px]:h-7"
           style={{ width: 'auto', height: 'auto' }}
         />
       </div>
       <div className="hidden min-w-0 sm:block">
-        <p className="font-heading text-sm font-semibold tracking-wide text-white">
+        <p className="font-heading text-sm font-semibold tracking-wide text-tier-1">
           HamaROK
         </p>
-        <p className="text-xs text-white/55">Player rankings and weekly statboards</p>
+        <p className="text-xs text-tier-3">Player rankings and weekly statboards</p>
       </div>
     </Link>
   );
@@ -75,8 +75,8 @@ function DesktopNav() {
             asChild
             variant="ghost"
             className={cn(
-              'h-11 rounded-full px-4 text-sm text-white/68 hover:bg-white/8 hover:text-white',
-              active && 'bg-[linear-gradient(135deg,rgba(98,164,255,0.24),rgba(255,255,255,0.05))] text-white shadow-[inset_0_0_0_1px_rgba(141,193,255,0.28)]'
+              'h-11 rounded-full px-4 text-sm text-tier-3 hover:bg-[color:var(--surface-4)] hover:text-tier-1',
+              active && 'bg-[linear-gradient(135deg,color-mix(in_oklab,var(--tone-teal)_24%,transparent),color-mix(in_oklab,var(--surface-3)_90%,transparent))] text-tier-1 shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--tone-teal)_40%,transparent)]'
             )}
           >
             <Link href={item.href}>
@@ -100,28 +100,28 @@ function ToolsMenu() {
         <Button
           variant="ghost"
           className={cn(
-            'hidden h-11 rounded-full border border-white/10 bg-white/4 px-4 text-white/72 hover:bg-white/8 hover:text-white lg:inline-flex',
-            activeTool && 'border-[rgba(141,193,255,0.3)] bg-[rgba(98,164,255,0.16)] text-white'
+            'hidden h-11 rounded-full border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] px-4 text-tier-3 hover:bg-[color:var(--surface-4)] hover:text-tier-1 lg:inline-flex',
+            activeTool && 'border-[color:color-mix(in_oklab,var(--tone-teal)_40%,transparent)] bg-[color:var(--tone-teal-soft)] text-tier-1'
           )}
         >
           <Menu data-icon="inline-start" />
           Tools
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-80 border-white/10 bg-[rgba(9,12,20,0.96)] text-white backdrop-blur-xl">
-        <DropdownMenuLabel className="text-white/65">Operational Pages</DropdownMenuLabel>
-        <DropdownMenuSeparator className="bg-white/8" />
+      <DropdownMenuContent align="end" className="w-80 border-[color:var(--stroke-soft)] bg-[color:color-mix(in_oklab,var(--surface-0)_94%,black_6%)] text-tier-1 backdrop-blur-xl">
+        <DropdownMenuLabel className="text-tier-3">Operational Pages</DropdownMenuLabel>
+        <DropdownMenuSeparator className="bg-[color:var(--stroke-subtle)]" />
         {TOOL_NAV_ITEMS.map((item) => {
           const Icon = item.icon;
           return (
-            <DropdownMenuItem key={item.href} asChild className="rounded-xl px-3 py-3 text-white/80 focus:bg-white/8 focus:text-white">
+            <DropdownMenuItem key={item.href} asChild className="rounded-xl px-3 py-3 text-tier-2 focus:bg-[color:var(--surface-4)] focus:text-tier-1">
               <Link href={item.href} className="flex items-start gap-3">
-                <span className="mt-0.5 rounded-xl border border-white/10 bg-white/6 p-2 text-white/80">
+                <span className="mt-0.5 rounded-xl border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] p-2 text-tier-2">
                   <Icon className="size-4" />
                 </span>
                 <span className="flex min-w-0 flex-col gap-1">
-                  <span className="text-sm font-medium text-white">{item.label}</span>
-                  <span className="text-xs leading-relaxed text-white/55">{item.description}</span>
+                  <span className="text-sm font-medium text-tier-1">{item.label}</span>
+                  <span className="text-xs leading-relaxed text-tier-3">{item.description}</span>
                 </span>
               </Link>
             </DropdownMenuItem>
@@ -137,7 +137,7 @@ function MobileMoreNav() {
 
   return (
     <Drawer>
-      <nav className="fixed inset-x-4 bottom-[calc(env(safe-area-inset-bottom)+12px)] z-40 grid h-[74px] grid-cols-5 rounded-[28px] border border-white/10 bg-[rgba(8,10,16,0.92)] px-2 text-white/68 shadow-[0_16px_50px_rgba(0,0,0,0.55)] backdrop-blur-xl max-[390px]:inset-x-2.5 max-[390px]:h-[68px] max-[390px]:rounded-[24px] max-[390px]:px-1.5 lg:hidden">
+      <nav className="fixed inset-x-2.5 bottom-[calc(env(safe-area-inset-bottom)+12px)] z-40 grid h-[64px] grid-cols-5 rounded-[20px] border border-[color:var(--stroke-soft)] bg-[color:color-mix(in_oklab,var(--surface-0)_90%,transparent)] px-1.5 text-tier-3 shadow-[0_12px_32px_rgba(0,0,0,0.5)] backdrop-blur-xl min-[390px]:inset-x-4 min-[390px]:h-[70px] min-[390px]:rounded-[24px] min-[390px]:px-2 lg:hidden">
         {MOBILE_PRIMARY_NAV.map((item) => {
           const Icon = item.icon;
           const active = isActivePath(pathname, item.href);
@@ -146,12 +146,12 @@ function MobileMoreNav() {
               key={item.href}
               href={item.href}
               className={cn(
-                'flex h-full flex-col items-center justify-center gap-1 rounded-[20px] px-1 text-[11px] font-medium tracking-wide transition-colors',
-                'max-[390px]:gap-0.5 max-[390px]:rounded-[18px] max-[390px]:text-[10px]',
-                active ? 'bg-[rgba(98,164,255,0.18)] text-white' : 'text-white/58'
+                'flex h-full flex-col items-center justify-center gap-1 rounded-[20px] px-1 text-xs font-medium tracking-wide transition-colors',
+                'gap-0.5 rounded-[18px] text-xs min-[390px]:gap-1 min-[390px]:rounded-[20px] min-[390px]:text-xs',
+                active ? 'bg-[color:var(--tone-teal-soft)] text-tier-1' : 'text-tier-3'
               )}
             >
-              <Icon className="size-4 max-[390px]:size-3.5" />
+              <Icon className="size-3.5 min-[390px]:size-4" />
               <span>{item.mobileLabel ?? item.label}</span>
             </Link>
           );
@@ -159,17 +159,17 @@ function MobileMoreNav() {
         <DrawerTrigger asChild>
           <Button
             variant="ghost"
-            className="flex h-full flex-col items-center justify-center gap-1 rounded-[20px] px-1 text-[11px] font-medium tracking-wide text-white/68 hover:bg-white/6 hover:text-white max-[390px]:gap-0.5 max-[390px]:rounded-[18px] max-[390px]:text-[10px]"
+            className="flex h-full flex-col items-center justify-center gap-0.5 rounded-[18px] px-1 text-xs font-medium tracking-wide text-tier-3 hover:bg-[color:var(--surface-3)] hover:text-tier-1 min-[390px]:gap-1 min-[390px]:rounded-[20px] min-[390px]:text-xs"
           >
-            <Menu className="size-4 max-[390px]:size-3.5" />
+            <Menu className="size-3.5 min-[390px]:size-4" />
             <span>More</span>
           </Button>
         </DrawerTrigger>
       </nav>
-      <DrawerContent className="border-white/10 bg-[rgba(8,10,16,0.98)] text-white">
+      <DrawerContent className="border-[color:var(--stroke-soft)] bg-[color:color-mix(in_oklab,var(--surface-0)_96%,black_4%)] text-tier-1">
         <DrawerHeader>
-          <DrawerTitle className="font-heading text-xl text-white">More</DrawerTitle>
-          <DrawerDescription className="text-white/55">
+          <DrawerTitle className="font-heading text-xl text-tier-1">More</DrawerTitle>
+          <DrawerDescription className="text-tier-3">
             Compare boards first, then jump into operational tools.
           </DrawerDescription>
         </DrawerHeader>
@@ -184,21 +184,21 @@ function MobileMoreNav() {
                   <Link
                     href={item.href}
                     className={cn(
-                      'group flex items-start gap-3 rounded-2xl border border-white/10 bg-white/4 p-4 transition-colors hover:bg-white/7',
-                      active && 'border-[rgba(141,193,255,0.28)] bg-[rgba(98,164,255,0.12)]'
+                      'group flex items-start gap-3 rounded-2xl border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] p-4 transition-colors hover:bg-[color:var(--surface-4)]',
+                      active && 'border-[color:color-mix(in_oklab,var(--tone-teal)_40%,transparent)] bg-[color:var(--tone-teal-soft)]'
                     )}
                   >
                     <span
                       className={cn(
-                        'rounded-2xl border border-white/10 bg-white/6 p-2.5 text-white/78',
-                        isCompare && 'border-[rgba(255,215,132,0.28)] bg-[rgba(255,200,91,0.12)] text-[#ffd67b]'
+                        'rounded-2xl border border-[color:var(--stroke-soft)] bg-[color:var(--surface-4)] p-2.5 text-tier-2',
+                        isCompare && 'border-[color:color-mix(in_oklab,var(--rank-gold)_38%,transparent)] bg-[color:color-mix(in_oklab,var(--rank-gold)_16%,transparent)] text-[color:var(--rank-gold)]'
                       )}
                     >
                       <Icon className="size-4" />
                     </span>
                     <span className="flex min-w-0 flex-1 flex-col gap-1">
-                      <span className="text-sm font-medium text-white">{item.label}</span>
-                      <span className="text-xs leading-relaxed text-white/55">{item.description}</span>
+                      <span className="text-sm font-medium text-tier-1">{item.label}</span>
+                      <span className="text-xs leading-relaxed text-tier-3">{item.description}</span>
                     </span>
                   </Link>
                 </DrawerClose>
@@ -208,7 +208,7 @@ function MobileMoreNav() {
         </ScrollArea>
         <DrawerFooter className="pb-[calc(env(safe-area-inset-bottom)+0.75rem)]">
           <DrawerClose asChild>
-            <Button variant="outline" className="border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white">
+            <Button variant="outline" className="border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1">
               Close
             </Button>
           </DrawerClose>
@@ -250,22 +250,22 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="relative min-h-screen overflow-x-hidden bg-background text-foreground">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(84,137,255,0.18),_transparent_32%),radial-gradient(circle_at_bottom_right,_rgba(108,214,255,0.12),_transparent_24%)]" />
-      <header className="sticky top-0 z-30 border-b border-white/10 bg-[rgba(7,9,15,0.8)] backdrop-blur-xl">
-        <div className="mx-auto flex w-full max-w-[1600px] items-center justify-between gap-4 px-4 py-3.5 max-[390px]:gap-2 max-[390px]:px-3 max-[390px]:py-3 sm:px-6 lg:px-8">
-          <div className="flex min-w-0 items-center gap-4 max-[390px]:gap-2.5">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,color-mix(in_oklab,var(--tone-teal)_22%,transparent),transparent_34%),radial-gradient(circle_at_bottom_right,color-mix(in_oklab,var(--tone-teal)_14%,transparent),transparent_26%)]" />
+      <header className="sticky top-0 z-30 border-b border-[color:var(--stroke-soft)] bg-[color:color-mix(in_oklab,var(--surface-0)_84%,transparent)] backdrop-blur-xl">
+        <div className="mx-auto flex w-full max-w-[1600px] items-center justify-between gap-2 px-3 py-3 min-[390px]:gap-4 min-[390px]:px-4 min-[390px]:py-3.5 sm:px-6 lg:px-8">
+          <div className="flex min-w-0 items-center gap-2.5 min-[390px]:gap-4">
             <BrandLockup />
-            <div className="hidden h-10 w-px bg-white/8 lg:block" />
+            <div className="hidden h-10 w-px bg-[color:var(--stroke-subtle)] lg:block" />
             <div className="hidden min-w-0 lg:block">
-              <p className="text-[11px] font-medium uppercase tracking-[0.24em] text-white/38">Now Viewing</p>
-              <p className="mt-1 truncate font-heading text-sm text-white">{activeNav.label}</p>
+              <p className="micro-label">Now viewing</p>
+              <p className="mt-1 truncate font-heading text-sm text-tier-1">{activeNav.label}</p>
             </div>
           </div>
 
           <DesktopNav />
 
           <div className="flex items-center gap-2">
-            <Badge className="hidden rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] text-white/60 sm:inline-flex">
+            <Badge className="chip-label hidden rounded-full border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] px-3 py-1 text-xs text-tier-3 sm:inline-flex">
               <Sparkles className="mr-1 size-3" /> Rankings-first
             </Badge>
             <ToolsMenu />
@@ -273,9 +273,9 @@ export default function AppShell({ children }: { children: ReactNode }) {
         </div>
       </header>
 
-      <main className="relative z-10 mx-auto flex w-full max-w-[1600px] flex-col px-4 pb-[calc(7.2rem+env(safe-area-inset-bottom))] pt-5 max-[390px]:px-3 max-[390px]:pb-[calc(6.8rem+env(safe-area-inset-bottom))] max-[390px]:pt-4 sm:px-6 lg:px-8 lg:pb-14 lg:pt-7">
+      <main className="relative z-10 mx-auto flex w-full max-w-[1600px] flex-col px-3 pb-[calc(6.8rem+env(safe-area-inset-bottom))] pt-4 min-[390px]:px-4 min-[390px]:pb-[calc(7.2rem+env(safe-area-inset-bottom))] min-[390px]:pt-5 sm:px-6 lg:px-8 lg:pb-14 lg:pt-7">
         {weeklySchemaWarning ? (
-          <Alert className="mb-6 border-amber-300/16 bg-[rgba(120,78,9,0.18)] text-amber-50">
+          <Alert className="mb-6 border-amber-300/22 bg-[color:color-mix(in_oklab,var(--rank-gold)_18%,transparent)] text-amber-50">
             <AlertTitle className="font-heading text-sm">Schema Attention Needed</AlertTitle>
             <AlertDescription className="text-amber-100/80">{weeklySchemaWarning}</AlertDescription>
           </Alert>

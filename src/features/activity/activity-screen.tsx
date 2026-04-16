@@ -28,8 +28,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import {
+  CompactControlDrawer,
+  CompactControlRow,
   DataTableLite,
   EmptyState,
   FilterBar,
@@ -40,6 +43,7 @@ import {
   StatusPill,
 } from '@/components/ui/primitives';
 import { csvValue, downloadCsv, formatMetric, toSafeBigInt } from '@/features/shared/formatters';
+import type { CompactControlDrawerState } from '@/features/shared/types';
 
 const ALL_VALUE = '__all__';
 const PRESET_NONE = '__none__';
@@ -176,6 +180,9 @@ export default function ActivityScreen() {
   const [selectedPresetId, setSelectedPresetId] = useState('');
   const [presetName, setPresetName] = useState('');
   const [uiNotice, setUiNotice] = useState<string | null>(null);
+  const [drawerState, setDrawerState] = useState<Pick<CompactControlDrawerState, 'statsFilters'>>({
+    statsFilters: false,
+  });
 
   const presetStorageKey = useMemo(() => `hama:activity:presets:${workspaceId || 'unknown'}`, [workspaceId]);
 
@@ -317,6 +324,19 @@ export default function ActivityScreen() {
     return alliances.filter((row) => row.allianceTag === allianceFilter);
   }, [data?.summary?.allianceSummary, allianceFilter]);
 
+  const topPerformerLanes = useMemo(
+    () =>
+      data
+        ? [
+            { title: 'Contribution', rows: data.summary.topContribution, key: 'contributionPoints' as const, icon: Sparkles },
+            { title: 'Fort Destroying', rows: data.summary.topFortDestroying, key: 'fortDestroying' as const, icon: Shield },
+            { title: 'Power Growth', rows: data.summary.topPowerGrowth, key: 'powerGrowth' as const, icon: TrendingUp },
+            { title: 'KP Growth', rows: data.summary.topKillPointsGrowth, key: 'killPointsGrowth' as const, icon: Trophy },
+          ]
+        : [],
+    [data]
+  );
+
   const kpis = useMemo(() => {
     const rows = sortedRows;
     return {
@@ -438,7 +458,7 @@ export default function ActivityScreen() {
         sortable: true,
         render: (row: ActivityRow) => (
           <div className="space-y-2">
-            <strong className="font-heading text-base text-white">{row.governorName}</strong>
+            <strong className="font-heading text-base text-tier-1">{row.governorName}</strong>
             <div className="flex flex-wrap gap-2">
               <StatusPill label={row.allianceTag} tone={row.allianceTag === 'GODt' ? 'warn' : row.allianceTag === 'V57' ? 'info' : 'neutral'} />
               <StatusPill label={`ID ${row.governorId}`} tone="neutral" />
@@ -453,7 +473,7 @@ export default function ActivityScreen() {
         className: 'text-right',
         render: (row: ActivityRow) => (
           <div className="flex flex-col items-end gap-2">
-            <span className="font-heading text-lg text-white">{formatMetric(row.contributionPoints)}</span>
+            <span className="font-heading text-lg text-tier-1">{formatMetric(row.contributionPoints)}</span>
             <StatusPill label={row.compliance.contributionPoints} tone={metricTone(row.compliance.contributionPoints)} />
           </div>
         ),
@@ -465,7 +485,7 @@ export default function ActivityScreen() {
         className: 'text-right',
         render: (row: ActivityRow) => (
           <div className="flex flex-col items-end gap-2">
-            <span className="font-heading text-lg text-white">{formatMetric(row.fortDestroying)}</span>
+            <span className="font-heading text-lg text-tier-1">{formatMetric(row.fortDestroying)}</span>
             <StatusPill label={row.compliance.fortDestroying} tone={metricTone(row.compliance.fortDestroying)} />
           </div>
         ),
@@ -477,7 +497,7 @@ export default function ActivityScreen() {
         className: 'text-right',
         render: (row: ActivityRow) => (
           <div className="flex flex-col items-end gap-2">
-            <span className="font-heading text-lg text-white">{row.powerGrowth != null ? formatMetric(row.powerGrowth) : 'N/A'}</span>
+            <span className="font-heading text-lg text-tier-1">{row.powerGrowth != null ? formatMetric(row.powerGrowth) : 'N/A'}</span>
             <StatusPill label={row.compliance.powerGrowth} tone={metricTone(row.compliance.powerGrowth)} />
           </div>
         ),
@@ -489,7 +509,7 @@ export default function ActivityScreen() {
         className: 'text-right',
         render: (row: ActivityRow) => (
           <div className="flex flex-col items-end gap-2">
-            <span className="font-heading text-lg text-white">{row.killPointsGrowth != null ? formatMetric(row.killPointsGrowth) : 'N/A'}</span>
+            <span className="font-heading text-lg text-tier-1">{row.killPointsGrowth != null ? formatMetric(row.killPointsGrowth) : 'N/A'}</span>
             <StatusPill label={row.compliance.killPointsGrowth} tone={metricTone(row.compliance.killPointsGrowth)} />
           </div>
         ),
@@ -505,7 +525,7 @@ export default function ActivityScreen() {
   );
 
   return (
-    <div className="space-y-5 sm:space-y-6">
+    <div className="space-y-4 sm:space-y-5 lg:space-y-6">
       <PageHero
         title="Stats"
         subtitle="A player-facing weekly statboard with top performers, alliance pressure, and compliance data kept intact under a cleaner, mobile-first surface."
@@ -516,12 +536,12 @@ export default function ActivityScreen() {
         ]}
         actions={
           <>
-            <Button asChild variant="outline" className="rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white">
+            <Button asChild variant="outline" className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1">
               <Link href="/rankings">
                 <Trophy data-icon="inline-start" /> Rankings
               </Link>
             </Button>
-            <Button variant="outline" className="rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white" onClick={exportActivityCsv} disabled={!sortedRows.length}>
+            <Button variant="outline" className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1" onClick={exportActivityCsv} disabled={!sortedRows.length}>
               <Download data-icon="inline-start" /> Export CSV
             </Button>
           </>
@@ -531,78 +551,80 @@ export default function ActivityScreen() {
       <SessionGate ready={ready} loading={sessionLoading} error={sessionError} onRetry={() => void refreshSession()}>
         {error ? <InlineError message={error} /> : null}
 
-        <Panel title="Weekly Filters" subtitle="Switch weeks, scope to one alliance, and preserve favorite views.">
-          <div className="space-y-4">
-            <div className="sticky top-[76px] z-20 -mx-1 rounded-[24px] border border-white/10 bg-[rgba(8,11,19,0.94)] p-3.5 shadow-[0_14px_36px_rgba(0,0,0,0.32)] backdrop-blur max-[390px]:top-[72px] max-[390px]:rounded-[20px] max-[390px]:p-2.5 xl:static xl:mx-0 xl:border-white/8 xl:bg-black/20 xl:shadow-none xl:backdrop-blur-none">
-              <div className="grid gap-2.5 sm:grid-cols-[auto_minmax(0,1fr)_auto]">
-                <Button variant="outline" className="w-full rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white sm:w-auto" onClick={goPreviousWeek} disabled={currentWeekIndex >= weeks.length - 1 || loading}>
-                  <ArrowLeft data-icon="inline-start" /> Older
-                </Button>
-                <Select value={selectedWeekKey || (weeks[0]?.weekKey ?? ALL_VALUE)} onValueChange={setSelectedWeekKey}>
-                  <SelectTrigger className="w-full min-w-0 rounded-full border-white/10 bg-white/4 text-white"><SelectValue placeholder="Select week" /></SelectTrigger>
-                  <SelectContent className="border-white/10 bg-[rgba(8,10,16,0.98)] text-white">
-                    {weeks.length ? weeks.map((week) => (
-                      <SelectItem key={week.id} value={week.weekKey}>{week.name}</SelectItem>
-                    )) : <SelectItem value={ALL_VALUE}>No weeks available</SelectItem>}
-                  </SelectContent>
-                </Select>
-                <Button variant="outline" className="w-full rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white sm:w-auto" onClick={goNextWeek} disabled={currentWeekIndex <= 0 || loading}>
-                  Newer <ArrowRight data-icon="inline-end" />
-                </Button>
-              </div>
-              <div className="mt-2.5 grid gap-2.5 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
-                <Select value={allianceFilter || ALL_VALUE} onValueChange={(value) => setAllianceFilter(value === ALL_VALUE ? '' : value)}>
-                  <SelectTrigger className="w-full min-w-0 rounded-full border-white/10 bg-white/4 text-white"><SelectValue placeholder="Alliance" /></SelectTrigger>
-                  <SelectContent className="border-white/10 bg-[rgba(8,10,16,0.98)] text-white">
-                    {ALLIANCE_FILTER_OPTIONS.map((option) => (
-                      <SelectItem key={option.label} value={option.value || ALL_VALUE}>{option.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Select value={viewMode} onValueChange={(value) => setViewMode(value as ActivityViewMode)}>
-                  <SelectTrigger className="w-full min-w-0 rounded-full border-white/10 bg-white/4 text-white"><SelectValue placeholder="View" /></SelectTrigger>
-                  <SelectContent className="border-white/10 bg-[rgba(8,10,16,0.98)] text-white">
-                    <SelectItem value="cards">Cards</SelectItem>
-                    <SelectItem value="table">Table</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Button variant="outline" className="w-full rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white sm:w-auto" onClick={() => setDenseRows((prev) => !prev)}>
+        <Panel title="Weekly Filters" subtitle="Switch weeks and keep advanced controls compact inside a drawer.">
+          <div className="space-y-3">
+            <CompactControlRow>
+              <Button variant="outline" className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1" onClick={goPreviousWeek} disabled={currentWeekIndex >= weeks.length - 1 || loading}>
+                <ArrowLeft data-icon="inline-start" /> Older
+              </Button>
+              <Select value={selectedWeekKey || (weeks[0]?.weekKey ?? ALL_VALUE)} onValueChange={(value) => setSelectedWeekKey(value === ALL_VALUE ? '' : value)}>
+                <SelectTrigger className="w-[172px] min-w-[172px] rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1"><SelectValue placeholder="Select week" /></SelectTrigger>
+                <SelectContent className="border-[color:var(--stroke-soft)] bg-[rgba(8,10,16,0.98)] text-tier-1">
+                  {weeks.length ? weeks.map((week) => (
+                    <SelectItem key={week.id} value={week.weekKey}>{week.name}</SelectItem>
+                  )) : <SelectItem value={ALL_VALUE}>No weeks available</SelectItem>}
+                </SelectContent>
+              </Select>
+              <Button variant="outline" className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1" onClick={goNextWeek} disabled={currentWeekIndex <= 0 || loading}>
+                Newer <ArrowRight data-icon="inline-end" />
+              </Button>
+              <CompactControlDrawer
+                open={drawerState.statsFilters}
+                onOpenChange={(open) => setDrawerState((prev) => ({ ...prev, statsFilters: open }))}
+                triggerLabel="Filters"
+                title="Stats Filters"
+                description="Alliance, layout mode, and presets."
+              >
+                <div className="grid gap-2.5 sm:grid-cols-2">
+                  <Select value={allianceFilter || ALL_VALUE} onValueChange={(value) => setAllianceFilter(value === ALL_VALUE ? '' : value)}>
+                    <SelectTrigger className="w-full rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1"><SelectValue placeholder="Alliance" /></SelectTrigger>
+                    <SelectContent className="border-[color:var(--stroke-soft)] bg-[rgba(8,10,16,0.98)] text-tier-1">
+                      {ALLIANCE_FILTER_OPTIONS.map((option) => (
+                        <SelectItem key={option.label} value={option.value || ALL_VALUE}>{option.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={viewMode} onValueChange={(value) => setViewMode(value as ActivityViewMode)}>
+                    <SelectTrigger className="w-full rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1"><SelectValue placeholder="View" /></SelectTrigger>
+                    <SelectContent className="border-[color:var(--stroke-soft)] bg-[rgba(8,10,16,0.98)] text-tier-1">
+                      <SelectItem value="cards">Cards</SelectItem>
+                      <SelectItem value="table">Table</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <Button variant="outline" className="w-full rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1" onClick={() => setDenseRows((prev) => !prev)}>
                   {denseRows ? 'Comfort spacing' : 'Compact rows'}
                 </Button>
-              </div>
-            </div>
 
-            <FilterBar className="rounded-[22px] bg-black/20 p-3.5 max-[390px]:rounded-[18px] max-[390px]:p-2.5">
+                <div className="space-y-3 rounded-[20px] border border-[color:var(--stroke-soft)] bg-black/20 p-3">
+                  <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_11rem]">
+                    <Select value={selectedPresetId || PRESET_NONE} onValueChange={(value) => applyPreset(value === PRESET_NONE ? '' : value)}>
+                      <SelectTrigger className="w-full min-w-0 rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1"><SelectValue placeholder="Saved presets" /></SelectTrigger>
+                      <SelectContent className="border-[color:var(--stroke-soft)] bg-[rgba(8,10,16,0.98)] text-tier-1">
+                        <SelectItem value={PRESET_NONE}>Saved presets</SelectItem>
+                        {presets.map((preset) => <SelectItem key={preset.id} value={preset.id}>{preset.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                    <Input value={presetName} onChange={(event) => setPresetName(event.target.value)} placeholder="Preset name" className="w-full rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 placeholder:text-tier-3 " />
+                  </div>
+                  <div className="grid gap-2.5 sm:grid-cols-3">
+                    <Button variant="outline" className="w-full rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1" onClick={savePreset}>Save Preset</Button>
+                    <Button variant="outline" className="w-full rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1" onClick={deleteSelectedPreset} disabled={!selectedPresetId}>Delete</Button>
+                    <Button variant="outline" className="w-full rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1" onClick={resetFilters}>Reset</Button>
+                  </div>
+                </div>
+              </CompactControlDrawer>
+            </CompactControlRow>
+
+            <FilterBar className="border-[color:var(--stroke-subtle)] bg-black/20">
               {isHistoricalWeek ? <StatusPill label="Historical week" tone="neutral" /> : null}
               {data?.event?.startsAt ? <StatusPill label={`Starts ${new Date(data.event.startsAt).toLocaleDateString()}`} tone="neutral" /> : null}
               <StatusPill label={`No power baseline ${kpis.noPowerBaseline}`} tone={kpis.noPowerBaseline ? 'warn' : 'good'} />
               <StatusPill label={`No KP baseline ${kpis.noKillPointsBaseline}`} tone={kpis.noKillPointsBaseline ? 'warn' : 'good'} />
             </FilterBar>
 
-            <details className="rounded-[22px] border border-white/10 bg-black/20 p-4 max-[390px]:rounded-[18px] max-[390px]:p-3">
-              <summary className="cursor-pointer list-none text-sm font-medium text-white">
-                Advanced presets
-              </summary>
-              <div className="mt-4 space-y-4">
-                <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_11rem]">
-                  <Select value={selectedPresetId || PRESET_NONE} onValueChange={(value) => applyPreset(value === PRESET_NONE ? '' : value)}>
-                    <SelectTrigger className="w-full min-w-0 rounded-full border-white/10 bg-white/4 text-white"><SelectValue placeholder="Saved presets" /></SelectTrigger>
-                    <SelectContent className="border-white/10 bg-[rgba(8,10,16,0.98)] text-white">
-                      <SelectItem value={PRESET_NONE}>Saved presets</SelectItem>
-                      {presets.map((preset) => <SelectItem key={preset.id} value={preset.id}>{preset.name}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                  <Input value={presetName} onChange={(event) => setPresetName(event.target.value)} placeholder="Preset name" className="w-full rounded-full border-white/10 bg-white/4 text-white placeholder:text-white/28 max-[390px]:h-9" />
-                </div>
-                <div className="grid gap-2.5 sm:grid-cols-3">
-                  <Button variant="outline" className="w-full rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white" onClick={savePreset}>Save Preset</Button>
-                  <Button variant="outline" className="w-full rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white" onClick={deleteSelectedPreset} disabled={!selectedPresetId}>Delete</Button>
-                  <Button variant="outline" className="w-full rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white" onClick={resetFilters}>Reset</Button>
-                </div>
-              </div>
-            </details>
-
-            {uiNotice ? <p className="text-sm text-white/56">{uiNotice}</p> : null}
+            {uiNotice ? <p className="text-sm text-tier-3">{uiNotice}</p> : null}
           </div>
         </Panel>
 
@@ -615,83 +637,85 @@ export default function ActivityScreen() {
               <KpiCard label="Partial" value={kpis.partial} hint="Mixed metric outcomes inside the same row" tone={kpis.partial > 0 ? 'warn' : 'neutral'} icon={<TrendingUp className="size-5" />} />
             </div>
 
-            <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
-              <Panel title="Alliance Pressure" subtitle="How each alliance is converting players into passing weeks.">
-                <div className="grid gap-4 sm:grid-cols-2">
-                  {filteredSummary.map((alliance) => {
-                    const total = Math.max(1, alliance.members || 0);
-                    const passPercent = Math.round((alliance.passCount / total) * 100);
-                    return (
-                      <Card key={alliance.allianceTag} className="border-white/10 bg-white/4">
-                        <CardContent className="space-y-4 p-5">
-                          <div className="flex items-center justify-between gap-3">
-                            <div>
-                              <p className="font-heading text-lg text-white">{alliance.allianceLabel}</p>
-                              <p className="mt-1 text-sm text-white/56">{alliance.members} tracked players</p>
-                            </div>
-                            <StatusPill label={`${passPercent}%`} tone={passPercent >= 70 ? 'good' : passPercent >= 45 ? 'warn' : 'bad'} />
-                          </div>
-                          <div className="h-2 overflow-hidden rounded-full bg-white/8">
-                            <div className="h-full rounded-full bg-[linear-gradient(90deg,#5a7fff,#7ce6ff)]" style={{ width: `${passPercent}%` }} />
-                          </div>
-                          <MetricStrip items={[
-                            { label: 'Pass', value: alliance.passCount, accent: 'teal' },
-                            { label: 'Fail', value: alliance.failCount, accent: 'rose' },
-                            { label: 'Fort', value: formatMetric(alliance.totalFortDestroying), accent: 'slate' },
-                          ]} />
-                        </CardContent>
-                      </Card>
-                    );
-                  })}
-                </div>
-              </Panel>
+            <Panel title="Insights" subtitle="Alliance pressure and top performers in one compact secondary module.">
+              <Tabs defaultValue="alliance" className="space-y-4">
+                <TabsList className="flex w-full flex-wrap justify-start gap-2 rounded-full border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] p-1">
+                  <TabsTrigger value="alliance" className="rounded-full px-4 text-xs  data-[state=active]:bg-sky-300/15 data-[state=active]:text-tier-1">Alliance Pressure</TabsTrigger>
+                  <TabsTrigger value="performers" className="rounded-full px-4 text-xs  data-[state=active]:bg-sky-300/15 data-[state=active]:text-tier-1">Top Performers</TabsTrigger>
+                </TabsList>
 
-              <Panel title="Top Performers" subtitle="The best weekly rows across the major statboards.">
-                <div className="grid gap-4 lg:grid-cols-2">
-                  {[
-                    { title: 'Contribution', rows: data.summary.topContribution, key: 'contributionPoints' as const, icon: Sparkles },
-                    { title: 'Fort Destroying', rows: data.summary.topFortDestroying, key: 'fortDestroying' as const, icon: Shield },
-                    { title: 'Power Growth', rows: data.summary.topPowerGrowth, key: 'powerGrowth' as const, icon: TrendingUp },
-                    { title: 'KP Growth', rows: data.summary.topKillPointsGrowth, key: 'killPointsGrowth' as const, icon: Trophy },
-                  ].map((lane) => {
-                    const Icon = lane.icon;
-                    return (
-                      <Card key={lane.title} className="border-white/10 bg-white/4">
-                        <CardHeader>
-                          <CardTitle className="flex items-center gap-2 font-heading text-base text-white">
-                            <Icon className="size-4 text-white/68" /> {lane.title}
-                          </CardTitle>
-                        </CardHeader>
-                        <CardContent className="space-y-3">
-                          {lane.rows.slice(0, 4).map((row, index) => (
-                            <div key={`${lane.title}-${row.governorDbId}`} className="flex items-center justify-between gap-3 rounded-2xl border border-white/8 bg-black/10 px-4 py-3">
+                <TabsContent value="alliance" className="space-y-3">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {filteredSummary.map((alliance) => {
+                      const total = Math.max(1, alliance.members || 0);
+                      const passPercent = Math.round((alliance.passCount / total) * 100);
+                      return (
+                        <Card key={alliance.allianceTag} className="border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)]">
+                          <CardContent className="space-y-3 p-3 min-[390px]:p-3.5 sm:p-4">
+                            <div className="flex items-center justify-between gap-3">
                               <div>
-                                <p className="text-sm font-medium text-white">{row.governorName}</p>
-                                <p className="text-xs text-white/52">{row.allianceLabel}</p>
+                                <p className="font-heading text-base text-tier-1">{alliance.allianceLabel}</p>
+                                <p className="mt-1 text-xs text-tier-3">{alliance.members} tracked players</p>
                               </div>
-                              <div className="text-right">
-                                <p className="font-heading text-lg text-white">{formatMetric(row[lane.key])}</p>
-                                <p className="text-xs text-white/42">#{index + 1}</p>
-                              </div>
+                              <StatusPill label={`${passPercent}%`} tone={passPercent >= 70 ? 'good' : passPercent >= 45 ? 'warn' : 'bad'} />
                             </div>
-                          ))}
-                        </CardContent>
-                      </Card>
-                    );
-                  })}
-                </div>
-              </Panel>
-            </div>
+                            <div className="h-2 overflow-hidden rounded-full bg-[color:var(--surface-4)]">
+                              <div className="h-full rounded-full bg-[linear-gradient(90deg,#5a7fff,#7ce6ff)]" style={{ width: `${passPercent}%` }} />
+                            </div>
+                            <MetricStrip items={[
+                              { label: 'Pass', value: alliance.passCount, accent: 'teal' },
+                              { label: 'Fail', value: alliance.failCount, accent: 'rose' },
+                              { label: 'Fort', value: formatMetric(alliance.totalFortDestroying), accent: 'slate' },
+                            ]} />
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="performers" className="space-y-3">
+                  <div className="grid gap-3 lg:grid-cols-2">
+                    {topPerformerLanes.map((lane) => {
+                      const Icon = lane.icon;
+                      return (
+                        <Card key={lane.title} className="border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)]">
+                          <CardHeader className="pb-2">
+                            <CardTitle className="flex items-center gap-2 font-heading text-sm text-tier-1 sm:text-base">
+                              <Icon className="size-4 text-tier-2" /> {lane.title}
+                            </CardTitle>
+                          </CardHeader>
+                          <CardContent className="space-y-2.5">
+                            {lane.rows.slice(0, 4).map((row, index) => (
+                              <div key={`${lane.title}-${row.governorDbId}`} className="flex items-center justify-between gap-3 rounded-2xl border border-[color:var(--stroke-subtle)] bg-black/10 px-3.5 py-2.5">
+                                <div className="min-w-0">
+                                  <p className="clamp-title-mobile text-sm font-medium text-tier-1" title={row.governorName}>{row.governorName}</p>
+                                  <p className="text-xs text-tier-3">{row.allianceLabel}</p>
+                                </div>
+                                <div className="text-right">
+                                  <p className="font-heading text-base text-tier-1">{formatMetric(row[lane.key])}</p>
+                                  <p className="text-xs text-tier-3">#{index + 1}</p>
+                                </div>
+                              </div>
+                            ))}
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                </TabsContent>
+              </Tabs>
+            </Panel>
 
             <Panel
               title="Player Compliance"
               subtitle={`${filteredRows.length} members • ${data.event.name}`}
               actions={
                 <ToggleGroup type="single" value={viewMode} onValueChange={(value) => value && setViewMode(value as ActivityViewMode)}>
-                  <ToggleGroupItem value="cards" className="rounded-full border border-white/10 bg-white/5 px-4 text-xs uppercase tracking-[0.16em] text-white/64 data-[state=on]:border-sky-300/20 data-[state=on]:bg-sky-300/12 data-[state=on]:text-white">
+                  <ToggleGroupItem value="cards" className="rounded-full border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] px-4 text-xs  text-tier-2 data-[state=on]:border-sky-300/20 data-[state=on]:bg-sky-300/12 data-[state=on]:text-tier-1">
                     Cards
                   </ToggleGroupItem>
-                  <ToggleGroupItem value="table" className="rounded-full border border-white/10 bg-white/5 px-4 text-xs uppercase tracking-[0.16em] text-white/64 data-[state=on]:border-sky-300/20 data-[state=on]:bg-sky-300/12 data-[state=on]:text-white">
+                  <ToggleGroupItem value="table" className="rounded-full border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] px-4 text-xs  text-tier-2 data-[state=on]:border-sky-300/20 data-[state=on]:bg-sky-300/12 data-[state=on]:text-tier-1">
                     <Table2 className="mr-2 size-4" /> Table
                   </ToggleGroupItem>
                 </ToggleGroup>
@@ -714,13 +738,13 @@ export default function ActivityScreen() {
                 ) : (
                   <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                     {sortedRows.map((row, index) => (
-                      <motion.article key={row.governorDbId} initial={false} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.24, delay: Math.min(index * 0.015, 0.16) }} className="rounded-[26px] border border-white/10 bg-[rgba(11,15,24,0.92)] p-4 max-[390px]:rounded-[20px] max-[390px]:p-3.5 shadow-[0_18px_40px_rgba(0,0,0,0.24)]">
+                      <motion.article key={row.governorDbId} initial={false} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.24, delay: Math.min(index * 0.015, 0.16) }} className="rounded-[20px] border border-[color:var(--stroke-soft)] bg-[rgba(11,15,24,0.92)] p-3 shadow-[0_18px_40px_rgba(0,0,0,0.24)] min-[390px]:rounded-[22px] min-[390px]:p-3.5 sm:rounded-[24px] sm:p-4">
                         <div className="flex items-center justify-between gap-3">
                           <StatusPill label={`#${index + 1}`} tone="neutral" />
                           <StatusPill label={row.compliance.overall} tone={overallTone(row.compliance.overall)} />
                         </div>
                         <div className="mt-4 space-y-2">
-                          <p className="font-heading text-lg text-white max-[390px]:text-base sm:text-xl">{row.governorName}</p>
+                          <p className="clamp-title-mobile font-heading text-base text-tier-1 min-[390px]:text-lg sm:text-xl" title={row.governorName}>{row.governorName}</p>
                           <div className="flex flex-wrap gap-2">
                             <StatusPill label={row.allianceTag} tone={row.allianceTag === 'GODt' ? 'warn' : row.allianceTag === 'V57' ? 'info' : 'neutral'} />
                             <StatusPill label={`ID ${row.governorId}`} tone="neutral" />
@@ -733,9 +757,9 @@ export default function ActivityScreen() {
                             { label: 'Power', value: row.powerGrowth, status: row.compliance.powerGrowth },
                             { label: 'KP', value: row.killPointsGrowth, status: row.compliance.killPointsGrowth },
                           ].map((metric) => (
-                            <div key={`${row.governorDbId}-${metric.label}`} className="rounded-2xl border border-white/8 bg-white/4 p-2.5 max-[390px]:rounded-xl max-[390px]:p-2">
-                              <p className="text-[11px] uppercase tracking-[0.18em] text-white/36">{metric.label}</p>
-                              <p className="mt-1.5 font-heading text-base text-white sm:text-lg">{metric.value != null ? formatMetric(metric.value) : 'N/A'}</p>
+                            <div key={`${row.governorDbId}-${metric.label}`} className="rounded-xl border border-[color:var(--stroke-subtle)] bg-[color:var(--surface-3)] p-2 min-[390px]:rounded-2xl min-[390px]:p-2.5">
+                              <p className="text-xs  text-tier-3">{metric.label}</p>
+                              <p className="mt-1.5 font-heading text-base text-tier-1 sm:text-lg">{metric.value != null ? formatMetric(metric.value) : 'N/A'}</p>
                               <div className="mt-2">
                                 <StatusPill label={metric.status} tone={metricTone(metric.status)} />
                               </div>
@@ -747,7 +771,7 @@ export default function ActivityScreen() {
                   </div>
                 )
               ) : (
-                <EmptyState title="No activity rows" description="Upload ranking screenshots and governor profiles to begin weekly tracking." action={<Button asChild variant="outline" className="rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white"><Link href="/upload">Upload Screenshots</Link></Button>} />
+                <EmptyState title="No activity rows" description="Upload ranking screenshots and governor profiles to begin weekly tracking." action={<Button asChild variant="outline" className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1"><Link href="/upload">Upload Screenshots</Link></Button>} />
               )}
             </Panel>
           </>

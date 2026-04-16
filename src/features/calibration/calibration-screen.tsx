@@ -237,7 +237,7 @@ export default function CalibrationPage() {
   const PROFILE_NONE = '__create__';
 
   return (
-    <div className="space-y-5 sm:space-y-6">
+    <div className="space-y-4 sm:space-y-5 lg:space-y-6">
       <PageHero
         title="Calibration"
         subtitle="Tune OCR profile offsets and overlays for reliable extraction."
@@ -261,15 +261,15 @@ export default function CalibrationPage() {
         <Panel title="1. Profile Selection" subtitle="Choose a profile/template and set profile metadata.">
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
-              <label className="text-[11px] uppercase tracking-[0.18em] text-white/45">Existing Profile</label>
+              <label className="text-xs  text-tier-3">Existing Profile</label>
               <Select
                 value={selectedProfileId || PROFILE_NONE}
                 onValueChange={(value) => setSelectedProfileId(value === PROFILE_NONE ? '' : value)}
               >
-                <SelectTrigger className="rounded-2xl border-white/10 bg-white/4 text-white">
+                <SelectTrigger className="rounded-2xl border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1">
                   <SelectValue placeholder="Create from template" />
                 </SelectTrigger>
-                <SelectContent className="border-white/10 bg-[rgba(8,10,16,0.98)] text-white">
+                <SelectContent className="border-[color:var(--stroke-soft)] bg-[rgba(8,10,16,0.98)] text-tier-1">
                   <SelectItem value={PROFILE_NONE}>Create from template</SelectItem>
                   {profiles.map((profile) => (
                     <SelectItem key={profile.id} value={profile.id}>
@@ -280,12 +280,12 @@ export default function CalibrationPage() {
               </Select>
             </div>
             <div className="space-y-2">
-              <label className="text-[11px] uppercase tracking-[0.18em] text-white/45">Base Template</label>
+              <label className="text-xs  text-tier-3">Base Template</label>
               <Select value={templateId} onValueChange={setTemplateId}>
-                <SelectTrigger className="rounded-2xl border-white/10 bg-white/4 text-white">
+                <SelectTrigger className="rounded-2xl border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1">
                   <SelectValue placeholder="Select base template" />
                 </SelectTrigger>
-                <SelectContent className="border-white/10 bg-[rgba(8,10,16,0.98)] text-white">
+                <SelectContent className="border-[color:var(--stroke-soft)] bg-[rgba(8,10,16,0.98)] text-tier-1">
                   {OCR_TEMPLATES.map((item) => (
                     <SelectItem key={item.id} value={item.id}>
                       {item.label} ({item.id})
@@ -295,32 +295,32 @@ export default function CalibrationPage() {
               </Select>
             </div>
             <div className="space-y-2">
-              <label className="text-[11px] uppercase tracking-[0.18em] text-white/45">Profile Key</label>
+              <label className="text-xs  text-tier-3">Profile Key</label>
               <Input
                 value={profileKey}
                 onChange={(e) => setProfileKey(e.target.value)}
-                className="rounded-2xl border-white/10 bg-white/4 text-white"
+                className="rounded-2xl border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1"
               />
             </div>
             <div className="space-y-2">
-              <label className="text-[11px] uppercase tracking-[0.18em] text-white/45">Profile Name</label>
+              <label className="text-xs  text-tier-3">Profile Name</label>
               <Input
                 value={profileName}
                 onChange={(e) => setProfileName(e.target.value)}
-                className="rounded-2xl border-white/10 bg-white/4 text-white"
+                className="rounded-2xl border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1"
               />
             </div>
           </div>
           <FilterBar className="mt-4">
             <Button
               variant="outline"
-              className="rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white"
+              className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1"
               onClick={loadProfileToForm}
               disabled={!selectedProfile}
             >
               Load Selected Profile
             </Button>
-            <label className="inline-flex min-h-11 items-center gap-2 text-sm text-white/70">
+            <label className="inline-flex min-h-11 items-center gap-2 text-sm text-tier-2">
               <input
                 type="checkbox"
                 checked={updateExisting}
@@ -329,7 +329,7 @@ export default function CalibrationPage() {
               />
               Update selected profile directly
             </label>
-            <label className="inline-flex min-h-11 items-center gap-2 text-sm text-white/70">
+            <label className="inline-flex min-h-11 items-center gap-2 text-sm text-tier-2">
               <input type="checkbox" checked={isDefault} onChange={(e) => setIsDefault(e.target.checked)} />
               Set as default profile
             </label>
@@ -339,11 +339,11 @@ export default function CalibrationPage() {
         <Panel title="2. Calibrate Overlay" subtitle="Upload a reference screenshot and tune offsets/scales.">
           <div className="space-y-4">
             <div className="space-y-2">
-              <label className="text-[11px] uppercase tracking-[0.18em] text-white/45">Reference Screenshot</label>
+              <label className="text-xs  text-tier-3">Reference Screenshot</label>
               <Input
                 type="file"
                 accept="image/png,image/jpeg,image/webp"
-                className="rounded-2xl border-white/10 bg-white/4 text-white file:mr-3 file:rounded-full file:border-0 file:bg-white/10 file:px-3 file:py-1.5 file:text-xs file:text-white"
+                className="rounded-2xl border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 file:mr-3 file:rounded-full file:border-0 file:bg-[color:var(--surface-4)] file:px-3 file:py-1.5 file:text-xs file:text-tier-1"
                 onChange={(e) => {
                   const file = e.target.files?.[0];
                   if (!file) return;
@@ -364,28 +364,28 @@ export default function CalibrationPage() {
             </div>
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
-                <label className="flex items-center justify-between gap-2 text-[11px] uppercase tracking-[0.18em] text-white/45">
+                <label className="flex items-center justify-between gap-2 text-xs  text-tier-3">
                   <span>X Offset</span>
                   <span>{xOffset.toFixed(3)}</span>
                 </label>
                 <input className="h-2 w-full accent-sky-300" type="range" min={-0.1} max={0.1} step={0.001} value={xOffset} onChange={(e) => setXOffset(Number(e.target.value))} />
               </div>
               <div className="space-y-2">
-                <label className="flex items-center justify-between gap-2 text-[11px] uppercase tracking-[0.18em] text-white/45">
+                <label className="flex items-center justify-between gap-2 text-xs  text-tier-3">
                   <span>Y Offset</span>
                   <span>{yOffset.toFixed(3)}</span>
                 </label>
                 <input className="h-2 w-full accent-sky-300" type="range" min={-0.1} max={0.1} step={0.001} value={yOffset} onChange={(e) => setYOffset(Number(e.target.value))} />
               </div>
               <div className="space-y-2">
-                <label className="flex items-center justify-between gap-2 text-[11px] uppercase tracking-[0.18em] text-white/45">
+                <label className="flex items-center justify-between gap-2 text-xs  text-tier-3">
                   <span>X Scale</span>
                   <span>{xScale.toFixed(2)}</span>
                 </label>
                 <input className="h-2 w-full accent-sky-300" type="range" min={0.8} max={1.2} step={0.01} value={xScale} onChange={(e) => setXScale(Number(e.target.value))} />
               </div>
               <div className="space-y-2">
-                <label className="flex items-center justify-between gap-2 text-[11px] uppercase tracking-[0.18em] text-white/45">
+                <label className="flex items-center justify-between gap-2 text-xs  text-tier-3">
                   <span>Y Scale</span>
                   <span>{yScale.toFixed(2)}</span>
                 </label>
@@ -433,7 +433,7 @@ export default function CalibrationPage() {
               <EmptyState
                 title="Upload a screenshot"
                 description="Field overlays will appear here for calibration."
-                action={<Upload className="size-10 text-white/34" />}
+                action={<Upload className="size-10 text-tier-3" />}
               />
             )}
           </Panel>
@@ -443,7 +443,7 @@ export default function CalibrationPage() {
             actions={
               <Button
                 variant="outline"
-                className="rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white"
+                className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1"
                 onClick={runLiveTest}
                 disabled={liveRunning || !imageFile}
               >
@@ -453,19 +453,19 @@ export default function CalibrationPage() {
             }
           >
             {liveResult ? (
-              <div className="space-y-3 text-sm text-white/72">
+              <div className="space-y-3 text-sm text-tier-2">
                 <p>
-                  Avg confidence: <strong className="text-white">{Math.round(liveResult.averageConfidence)}%</strong> • Template:{' '}
+                  Avg confidence: <strong className="text-tier-1">{Math.round(liveResult.averageConfidence)}%</strong> • Template:{' '}
                   {liveResult.templateId}
                 </p>
                 {Object.entries(liveResult.values).map(([field, value]) => (
                   <div key={field} className="flex flex-wrap items-center gap-2">
-                    <strong className="text-white">{field}</strong>: {value || '—'}{' '}
-                    <span className="text-white/45">({Math.round(liveResult.confidences[field] || 0)}%)</span>
+                    <strong className="text-tier-1">{field}</strong>: {value || '—'}{' '}
+                    <span className="text-tier-3">({Math.round(liveResult.confidences[field] || 0)}%)</span>
                   </div>
                 ))}
                 {liveResult.failureReasons.length > 0 ? (
-                  <div className="rounded-2xl border border-white/10 bg-white/4 p-3 text-white/60">
+                  <div className="rounded-2xl border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] p-3 text-tier-2">
                     {liveResult.failureReasons.slice(0, 5).map((reason) => (
                       <div key={reason}>• {reason}</div>
                     ))}
@@ -476,7 +476,7 @@ export default function CalibrationPage() {
               <EmptyState
                 title="No results"
                 description="Run the test to verify your profile before saving."
-                action={<Target className="size-10 text-white/34" />}
+                action={<Target className="size-10 text-tier-3" />}
               />
             )}
           </Panel>

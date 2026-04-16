@@ -3,6 +3,7 @@
 import { type CSSProperties, type ReactNode, useEffect, useMemo, useState } from 'react';
 import { ArrowUpDown, ChevronDown, ChevronUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import type { UiDensity } from '@/features/shared/types';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -28,12 +29,17 @@ import {
 
 function toneClasses(tone: 'neutral' | 'good' | 'warn' | 'bad' | 'info') {
   return {
-    neutral: 'border-white/10 bg-white/6 text-white/70',
-    good: 'border-emerald-400/18 bg-emerald-400/10 text-emerald-100',
-    warn: 'border-sky-300/18 bg-sky-300/10 text-sky-100',
-    bad: 'border-rose-300/18 bg-rose-400/10 text-rose-100',
-    info: 'border-indigo-300/18 bg-indigo-300/10 text-indigo-100',
+    neutral: 'border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-[color:var(--text-2)]',
+    good: 'border-emerald-400/24 bg-emerald-400/12 text-emerald-100',
+    warn: 'border-cyan-300/26 bg-cyan-300/12 text-cyan-100',
+    bad: 'border-rose-300/24 bg-rose-400/12 text-rose-100',
+    info: 'border-sky-300/24 bg-sky-300/12 text-sky-100',
   }[tone];
+}
+
+function resolveDensity(density?: UiDensity, compact?: boolean): UiDensity {
+  if (compact) return 'compact';
+  return density ?? 'balanced-compact';
 }
 
 export function AnimatedCounter({ value, duration = 900 }: { value: string | number; duration?: number }) {
@@ -67,28 +73,48 @@ export function PageHero({
   subtitle,
   actions,
   badges,
+  density,
+  compact,
 }: {
   title: string;
   subtitle?: string;
   actions?: ReactNode;
   badges?: string[];
+  density?: UiDensity;
+  compact?: boolean;
 }) {
+  const activeDensity = resolveDensity(density, compact);
+
+  const shellDensity =
+    activeDensity === 'comfortable'
+      ? 'rounded-[22px] p-3.5 min-[390px]:rounded-[24px] min-[390px]:p-4 sm:p-5 lg:p-6'
+      : activeDensity === 'compact'
+        ? 'rounded-[18px] p-2.5 min-[390px]:rounded-[20px] min-[390px]:p-3 sm:rounded-[22px] sm:p-3.5 lg:p-4'
+        : 'rounded-[20px] p-3 min-[390px]:rounded-[22px] min-[390px]:p-3.5 sm:rounded-[24px] sm:p-4 lg:p-5';
+
+  const titleDensity =
+    activeDensity === 'comfortable'
+      ? 'text-[1.62rem] min-[390px]:text-[1.78rem] sm:text-3xl lg:text-[3rem]'
+      : activeDensity === 'compact'
+        ? 'text-[1.4rem] min-[390px]:text-[1.56rem] sm:text-[1.95rem] lg:text-[2.55rem]'
+        : 'text-[1.5rem] min-[390px]:text-[1.66rem] sm:text-[2.15rem] lg:text-[2.85rem]';
+
   return (
-    <section className="relative overflow-hidden rounded-[28px] border border-white/12 bg-[linear-gradient(145deg,rgba(16,22,36,0.97),rgba(8,11,19,0.98))] p-5 shadow-[0_18px_48px_rgba(0,0,0,0.32)] max-[390px]:rounded-[22px] max-[390px]:p-4 sm:p-8">
-      <div className="absolute inset-x-0 top-0 h-px bg-[linear-gradient(90deg,transparent,rgba(133,187,255,0.48),transparent)]" />
-      <div className="absolute -right-10 -top-10 h-56 w-56 rounded-full bg-[radial-gradient(circle,rgba(91,155,255,0.22),transparent_65%)] blur-2xl" />
-      <div className="absolute -bottom-8 left-1/3 h-40 w-40 rounded-full bg-[radial-gradient(circle,rgba(124,226,255,0.12),transparent_65%)] blur-2xl" />
-      <div className="relative grid gap-5 max-[390px]:gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+    <section className={cn('surface-1 relative overflow-hidden', shellDensity)}>
+      <div className="absolute inset-x-0 top-0 h-px bg-[linear-gradient(90deg,transparent,color-mix(in_oklab,var(--tone-teal)_56%,transparent),transparent)]" />
+      <div className="absolute -right-10 -top-10 h-44 w-44 rounded-full bg-[radial-gradient(circle,color-mix(in_oklab,var(--tone-teal)_20%,transparent),transparent_65%)] blur-2xl" />
+      <div className="absolute -bottom-8 left-1/3 h-32 w-32 rounded-full bg-[radial-gradient(circle,color-mix(in_oklab,var(--tone-teal)_14%,transparent),transparent_65%)] blur-2xl" />
+      <div className="relative grid gap-3 min-[390px]:gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
         <div className="min-w-0">
-          <p className="mb-3 text-[11px] font-medium uppercase tracking-[0.26em] text-white/42">Player-Facing Surface</p>
-          <h1 className="font-heading text-[1.9rem] font-semibold tracking-tight text-white max-[390px]:text-[1.62rem] sm:text-4xl lg:text-[3.35rem]">
+          <p className="micro-label mb-2">Player-facing surface</p>
+          <h1 className={cn('font-heading font-semibold tracking-tight text-tier-1', titleDensity)}>
             {title}
           </h1>
           {subtitle ? (
-            <p className="mt-3 max-w-3xl text-[13px] leading-6 text-white/62 max-[390px]:text-xs max-[390px]:leading-5 sm:mt-4 sm:text-base sm:leading-7">{subtitle}</p>
+            <p className="mt-2 max-w-3xl text-xs leading-5 text-tier-3 min-[390px]:mt-2.5 min-[390px]:text-[13px] sm:mt-3 sm:text-sm sm:leading-6">{subtitle}</p>
           ) : null}
           {badges?.length ? (
-            <div className="mt-4 flex flex-wrap gap-2">
+            <div className="mt-3 flex flex-wrap gap-1.5 sm:gap-2">
               {badges.map((badge) => (
                 <StatusPill key={badge} label={badge} tone="neutral" />
               ))}
@@ -107,25 +133,44 @@ export function Panel({
   actions,
   children,
   className,
+  density,
+  compact,
 }: {
   title?: string;
   subtitle?: string;
   actions?: ReactNode;
   children: ReactNode;
   className?: string;
+  density?: UiDensity;
+  compact?: boolean;
 }) {
+  const activeDensity = resolveDensity(density, compact);
+  const contentDensity =
+    activeDensity === 'comfortable'
+      ? 'p-3.5 min-[390px]:p-4 sm:p-5 lg:p-6'
+      : activeDensity === 'compact'
+        ? 'p-2.5 min-[390px]:p-3 sm:p-3.5 lg:p-4'
+        : 'p-3 min-[390px]:p-3.5 sm:p-4 lg:p-5';
+
+  const headerDensity =
+    activeDensity === 'comfortable'
+      ? 'gap-2.5 pb-3 min-[390px]:gap-3 min-[390px]:pb-3.5'
+      : activeDensity === 'compact'
+        ? 'gap-1.5 pb-2 min-[390px]:gap-2 min-[390px]:pb-2.5'
+        : 'gap-2 pb-2.5 min-[390px]:gap-2.5 min-[390px]:pb-3';
+
   return (
-    <Card className={cn('overflow-hidden border-white/12 bg-[linear-gradient(160deg,rgba(13,18,30,0.95),rgba(9,13,22,0.96))] shadow-[0_18px_48px_rgba(0,0,0,0.28)]', className)}>
+    <Card className={cn('surface-1 overflow-hidden', className)}>
       {title || subtitle || actions ? (
-        <CardHeader className="flex flex-col gap-3 border-b border-white/8 pb-3.5 text-left max-[390px]:gap-2.5 max-[390px]:pb-3 sm:flex-row sm:items-end sm:justify-between">
+        <CardHeader className={cn('flex flex-col border-b border-[color:var(--stroke-subtle)] text-left sm:flex-row sm:items-end sm:justify-between', headerDensity)}>
           <div className="space-y-1.5 pr-2 text-left">
-            {title ? <CardTitle className="font-heading text-[1.15rem] text-white max-[390px]:text-base sm:text-xl">{title}</CardTitle> : null}
-            {subtitle ? <CardDescription className="text-[13px] text-white/58 max-[390px]:text-xs">{subtitle}</CardDescription> : null}
+            {title ? <CardTitle className="font-heading text-[0.95rem] text-tier-1 min-[390px]:text-[1.02rem] sm:text-lg">{title}</CardTitle> : null}
+            {subtitle ? <CardDescription className="text-xs text-tier-3 min-[390px]:text-[13px]">{subtitle}</CardDescription> : null}
           </div>
           {actions ? <div className="flex flex-wrap gap-2">{actions}</div> : null}
         </CardHeader>
       ) : null}
-      <CardContent className="p-4 max-[390px]:p-3.5 sm:p-5 lg:p-6">{children}</CardContent>
+      <CardContent className={contentDensity}>{children}</CardContent>
     </Card>
   );
 }
@@ -137,6 +182,8 @@ export function KpiCard({
   icon,
   tone = 'neutral',
   animated = true,
+  density,
+  compact,
 }: {
   label: string;
   value: string | number;
@@ -144,20 +191,37 @@ export function KpiCard({
   icon?: ReactNode;
   tone?: 'neutral' | 'good' | 'warn' | 'bad' | 'info';
   animated?: boolean;
+  density?: UiDensity;
+  compact?: boolean;
 }) {
+  const activeDensity = resolveDensity(density, compact);
+  const bodyDensity =
+    activeDensity === 'comfortable'
+      ? 'p-3.5 min-[390px]:p-4 sm:p-5'
+      : activeDensity === 'compact'
+        ? 'p-2.5 min-[390px]:p-3 sm:p-3.5'
+        : 'p-3 min-[390px]:p-3.5 sm:p-4';
+
+  const valueDensity =
+    activeDensity === 'comfortable'
+      ? 'text-[1.44rem] min-[390px]:text-[1.62rem] sm:text-[1.85rem]'
+      : activeDensity === 'compact'
+        ? 'text-[1.24rem] min-[390px]:text-[1.38rem] sm:text-[1.6rem]'
+        : 'text-[1.32rem] min-[390px]:text-[1.5rem] sm:text-[1.72rem]';
+
   return (
-    <Card className={cn('overflow-hidden border-white/12 bg-[rgba(10,14,24,0.92)]', toneClasses(tone))}>
-      <CardContent className="p-4 max-[390px]:p-3.5 sm:p-6">
+    <Card className={cn('overflow-hidden', toneClasses(tone))}>
+      <CardContent className={bodyDensity}>
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-2">
-            <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-white/45">{label}</p>
-            <p className="font-heading text-[1.7rem] font-semibold tracking-tight text-white max-[390px]:text-[1.42rem] sm:text-[2rem]">
+            <p className="chip-label text-xs font-medium text-tier-3">{label}</p>
+            <p className={cn('font-heading font-semibold tracking-tight text-tier-1', valueDensity)}>
               {animated && typeof value === 'number' ? <AnimatedCounter value={value} /> : value}
             </p>
-            {hint ? <p className="text-[13px] leading-5 text-white/58 max-[390px]:text-xs">{hint}</p> : null}
+            {hint ? <p className="text-xs leading-5 text-tier-3 min-[390px]:text-[13px]">{hint}</p> : null}
           </div>
           {icon ? (
-            <div className="rounded-2xl border border-white/10 bg-white/8 p-2.5 text-white/72 max-[390px]:p-2">{icon}</div>
+            <div className="rounded-xl border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] p-1.5 text-tier-2 min-[390px]:p-2">{icon}</div>
           ) : null}
         </div>
       </CardContent>
@@ -171,18 +235,18 @@ export function MetricStrip({
   items: Array<{ label: string; value: string | number; accent?: 'gold' | 'teal' | 'rose' | 'slate' }>;
 }) {
   const accentMap = {
-    gold: 'text-[#ffd47a]',
-    teal: 'text-sky-200',
+    gold: 'text-[color:var(--rank-gold)]',
+    teal: 'text-cyan-200',
     rose: 'text-rose-200',
-    slate: 'text-white/70',
+    slate: 'text-tier-2',
   } as const;
 
   return (
     <div className="grid gap-2 sm:flex sm:flex-wrap sm:gap-2.5">
       {items.map((item) => (
-        <div key={item.label} className="flex w-full min-w-0 items-center justify-between gap-3 rounded-full border border-white/10 bg-white/7 px-3.5 py-1.5 text-[13px] text-white/58 max-[390px]:px-3 max-[390px]:py-1.5 max-[390px]:text-xs sm:inline-flex sm:w-auto sm:justify-start sm:text-sm">
+        <div key={item.label} className="flex w-full min-w-0 items-center justify-between gap-3 rounded-full border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] px-3 py-1.5 text-xs text-tier-3 min-[390px]:px-3.5 min-[390px]:text-[13px] sm:inline-flex sm:w-auto sm:justify-start sm:text-sm">
           <span className="shrink-0">{item.label}</span>
-          <strong className={cn('min-w-0 truncate font-medium text-white', item.accent ? accentMap[item.accent] : null)}>{item.value}</strong>
+          <strong className={cn('min-w-0 truncate font-medium text-tier-1', item.accent ? accentMap[item.accent] : null)}>{item.value}</strong>
         </div>
       ))}
     </div>
@@ -193,16 +257,28 @@ export function FilterBar({
   children,
   className,
   style,
+  density,
+  compact,
 }: {
   children: ReactNode;
   className?: string;
   style?: CSSProperties;
+  density?: UiDensity;
+  compact?: boolean;
 }) {
+  const activeDensity = resolveDensity(density, compact);
+  const shellDensity =
+    activeDensity === 'comfortable'
+      ? 'gap-3 rounded-[20px] p-3 min-[390px]:rounded-[22px] min-[390px]:p-3.5 sm:rounded-[24px] sm:gap-4 sm:p-4'
+      : activeDensity === 'compact'
+        ? 'gap-2 rounded-[18px] p-2.5 min-[390px]:rounded-[20px] min-[390px]:p-3 sm:rounded-[22px] sm:gap-3 sm:p-3.5'
+        : 'gap-3 rounded-[20px] p-3 min-[390px]:rounded-[22px] min-[390px]:p-3.5 sm:rounded-[24px] sm:gap-4 sm:p-4';
+
   return (
     <div
       className={cn(
-        'flex flex-wrap items-center gap-2.5 rounded-[22px] border border-white/10 bg-white/5 p-3.5 [&>*]:min-w-0',
-        'max-[390px]:gap-2 max-[390px]:rounded-[18px] max-[390px]:p-2.5',
+        'flex flex-wrap items-center border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] [&>*]:min-w-0 [&_button]:min-h-11 [&_input]:min-h-11 [&_[role=combobox]]:min-h-11',
+        shellDensity,
         className
       )}
       style={style}
@@ -216,23 +292,112 @@ export function StickyControlBar({
   children,
   className,
   stickyTopClassName,
+  density,
+  compact,
 }: {
   children: ReactNode;
   className?: string;
   stickyTopClassName?: string;
+  density?: UiDensity;
+  compact?: boolean;
 }) {
+  const activeDensity = resolveDensity(density, compact);
+  const shellDensity =
+    activeDensity === 'comfortable'
+      ? 'rounded-[20px] p-3 min-[390px]:rounded-[22px] min-[390px]:p-3.5 sm:rounded-[24px] sm:p-4'
+      : activeDensity === 'compact'
+        ? 'rounded-[18px] p-2.5 min-[390px]:rounded-[20px] min-[390px]:p-3 sm:rounded-[22px] sm:p-3.5'
+        : 'rounded-[20px] p-3 min-[390px]:rounded-[22px] min-[390px]:p-3.5 sm:rounded-[24px] sm:p-4';
+
   return (
     <div
       className={cn(
-        'sticky z-20 rounded-[24px] border border-white/10 bg-[rgba(8,11,19,0.94)] p-3.5 shadow-[0_14px_36px_rgba(0,0,0,0.32)] backdrop-blur',
-        'top-[76px] max-[390px]:top-[72px] max-[390px]:rounded-[20px] max-[390px]:p-2.5',
-        'xl:static xl:border-white/8 xl:bg-black/20 xl:shadow-none xl:backdrop-blur-none',
+        'sticky z-20 border border-[color:var(--stroke-subtle)] bg-[color:color-mix(in_oklab,var(--surface-0)_84%,transparent)] shadow-[0_8px_18px_rgba(0,0,0,0.22)] backdrop-blur',
+        'top-[74px]',
+        shellDensity,
+        'xl:static xl:border-[color:var(--stroke-subtle)] xl:bg-transparent xl:shadow-none xl:backdrop-blur-none',
         stickyTopClassName,
         className
       )}
     >
       {children}
     </div>
+  );
+}
+
+export function CompactControlRow({
+  children,
+  className,
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        'flex items-center gap-2 overflow-x-auto rounded-[20px] border border-[color:var(--stroke-soft)] bg-[color:color-mix(in_oklab,var(--surface-1)_88%,transparent)] p-2.5 shadow-[0_8px_18px_rgba(0,0,0,0.2)]',
+        'min-[390px]:rounded-[22px] min-[390px]:p-3 sm:rounded-[24px] sm:gap-2.5 sm:p-3.5',
+        '[&>*]:shrink-0 [&_button]:min-h-11 [&_input]:min-h-11 [&_[role=combobox]]:min-h-11',
+        className
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+
+export function CompactControlDrawer({
+  triggerLabel = 'Filters',
+  title,
+  description,
+  triggerClassName,
+  contentClassName,
+  open,
+  onOpenChange,
+  children,
+}: {
+  triggerLabel?: ReactNode;
+  title: string;
+  description?: string;
+  triggerClassName?: string;
+  contentClassName?: string;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  children: ReactNode;
+}) {
+  return (
+    <Drawer open={open} onOpenChange={onOpenChange}>
+      <DrawerTrigger asChild>
+        <button
+          type="button"
+          className={cn(
+            'inline-flex min-h-11 items-center justify-center rounded-full border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] px-4 py-2 text-sm font-medium text-tier-2 hover:bg-[color:var(--surface-4)]',
+            triggerClassName
+          )}
+        >
+          {triggerLabel}
+        </button>
+      </DrawerTrigger>
+      <DrawerContent className={cn('border-[color:var(--stroke-soft)] bg-[color:color-mix(in_oklab,var(--surface-0)_96%,black_4%)] text-tier-1', contentClassName)}>
+        <DrawerHeader>
+          <DrawerTitle className="font-heading text-xl text-tier-1">{title}</DrawerTitle>
+          {description ? <DrawerDescription className="text-tier-3">{description}</DrawerDescription> : null}
+        </DrawerHeader>
+        <div className="max-h-[65svh] overflow-auto px-4 pb-4">
+          <div className="space-y-4">{children}</div>
+        </div>
+        <DrawerFooter>
+          <DrawerClose asChild>
+            <button
+              type="button"
+              className="inline-flex min-h-11 items-center justify-center rounded-full border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] px-4 py-2 text-sm text-tier-1 hover:bg-[color:var(--surface-4)]"
+            >
+              Done
+            </button>
+          </DrawerClose>
+        </DrawerFooter>
+      </DrawerContent>
+    </Drawer>
   );
 }
 
@@ -261,10 +426,10 @@ export function SegmentedChips<T extends string>({
             type="button"
             onClick={() => onChange(option.value)}
             className={cn(
-              'inline-flex min-h-11 items-center justify-center rounded-full border px-3.5 py-2 text-xs font-medium uppercase tracking-[0.16em] transition-colors',
+              'inline-flex min-h-11 items-center justify-center rounded-full border px-3.5 py-2 text-xs font-medium tracking-[0.04em] transition-colors',
               active
-                ? 'border-sky-300/22 bg-sky-300/12 text-white'
-                : 'border-white/10 bg-white/5 text-white/64 hover:bg-white/8 hover:text-white'
+                ? 'border-cyan-300/26 bg-cyan-300/14 text-tier-1'
+                : 'border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-3 hover:bg-[color:var(--surface-4)] hover:text-tier-1'
             )}
           >
             {option.label}
@@ -305,11 +470,11 @@ export function CompactAlert({
   const toneClass = useMemo(
     () =>
       ({
-        neutral: 'border-white/10 bg-white/5 text-white',
+        neutral: 'border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1',
         good: 'border-emerald-300/18 bg-emerald-400/10 text-emerald-100',
-        warn: 'border-sky-300/18 bg-sky-300/10 text-sky-100',
+        warn: 'border-cyan-300/26 bg-cyan-300/12 text-cyan-100',
         bad: 'border-rose-300/18 bg-rose-400/10 text-rose-100',
-        info: 'border-indigo-300/18 bg-indigo-300/10 text-indigo-100',
+        info: 'border-sky-300/22 bg-sky-300/10 text-sky-100',
       })[tone],
     [tone]
   );
@@ -332,11 +497,11 @@ export function EmptyState({
   action?: ReactNode;
 }) {
   return (
-    <div className="flex flex-col items-center justify-center rounded-[26px] border border-dashed border-white/12 bg-white/5 px-6 py-12 text-center">
-      <div className="mb-4 size-12 rounded-full border border-white/10 bg-white/6" />
-      <h3 className="font-heading text-lg text-white">{title}</h3>
-      {description ? <p className="mt-3 max-w-lg text-sm leading-6 text-white/56">{description}</p> : null}
-      {action ? <div className="mt-5 flex flex-wrap justify-center gap-2">{action}</div> : null}
+    <div className="flex flex-col items-center justify-center rounded-[20px] border border-dashed border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] px-4 py-8 text-center min-[390px]:rounded-[22px] min-[390px]:px-5 min-[390px]:py-10 sm:rounded-[24px]">
+      <div className="mb-3 size-10 rounded-full border border-[color:var(--stroke-soft)] bg-[color:var(--surface-4)]" />
+      <h3 className="font-heading text-lg text-tier-1">{title}</h3>
+      {description ? <p className="mt-2.5 max-w-lg text-sm leading-6 text-tier-3">{description}</p> : null}
+      {action ? <div className="mt-4 flex flex-wrap justify-center gap-2">{action}</div> : null}
     </div>
   );
 }
@@ -345,7 +510,7 @@ export function SkeletonSet({ rows = 4 }: { rows?: number }) {
   return (
     <div className="flex flex-col gap-3">
       {Array.from({ length: rows }).map((_, idx) => (
-        <Skeleton key={idx} className="h-14 rounded-2xl bg-white/8" />
+        <Skeleton key={idx} className="h-14 rounded-2xl bg-[color:var(--surface-4)]" />
       ))}
     </div>
   );
@@ -359,7 +524,7 @@ export function StatusPill({
   tone?: 'neutral' | 'good' | 'warn' | 'bad' | 'info';
 }) {
   return (
-    <Badge className={cn('rounded-full border px-3 py-1 text-[10px] font-semibold tracking-[0.14em] uppercase max-[390px]:px-2.5 max-[390px]:text-[9px]', toneClasses(tone))}>
+    <Badge className={cn('chip-label rounded-full border px-2.5 py-1 text-xs font-semibold min-[390px]:px-3', toneClasses(tone))}>
       {label}
     </Badge>
   );
@@ -375,7 +540,7 @@ export function ActionFooter({
   return (
     <div
       className={cn(
-        'mt-4 flex flex-col gap-2 border-t border-white/10 pt-3 sm:flex-row sm:flex-wrap sm:items-center',
+        'mt-4 flex flex-col gap-2 border-t border-[color:var(--stroke-soft)] pt-3 sm:flex-row sm:flex-wrap sm:items-center',
         className
       )}
     >
@@ -404,15 +569,15 @@ export function RowDetailDrawer({
       <DrawerTrigger asChild>
         <button
           type="button"
-          className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/84 hover:bg-white/8"
+          className="inline-flex min-h-11 items-center justify-center rounded-full border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] px-4 py-2 text-sm text-tier-2 hover:bg-[color:var(--surface-4)]"
         >
           {triggerLabel}
         </button>
       </DrawerTrigger>
-      <DrawerContent className={cn('border-white/10 bg-[rgba(8,10,16,0.98)] text-white', className)}>
+      <DrawerContent className={cn('border-[color:var(--stroke-soft)] bg-[color:color-mix(in_oklab,var(--surface-0)_96%,black_4%)] text-tier-1', className)}>
         <DrawerHeader>
-          <DrawerTitle className="font-heading text-xl text-white">{title}</DrawerTitle>
-          {description ? <DrawerDescription className="text-white/55">{description}</DrawerDescription> : null}
+          <DrawerTitle className="font-heading text-xl text-tier-1">{title}</DrawerTitle>
+          {description ? <DrawerDescription className="text-tier-3">{description}</DrawerDescription> : null}
         </DrawerHeader>
         <div className="max-h-[60svh] overflow-auto px-4 pb-4">{children}</div>
         <DrawerFooter>
@@ -420,7 +585,7 @@ export function RowDetailDrawer({
           <DrawerClose asChild>
             <button
               type="button"
-              className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/12 bg-white/4 px-4 py-2 text-sm text-white hover:bg-white/8"
+              className="inline-flex min-h-11 items-center justify-center rounded-full border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] px-4 py-2 text-sm text-tier-1 hover:bg-[color:var(--surface-4)]"
             >
               Close
             </button>
@@ -453,6 +618,7 @@ export function DataTableLite<T>({
   dense = false,
   mobileCards = true,
   emptyLabel = 'No records found.',
+  density = 'balanced-compact',
 }: {
   columns: DataTableLiteColumn<T>[];
   rows: T[];
@@ -465,26 +631,37 @@ export function DataTableLite<T>({
   dense?: boolean;
   mobileCards?: boolean;
   emptyLabel?: string;
+  density?: UiDensity;
 }) {
+  const activeDensity = density;
   const renderSortIcon = (columnKey: string) => {
-    if (sortKey !== columnKey) return <ArrowUpDown className="size-3.5 text-white/28" />;
-    return sortDir === 'desc' ? <ChevronDown className="size-3.5 text-white/58" /> : <ChevronUp className="size-3.5 text-white/58" />;
+    if (sortKey !== columnKey) return <ArrowUpDown className="size-3.5 text-tier-4" />;
+    return sortDir === 'desc' ? <ChevronDown className="size-3.5 text-tier-3" /> : <ChevronUp className="size-3.5 text-tier-3" />;
   };
 
   const tableContent = (
-    <div className="overflow-hidden rounded-[26px] border border-white/12 bg-[rgba(11,15,24,0.9)]">
+    <div
+      className={cn(
+        'overflow-hidden border border-[color:var(--stroke-soft)] bg-[color:color-mix(in_oklab,var(--surface-1)_90%,black_10%)]',
+        activeDensity === 'comfortable'
+          ? 'rounded-[24px]'
+          : activeDensity === 'compact'
+            ? 'rounded-[18px]'
+            : 'rounded-[22px]'
+      )}
+    >
       <Table>
         <TableHeader>
-          <TableRow className="border-white/8 hover:bg-transparent">
+          <TableRow className="border-[color:var(--stroke-subtle)] hover:bg-transparent">
             {columns.map((column, index) => {
               const sortable = column.sortable && onSort;
               return (
                 <TableHead
                   key={column.key}
                   className={cn(
-                    'h-12 border-b border-white/8 bg-white/[0.03] px-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-white/45',
+                    'h-12 border-b border-[color:var(--stroke-subtle)] bg-[color:var(--surface-3)] px-3 text-xs font-semibold tracking-[0.06em] text-tier-3',
                     column.thClassName,
-                    index === 0 && stickyFirst && 'sticky left-0 z-10 bg-[rgba(11,15,24,0.96)]'
+                    index === 0 && stickyFirst && 'sticky left-0 z-10 bg-[color:color-mix(in_oklab,var(--surface-1)_96%,black_4%)]'
                   )}
                 >
                   {sortable ? (
@@ -506,8 +683,8 @@ export function DataTableLite<T>({
         </TableHeader>
         <TableBody>
           {rows.length === 0 ? (
-            <TableRow className="border-white/6 hover:bg-transparent">
-              <TableCell colSpan={columns.length} className="py-10 text-center text-sm text-white/48">
+            <TableRow className="border-[color:var(--stroke-subtle)] hover:bg-transparent">
+              <TableCell colSpan={columns.length} className="py-10 text-center text-sm text-tier-3">
                 {emptyLabel}
               </TableCell>
             </TableRow>
@@ -516,7 +693,7 @@ export function DataTableLite<T>({
               <TableRow
                 key={rowKey(row, idx)}
                 className={cn(
-                  'border-white/6 text-white/78 transition-colors hover:bg-white/[0.04]',
+                  'border-[color:var(--stroke-subtle)] text-tier-2 transition-colors hover:bg-[color:var(--surface-3)]',
                   rowClassName?.(row, idx)
                 )}
               >
@@ -527,7 +704,7 @@ export function DataTableLite<T>({
                       dense ? 'px-3 py-3' : 'px-3 py-4',
                       'align-middle',
                       column.className,
-                      colIdx === 0 && stickyFirst && 'sticky left-0 bg-[rgba(11,15,24,0.96)]'
+                      colIdx === 0 && stickyFirst && 'sticky left-0 bg-[color:color-mix(in_oklab,var(--surface-1)_96%,black_4%)]'
                     )}
                   >
                     {column.render(row, idx)}
@@ -544,13 +721,15 @@ export function DataTableLite<T>({
   const mobileCardList = (
     <div className="grid gap-3 md:hidden">
       {rows.length === 0 ? (
-        <div className="rounded-[24px] border border-white/10 bg-white/4 px-5 py-8 text-center text-sm text-white/48">{emptyLabel}</div>
+        <div className="rounded-[20px] border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] px-4 py-6 text-center text-sm text-tier-3 min-[390px]:rounded-[22px]">{emptyLabel}</div>
       ) : (
         rows.map((row, idx) => (
           <article
             key={rowKey(row, idx)}
             className={cn(
-              'rounded-[24px] border border-white/10 bg-[rgba(11,15,24,0.92)] p-4 shadow-[0_12px_28px_rgba(0,0,0,0.22)]',
+              activeDensity === 'compact'
+                ? 'rounded-[18px] border border-[color:var(--stroke-soft)] bg-[color:color-mix(in_oklab,var(--surface-1)_92%,black_8%)] p-2.5 shadow-[0_8px_20px_rgba(0,0,0,0.2)] min-[390px]:rounded-[20px] min-[390px]:p-3'
+                : 'rounded-[20px] border border-[color:var(--stroke-soft)] bg-[color:color-mix(in_oklab,var(--surface-1)_92%,black_8%)] p-3 shadow-[0_10px_24px_rgba(0,0,0,0.22)] min-[390px]:rounded-[22px] min-[390px]:p-3.5',
               rowClassName?.(row, idx)
             )}
           >
@@ -559,8 +738,8 @@ export function DataTableLite<T>({
                 .filter((column) => !column.mobileHidden)
                 .map((column) => (
                   <div key={`${rowKey(row, idx)}-${column.key}-mobile`} className="grid gap-1.5">
-                    <span className="text-[11px] font-medium uppercase tracking-[0.18em] text-white/38">{column.label}</span>
-                    <div className="text-sm text-white/80">{column.render(row, idx)}</div>
+                    <span className="text-xs font-medium tracking-[0.06em] text-tier-3">{column.label}</span>
+                    <div className="text-sm text-tier-2">{column.render(row, idx)}</div>
                   </div>
                 ))}
             </div>

@@ -178,7 +178,7 @@ export default function InsightsPage() {
   };
 
   return (
-    <div className="space-y-5 sm:space-y-6">
+    <div className="space-y-4 sm:space-y-5 lg:space-y-6">
       <PageHero
         title="Insights"
         subtitle="Top-N contribution trends and cross-kingdom analytics."
@@ -190,10 +190,10 @@ export default function InsightsPage() {
         <Panel title="Analysis Parameters">
           <FilterBar className="w-full items-stretch gap-2.5 sm:items-center">
             <Select value={eventA || AUTO_VALUE} onValueChange={(value) => setEventA(value === AUTO_VALUE ? '' : value)}>
-              <SelectTrigger className="w-full min-w-0 rounded-full border-white/10 bg-white/4 text-white sm:min-w-52">
+              <SelectTrigger className="w-full min-w-0 rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 sm:min-w-52">
                 <SelectValue placeholder="Event A" />
               </SelectTrigger>
-              <SelectContent className="border-white/10 bg-[rgba(8,10,16,0.98)] text-white">
+              <SelectContent className="border-[color:var(--stroke-soft)] bg-[rgba(8,10,16,0.98)] text-tier-1">
                 <SelectItem value={AUTO_VALUE}>Auto (Event A)</SelectItem>
                 {events.map((event) => (
                   <SelectItem key={event.id} value={event.id}>
@@ -203,10 +203,10 @@ export default function InsightsPage() {
               </SelectContent>
             </Select>
             <Select value={eventB || AUTO_VALUE} onValueChange={(value) => setEventB(value === AUTO_VALUE ? '' : value)}>
-              <SelectTrigger className="w-full min-w-0 rounded-full border-white/10 bg-white/4 text-white sm:min-w-52">
+              <SelectTrigger className="w-full min-w-0 rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 sm:min-w-52">
                 <SelectValue placeholder="Event B" />
               </SelectTrigger>
-              <SelectContent className="border-white/10 bg-[rgba(8,10,16,0.98)] text-white">
+              <SelectContent className="border-[color:var(--stroke-soft)] bg-[rgba(8,10,16,0.98)] text-tier-1">
                 <SelectItem value={AUTO_VALUE}>Auto (Event B)</SelectItem>
                 {events.map((event) => (
                   <SelectItem key={event.id} value={event.id}>
@@ -222,7 +222,7 @@ export default function InsightsPage() {
                 max={50}
                 value={topN}
                 onChange={(e) => setTopN(Math.max(3, Math.min(50, Number(e.target.value) || 10)))}
-                className="rounded-full border-white/10 bg-white/4 text-white placeholder:text-white/30"
+                className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 placeholder:text-tier-3"
               />
             </div>
           </FilterBar>

@@ -537,7 +537,7 @@ export default function UploadPage() {
   ).length;
 
   return (
-    <div className="space-y-5 sm:space-y-6">
+    <div className="space-y-4 sm:space-y-5 lg:space-y-6">
       <PageHero
         title="Upload"
         subtitle="Upload weekly screenshots. OCR runs in the background and fills the review queues."

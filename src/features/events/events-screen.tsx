@@ -25,8 +25,9 @@ import {
 } from '@/components/ui/select';
 import {
   ActionFooter,
+  CompactControlDrawer,
+  CompactControlRow,
   EmptyState,
-  FilterBar,
   KpiCard,
   PageHero,
   Panel,
@@ -188,7 +189,7 @@ export default function EventsPage() {
   }, [events, search, typeFilter]);
 
   return (
-    <div className="space-y-5 sm:space-y-6">
+    <div className="space-y-4 sm:space-y-5 lg:space-y-6">
       <PageHero
         title="Events"
         subtitle="Manage event checkpoints for compare, insights, and ranking workflows."
@@ -197,7 +198,7 @@ export default function EventsPage() {
             <Button
               asChild
               variant="outline"
-              className="rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white"
+              className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1"
             >
               <Link href="/upload">
                 <Upload data-icon="inline-start" />
@@ -233,30 +234,32 @@ export default function EventsPage() {
           title="Event Registry"
           subtitle="Search, filter, and manage event snapshots."
           actions={
-            <FilterBar className="w-full items-stretch gap-2.5 sm:items-center">
-              <div className="relative min-w-0 w-full flex-1 sm:min-w-[220px]">
-                <Search className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-white/34" />
+            <CompactControlRow className="w-full">
+              <div className="relative w-[228px] min-w-[228px]">
+                <Search className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-tier-3" />
                 <Input
                   placeholder="Search events..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  className="rounded-full border-white/10 bg-white/4 pl-11 text-white placeholder:text-white/28 max-[390px]:h-9"
+                  className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] pl-11 text-tier-1 placeholder:text-tier-3 "
                 />
               </div>
-              <Select value={typeFilter} onValueChange={setTypeFilter}>
-                <SelectTrigger className="w-full min-w-0 rounded-full border-white/10 bg-white/4 text-white sm:min-w-44">
-                  <SelectValue placeholder="Type" />
-                </SelectTrigger>
-                <SelectContent className="border-white/10 bg-[rgba(8,10,16,0.98)] text-white">
-                  {eventTypeOptions.map((option) => (
-                    <SelectItem key={option} value={option}>
-                      {option === 'ALL' ? 'All Types' : EVENT_TYPE_LABELS[option] || option}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
               <StatusPill label={`${filteredEvents.length} visible`} tone="info" />
-            </FilterBar>
+              <CompactControlDrawer triggerLabel="Filters" title="Event Filters" description="Compact type filter for mobile and tablet.">
+                <Select value={typeFilter} onValueChange={setTypeFilter}>
+                  <SelectTrigger className="w-full rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1">
+                    <SelectValue placeholder="Type" />
+                  </SelectTrigger>
+                  <SelectContent className="border-[color:var(--stroke-soft)] bg-[rgba(8,10,16,0.98)] text-tier-1">
+                    {eventTypeOptions.map((option) => (
+                      <SelectItem key={option} value={option}>
+                        {option === 'ALL' ? 'All Types' : EVENT_TYPE_LABELS[option] || option}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </CompactControlDrawer>
+            </CompactControlRow>
           }
         >
           {loading ? (
@@ -283,7 +286,7 @@ export default function EventsPage() {
               {filteredEvents.map((event) => (
                 <article
                   key={event.id}
-                  className="rounded-[24px] border border-white/10 bg-[linear-gradient(160deg,rgba(16,22,36,0.74),rgba(11,15,24,0.9))] p-4 shadow-[0_14px_40px_rgba(0,0,0,0.26)] max-[390px]:rounded-[20px] max-[390px]:p-3.5"
+                  className="rounded-[20px] border border-[color:var(--stroke-soft)] bg-[linear-gradient(160deg,rgba(16,22,36,0.74),rgba(11,15,24,0.9))] p-3 shadow-[0_14px_40px_rgba(0,0,0,0.26)] min-[390px]:rounded-[22px] min-[390px]:p-3.5 sm:rounded-[24px] sm:p-4"
                 >
                   <div className="space-y-3">
                     <div className="flex flex-wrap items-center gap-2">
@@ -295,9 +298,9 @@ export default function EventsPage() {
                       <StatusPill label={formatDate(event.createdAt)} tone="neutral" />
                     </div>
                     <div>
-                      <p className="font-heading text-lg text-white max-[390px]:text-base sm:text-xl">{event.name}</p>
+                      <p className="clamp-title-mobile font-heading text-base text-tier-1 min-[390px]:text-lg sm:text-xl" title={event.name}>{event.name}</p>
                       {event.description ? (
-                        <p className="mt-1.5 text-sm text-white/56 max-[390px]:text-xs">{event.description}</p>
+                        <p className="clamp-secondary mt-1.5 text-xs text-tier-3 min-[390px]:text-sm" title={event.description}>{event.description}</p>
                       ) : null}
                     </div>
                   </div>
@@ -305,14 +308,14 @@ export default function EventsPage() {
                     <Button
                       asChild
                       variant="outline"
-                      className="h-11 rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white"
+                      className="h-11 rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1"
                     >
                       <Link href={`/events/${event.id}`}>View</Link>
                     </Button>
                     <Button
                       asChild
                       variant="outline"
-                      className="h-11 rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white"
+                      className="h-11 rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1"
                     >
                       <Link href={`/compare?eventA=${event.id}`}>Compare</Link>
                     </Button>
@@ -333,31 +336,31 @@ export default function EventsPage() {
       </SessionGate>
 
       <Dialog open={showCreate} onOpenChange={setShowCreate}>
-        <DialogContent className="border-white/10 bg-[rgba(8,10,16,0.98)] text-white sm:max-w-lg">
+        <DialogContent className="border-[color:var(--stroke-soft)] bg-[rgba(8,10,16,0.98)] text-tier-1 sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle className="font-heading text-xl text-white">Create Event</DialogTitle>
-            <DialogDescription className="text-white/55">
+            <DialogTitle className="font-heading text-xl text-tier-1">Create Event</DialogTitle>
+            <DialogDescription className="text-tier-3">
               Add a new event checkpoint for rankings and compare surfaces.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-2">
             <div className="space-y-2">
-              <label className="text-[11px] uppercase tracking-[0.18em] text-white/45">Event Name</label>
+              <label className="text-xs  text-tier-3">Event Name</label>
               <Input
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
                 placeholder="e.g., KvK S3 - Start"
                 autoFocus
-                className="rounded-2xl border-white/10 bg-white/4 text-white placeholder:text-white/30"
+                className="rounded-2xl border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 placeholder:text-tier-3"
               />
             </div>
             <div className="space-y-2">
-              <label className="text-[11px] uppercase tracking-[0.18em] text-white/45">Event Type</label>
+              <label className="text-xs  text-tier-3">Event Type</label>
               <Select value={newType} onValueChange={setNewType}>
-                <SelectTrigger className="rounded-2xl border-white/10 bg-white/4 text-white">
+                <SelectTrigger className="rounded-2xl border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1">
                   <SelectValue placeholder="Choose type" />
                 </SelectTrigger>
-                <SelectContent className="border-white/10 bg-[rgba(8,10,16,0.98)] text-white">
+                <SelectContent className="border-[color:var(--stroke-soft)] bg-[rgba(8,10,16,0.98)] text-tier-1">
                   {Object.entries(EVENT_TYPE_LABELS).map(([value, label]) => (
                     <SelectItem key={value} value={value}>
                       {label}
@@ -367,19 +370,19 @@ export default function EventsPage() {
               </Select>
             </div>
             <div className="space-y-2">
-              <label className="text-[11px] uppercase tracking-[0.18em] text-white/45">Description</label>
+              <label className="text-xs  text-tier-3">Description</label>
               <Input
                 value={newDesc}
                 onChange={(e) => setNewDesc(e.target.value)}
                 placeholder="Optional notes"
-                className="rounded-2xl border-white/10 bg-white/4 text-white placeholder:text-white/30"
+                className="rounded-2xl border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 placeholder:text-tier-3"
               />
             </div>
           </div>
           <DialogFooter className="gap-2 sm:justify-end">
             <Button
               variant="outline"
-              className="rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white"
+              className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1"
               onClick={() => setShowCreate(false)}
             >
               Cancel

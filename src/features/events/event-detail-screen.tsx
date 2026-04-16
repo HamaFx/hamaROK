@@ -134,7 +134,7 @@ export default function EventDetailScreen() {
   };
 
   return (
-    <div className="space-y-5 sm:space-y-6">
+    <div className="space-y-4 sm:space-y-5 lg:space-y-6">
       <PageHero
         title={event?.name || 'Event Details'}
         subtitle="Snapshot table with sortable export-ready fields."
@@ -148,7 +148,7 @@ export default function EventDetailScreen() {
             <>
               <Button
                 variant="outline"
-                className="rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white"
+                className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1"
                 onClick={exportCSV}
               >
                 <Download data-icon="inline-start" />
@@ -219,12 +219,12 @@ export default function EventDetailScreen() {
               actions={
                 <FilterBar className="w-full items-stretch sm:items-center">
                   <div className="relative min-w-0 w-full flex-1 sm:min-w-[220px]">
-                    <Search className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-white/34" />
+                    <Search className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-tier-3" />
                     <Input
                       placeholder="Search governor..."
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
-                      className="rounded-full border-white/10 bg-white/4 pl-11 text-white placeholder:text-white/28 max-[390px]:h-9"
+                      className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] pl-11 text-tier-1 placeholder:text-tier-3 "
                     />
                   </div>
                   <StatusPill label={`${sortedSnapshots.length} rows`} tone="info" />
@@ -251,7 +251,7 @@ export default function EventDetailScreen() {
                     render: (row) => (
                       <>
                         <strong>{row.governor.name}</strong>
-                        <div className="text-sm text-white/56">ID {row.governor.governorId}</div>
+                        <div className="text-sm text-tier-3">ID {row.governor.governorId}</div>
                       </>
                     ),
                   },

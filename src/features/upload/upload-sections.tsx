@@ -81,7 +81,7 @@ export function UploadWorkerPanel({
 
   return (
     <Panel title="Weekly Window + Worker">
-      <p className="mb-3 text-sm text-white/56">
+      <p className="mb-3 text-sm text-tier-3">
         {workspaceReady
           ? `Connected to ${workspaceLabel}.`
           : sessionLoading
@@ -89,9 +89,9 @@ export function UploadWorkerPanel({
             : sessionError || 'Workspace session is not ready yet.'}
       </p>
       <div className="grid gap-3 md:grid-cols-2">
-        <div className="rounded-[22px] border border-white/10 bg-white/4 p-3.5">
-          <p className="font-heading text-base text-white">{weeklyEvent?.name || 'Preparing current weekly event...'}</p>
-          <p className="mt-2 text-sm text-white/56">
+        <div className="rounded-[22px] border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] p-3.5">
+          <p className="font-heading text-base text-tier-1">{weeklyEvent?.name || 'Preparing current weekly event...'}</p>
+          <p className="mt-2 text-sm text-tier-3">
             {weeklyEvent?.weekKey || 'week key pending'}
             {weeklyEvent?.startsAt
               ? ` • ${new Date(weeklyEvent.startsAt).toLocaleDateString(undefined, {
@@ -108,13 +108,13 @@ export function UploadWorkerPanel({
           ) : null}
         </div>
 
-        <div className="rounded-[22px] border border-white/10 bg-white/4 p-3.5">
+        <div className="rounded-[22px] border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] p-3.5">
           <div className="mb-2 flex flex-wrap items-center gap-2">
             <ShieldCheck className="size-4" />
-            <strong className="text-sm text-white">AWS OCR Worker</strong>
+            <strong className="text-sm text-tier-1">AWS OCR Worker</strong>
             <StatusPill label={workerLabel} tone={workerTone} />
           </div>
-          <p className="text-sm text-white/56">Queue-driven auto-start. Use Start Worker to warm up before uploads.</p>
+          <p className="text-sm text-tier-3">Queue-driven auto-start. Use Start Worker to warm up before uploads.</p>
           <FilterBar className="mt-3">
             <Button
               onClick={onStartWorker}
@@ -125,14 +125,14 @@ export function UploadWorkerPanel({
             </Button>
             <Button
               variant="outline"
-              className="rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white"
+              className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1"
               onClick={onStopWorker}
               disabled={!awsOcrControl?.enabled || awsControlBusy === 'STOP'}
             >
               <Square data-icon="inline-start" /> {awsControlBusy === 'STOP' ? 'Stopping...' : 'Stop'}
             </Button>
           </FilterBar>
-          {awsControlMessage ? <p className="mt-2 text-sm text-white/56">{awsControlMessage}</p> : null}
+          {awsControlMessage ? <p className="mt-2 text-sm text-tier-3">{awsControlMessage}</p> : null}
         </div>
       </div>
     </Panel>
@@ -165,23 +165,23 @@ export function UploadDropZonePanel({
   return (
     <Panel title="Drop Screenshots">
       <div
-        className={`cursor-pointer rounded-[24px] border border-dashed px-5 py-10 text-center transition-colors ${
+        className={`cursor-pointer rounded-[20px] border border-dashed px-4 py-8 text-center transition-colors min-[390px]:rounded-[22px] min-[390px]:px-5 min-[390px]:py-9 sm:rounded-[24px] sm:py-10 ${
           isDragging
             ? 'border-sky-300/35 bg-sky-300/10'
-            : 'border-white/18 bg-white/4 hover:border-white/28 hover:bg-white/6'
+            : 'border-[color:var(--stroke-strong)] bg-[color:var(--surface-3)] hover:border-[color:var(--stroke-strong)] hover:bg-[color:var(--surface-3)]'
         }`}
         onDragOver={onDragOver}
         onDragLeave={onDragLeave}
         onDrop={onDrop}
         onClick={() => fileInputRef.current?.click()}
       >
-        <div className="mx-auto mb-3 grid size-12 place-items-center rounded-2xl border border-white/12 bg-white/8 text-white/80">
+        <div className="mx-auto mb-3 grid size-12 place-items-center rounded-2xl border border-[color:var(--stroke-soft)] bg-[color:var(--surface-4)] text-tier-2">
           <ImageUp className="size-6" />
         </div>
-        <p className="font-heading text-lg text-white">
+        <p className="font-heading text-lg text-tier-1">
           {isDragging ? 'Release to queue uploads' : 'Drop screenshots here'}
         </p>
-        <p className="mt-2 text-sm text-white/56">PNG, JPG, WEBP • Queue-first processing (no browser OCR freeze)</p>
+        <p className="mt-2 text-sm text-tier-3">PNG, JPG, WEBP • Queue-first processing (no browser OCR freeze)</p>
         <input
           ref={fileInputRef}
           type="file"
@@ -193,14 +193,14 @@ export function UploadDropZonePanel({
       </div>
 
       {isUploading ? (
-        <div className="mt-3 flex items-center gap-2 text-sm text-white/58">
+        <div className="mt-3 flex items-center gap-2 text-sm text-tier-3">
           <Clock3 className="size-4" /> Uploading and queueing screenshots...
         </div>
       ) : null}
       {scanJobId ? (
-        <div className="mt-3 text-sm text-white/56">
+        <div className="mt-3 text-sm text-tier-3">
           Current job: {scanJobState?.processedFiles || 0}/{scanJobState?.totalFiles || entryCount} processed •{' '}
-          <strong className="text-white">{scanJobState?.status || 'PROCESSING'}</strong>
+          <strong className="text-tier-1">{scanJobState?.status || 'PROCESSING'}</strong>
         </div>
       ) : null}
     </Panel>
@@ -238,14 +238,14 @@ export function UploadProcessingPanel({
         <FilterBar>
           <Button
             variant="outline"
-            className="rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white"
+            className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1"
             onClick={onOpenReview}
           >
             OCR Review ({completedProfileRows})
           </Button>
           <Button
             variant="outline"
-            className="rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white"
+            className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1"
             onClick={onOpenRankingReview}
           >
             Ranking Review ({completedRankingRows})
@@ -253,7 +253,7 @@ export function UploadProcessingPanel({
         </FilterBar>
       }
     >
-      <p className="text-sm text-white/56">
+      <p className="text-sm text-tier-3">
         Completed: {entries.filter((entry) => entry.status === 'completed').length} • Duplicate warnings:{' '}
         {entries.filter((entry) => entry.status === 'duplicate').length} • Failed:{' '}
         {entries.filter((entry) => entry.status === 'failed').length}

@@ -25,6 +25,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import {
+  CompactControlDrawer,
+  CompactControlRow,
   DataTableLite,
   EmptyState,
   FilterBar,
@@ -146,6 +148,7 @@ export default function CompareScreen() {
   const [publishing, setPublishing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [publishMessage, setPublishMessage] = useState<string | null>(null);
+  const [setupDrawerOpen, setSetupDrawerOpen] = useState(false);
 
   const loadEvents = useCallback(async () => {
     if (!ready) {
@@ -355,7 +358,7 @@ export default function CompareScreen() {
         label: 'Player',
         render: (row: Comparison) => (
           <div className="space-y-2">
-            <strong className="font-heading text-base text-white">{row.governor.name}</strong>
+            <strong className="font-heading text-base text-tier-1">{row.governor.name}</strong>
             <div className="flex flex-wrap gap-2">
               <StatusPill label={`ID ${row.governor.governorId}`} tone="neutral" />
               {row.warriorScore?.tier ? <StatusPill label={row.warriorScore.tier} tone={tierTone(row.warriorScore.tier)} /> : null}
@@ -371,7 +374,7 @@ export default function CompareScreen() {
         render: (row: Comparison) => (
           <div className="space-y-1 text-right">
             <p className={Number(row.deltas.power) >= 0 ? 'text-emerald-200' : 'text-rose-200'}>{formatDelta(row.deltas.power)}</p>
-            <p className="text-xs text-white/40">{formatCompactNumber(row.snapshotA.power)} → {formatCompactNumber(row.snapshotB.power)}</p>
+            <p className="text-xs text-tier-3">{formatCompactNumber(row.snapshotA.power)} → {formatCompactNumber(row.snapshotB.power)}</p>
           </div>
         ),
       },
@@ -419,7 +422,7 @@ export default function CompareScreen() {
   const tierMax = Math.max(1, ...tierEntries.map((entry) => entry.value));
 
   return (
-    <div className="space-y-5 sm:space-y-6">
+    <div className="space-y-4 sm:space-y-5 lg:space-y-6">
       <PageHero
         title="Compare"
         subtitle="A cleaner head-to-head matchup surface with stronger event selection, delta storytelling, and a sortable warrior-scored board."
@@ -430,12 +433,12 @@ export default function CompareScreen() {
         ]}
         actions={
           <>
-            <Button asChild variant="outline" className="rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white">
+            <Button asChild variant="outline" className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1">
               <Link href="/rankings">
                 <Users data-icon="inline-start" /> Rankings
               </Link>
             </Button>
-            <Button variant="outline" className="rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white" onClick={exportCsv} disabled={!result}>
+            <Button variant="outline" className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1" onClick={exportCsv} disabled={!result}>
               <Download data-icon="inline-start" /> Export
             </Button>
             <Button className="rounded-full bg-[linear-gradient(135deg,#5a7fff,#7ce6ff)] text-black hover:opacity-95" onClick={publishToDiscord} disabled={!result || publishing || !ready}>
@@ -451,40 +454,46 @@ export default function CompareScreen() {
 
         <Panel title="Matchup Setup" subtitle="Pick baseline and current event snapshots, then rerun the comparison with one tap.">
           <div className="space-y-4">
-            <div className="sticky top-[76px] z-20 -mx-1 rounded-[24px] border border-white/10 bg-[rgba(8,11,19,0.94)] p-3.5 shadow-[0_14px_36px_rgba(0,0,0,0.32)] backdrop-blur max-[390px]:top-[72px] max-[390px]:rounded-[20px] max-[390px]:p-2.5 xl:static xl:mx-0 xl:border-white/8 xl:bg-black/20 xl:shadow-none xl:backdrop-blur-none">
-              <div className="grid gap-2.5 lg:grid-cols-[minmax(0,1fr)_84px_minmax(0,1fr)_auto] lg:items-end">
-                <div className="space-y-2">
-                  <p className="text-[11px] uppercase tracking-[0.18em] text-white/36">Baseline Event</p>
-                  <Select value={eventAId || EMPTY_VALUE} onValueChange={(value) => setEventAId(value === EMPTY_VALUE ? '' : value)}>
-                    <SelectTrigger className="rounded-[22px] border-white/10 bg-white/4 text-white"><SelectValue placeholder="Select baseline event" /></SelectTrigger>
-                    <SelectContent className="border-white/10 bg-[rgba(8,10,16,0.98)] text-white">
-                      <SelectItem value={EMPTY_VALUE}>Select baseline event</SelectItem>
-                      {events.map((event) => (
-                        <SelectItem key={event.id} value={event.id}>{event.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="flex h-11 items-center justify-center rounded-full border border-white/10 bg-white/4 text-xs font-medium uppercase tracking-[0.22em] text-white/46">
-                  VS
-                </div>
-                <div className="space-y-2">
-                  <p className="text-[11px] uppercase tracking-[0.18em] text-white/36">Current Event</p>
-                  <Select value={eventBId || EMPTY_VALUE} onValueChange={(value) => setEventBId(value === EMPTY_VALUE ? '' : value)}>
-                    <SelectTrigger className="rounded-[22px] border-white/10 bg-white/4 text-white"><SelectValue placeholder="Select current event" /></SelectTrigger>
-                    <SelectContent className="border-white/10 bg-[rgba(8,10,16,0.98)] text-white">
-                      <SelectItem value={EMPTY_VALUE}>Select current event</SelectItem>
-                      {events.map((event) => (
-                        <SelectItem key={event.id} value={event.id}>{event.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <Button onClick={() => void loadComparison()} className="w-full rounded-full bg-[linear-gradient(135deg,#5a7fff,#7ce6ff)] text-black hover:opacity-95 lg:w-auto" disabled={!ready || loading || !eventAId || !eventBId}>
-                  <Swords data-icon="inline-start" /> {loading ? 'Running...' : 'Run Compare'}
-                </Button>
-              </div>
-            </div>
+            <CompactControlRow>
+              <Select value={eventAId || EMPTY_VALUE} onValueChange={(value) => setEventAId(value === EMPTY_VALUE ? '' : value)}>
+                <SelectTrigger className="w-[188px] min-w-[188px] rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1"><SelectValue placeholder="Baseline event" /></SelectTrigger>
+                <SelectContent className="border-[color:var(--stroke-soft)] bg-[rgba(8,10,16,0.98)] text-tier-1">
+                  <SelectItem value={EMPTY_VALUE}>Baseline event</SelectItem>
+                  {events.map((event) => (
+                    <SelectItem key={event.id} value={event.id}>{event.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Select value={eventBId || EMPTY_VALUE} onValueChange={(value) => setEventBId(value === EMPTY_VALUE ? '' : value)}>
+                <SelectTrigger className="w-[188px] min-w-[188px] rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1"><SelectValue placeholder="Current event" /></SelectTrigger>
+                <SelectContent className="border-[color:var(--stroke-soft)] bg-[rgba(8,10,16,0.98)] text-tier-1">
+                  <SelectItem value={EMPTY_VALUE}>Current event</SelectItem>
+                  {events.map((event) => (
+                    <SelectItem key={event.id} value={event.id}>{event.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Button onClick={() => void loadComparison()} className="rounded-full bg-[linear-gradient(135deg,#5a7fff,#7ce6ff)] text-black hover:opacity-95" disabled={!ready || loading || !eventAId || !eventBId}>
+                <Swords data-icon="inline-start" /> {loading ? 'Running...' : 'Run Compare'}
+              </Button>
+
+              <CompactControlDrawer
+                open={setupDrawerOpen}
+                onOpenChange={setSetupDrawerOpen}
+                triggerLabel="More"
+                title="Matchup Context"
+                description="Secondary matchup details are compacted here on mobile."
+              >
+                <FilterBar className="border-[color:var(--stroke-subtle)] bg-black/20">
+                  <StatusPill label={`Baseline: ${activeEventA?.name || 'Not selected'}`} tone="neutral" />
+                  <StatusPill label={`Current: ${activeEventB?.name || 'Not selected'}`} tone="info" />
+                  <StatusPill label={`${result?.missingInB.length || 0} missing`} tone={result?.missingInB.length ? 'warn' : 'neutral'} />
+                  <StatusPill label={`${result?.newInB.length || 0} new`} tone={result?.newInB.length ? 'info' : 'neutral'} />
+                </FilterBar>
+              </CompactControlDrawer>
+            </CompactControlRow>
 
             {(activeEventA || activeEventB) ? (
               <MetricStrip
@@ -528,44 +537,44 @@ export default function CompareScreen() {
             <div className="grid gap-6 xl:grid-cols-[minmax(0,1.05fr)_minmax(320px,0.95fr)]">
               <Panel title="Matchup Story" subtitle={`${result.eventA.name} → ${result.eventB.name}`}>
                 <div className="space-y-4">
-                  <div className="rounded-[28px] border border-white/10 bg-[linear-gradient(145deg,rgba(14,19,31,0.94),rgba(8,11,19,0.92))] p-4 max-[390px]:rounded-[22px] max-[390px]:p-3.5 sm:p-5">
+                  <div className="rounded-[20px] border border-[color:var(--stroke-soft)] bg-[linear-gradient(145deg,rgba(14,19,31,0.94),rgba(8,11,19,0.92))] p-3 min-[390px]:rounded-[22px] min-[390px]:p-3.5 sm:rounded-[24px] sm:p-4">
                     <div className="flex flex-wrap items-start justify-between gap-4">
                       <div>
                         <div className="flex flex-wrap gap-2">
                           <StatusPill label="Spotlight Player" tone="warn" />
                           {spotlight.top ? <StatusPill label={`${spotlight.top.score}% score`} tone={scoreTone(spotlight.top.score)} /> : null}
                         </div>
-                        <h2 className="mt-3 font-heading text-2xl text-white max-[390px]:text-xl sm:mt-4 sm:text-3xl">{spotlight.top?.governorName || 'No matchup yet'}</h2>
-                        <p className="mt-2.5 max-w-2xl text-[13px] leading-5 text-white/56 max-[390px]:text-xs max-[390px]:leading-5 sm:mt-3 sm:text-sm sm:leading-6">Highest overall warrior score across the selected event pair. This is the fastest read on who converted the matchup into measurable output.</p>
+                        <h2 className="clamp-title-mobile mt-3 font-heading text-xl text-tier-1 min-[390px]:text-2xl sm:mt-4 sm:text-3xl" title={spotlight.top?.governorName || 'No matchup yet'}>{spotlight.top?.governorName || 'No matchup yet'}</h2>
+                        <p className="mt-2.5 max-w-2xl text-xs leading-5 text-tier-3 min-[390px]:text-[13px] sm:mt-3 sm:text-sm sm:leading-6">Highest overall warrior score across the selected event pair. This is the fastest read on who converted the matchup into measurable output.</p>
                       </div>
-                      <div className="rounded-[24px] border border-white/10 bg-white/4 px-4 py-3 text-left max-[390px]:rounded-[18px] sm:px-5 sm:py-4 sm:text-right">
-                        <p className="text-[11px] uppercase tracking-[0.22em] text-white/36">Actual DKP</p>
-                        <p className="mt-1.5 font-heading text-2xl text-white max-[390px]:text-xl sm:text-3xl">{spotlight.top ? formatCompactNumber(spotlight.top.actualDkp) : '—'}</p>
-                        <p className="mt-1.5 text-[13px] text-white/48 max-[390px]:text-xs sm:text-sm">Top contributor lane</p>
+                      <div className="rounded-[20px] border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] px-4 py-3 text-left min-[390px]:rounded-[22px] sm:rounded-[24px] sm:px-5 sm:py-4 sm:text-right">
+                        <p className="text-xs  text-tier-3">Actual DKP</p>
+                        <p className="mt-1.5 font-heading text-xl text-tier-1 min-[390px]:text-2xl sm:text-3xl">{spotlight.top ? formatCompactNumber(spotlight.top.actualDkp) : '—'}</p>
+                        <p className="mt-1.5 text-xs text-tier-3 min-[390px]:text-[13px] sm:text-sm">Top contributor lane</p>
                       </div>
                     </div>
                   </div>
 
                   <div className="grid gap-3 md:grid-cols-3">
-                    <Card className="border-white/10 bg-white/4">
-                      <CardContent className="space-y-2.5 p-4 max-[390px]:p-3.5 sm:p-5">
-                        <p className="text-[11px] uppercase tracking-[0.18em] text-white/36">Top KP Delta</p>
-                        <p className="font-heading text-xl text-white">{spotlight.topKills?.governorName || '—'}</p>
-                        <p className="text-sm text-white/56">{spotlight.topKills ? formatCompactNumber(spotlight.topKills.killPointsDelta) : '—'} kill points gained</p>
+                    <Card className="border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)]">
+                      <CardContent className="space-y-2.5 p-3 min-[390px]:p-3.5 sm:p-4">
+                        <p className="text-xs  text-tier-3">Top KP Delta</p>
+                        <p className="clamp-title-mobile font-heading text-lg text-tier-1 min-[390px]:text-xl" title={spotlight.topKills?.governorName || '—'}>{spotlight.topKills?.governorName || '—'}</p>
+                        <p className="text-sm text-tier-3">{spotlight.topKills ? formatCompactNumber(spotlight.topKills.killPointsDelta) : '—'} kill points gained</p>
                       </CardContent>
                     </Card>
-                    <Card className="border-white/10 bg-white/4">
-                      <CardContent className="space-y-2.5 p-4 max-[390px]:p-3.5 sm:p-5">
-                        <p className="text-[11px] uppercase tracking-[0.18em] text-white/36">Top Deads Delta</p>
-                        <p className="font-heading text-xl text-white">{spotlight.topDeads?.governorName || '—'}</p>
-                        <p className="text-sm text-white/56">{spotlight.topDeads ? formatCompactNumber(spotlight.topDeads.deadsDelta) : '—'} deads recorded</p>
+                    <Card className="border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)]">
+                      <CardContent className="space-y-2.5 p-3 min-[390px]:p-3.5 sm:p-4">
+                        <p className="text-xs  text-tier-3">Top Deads Delta</p>
+                        <p className="clamp-title-mobile font-heading text-lg text-tier-1 min-[390px]:text-xl" title={spotlight.topDeads?.governorName || '—'}>{spotlight.topDeads?.governorName || '—'}</p>
+                        <p className="text-sm text-tier-3">{spotlight.topDeads ? formatCompactNumber(spotlight.topDeads.deadsDelta) : '—'} deads recorded</p>
                       </CardContent>
                     </Card>
-                    <Card className="border-white/10 bg-white/4">
-                      <CardContent className="space-y-2.5 p-4 max-[390px]:p-3.5 sm:p-5">
-                        <p className="text-[11px] uppercase tracking-[0.18em] text-white/36">Largest Power Swing</p>
-                        <p className="font-heading text-xl text-white">{spotlight.biggestPowerSwing?.governor.name || '—'}</p>
-                        <p className="text-sm text-white/56">{spotlight.biggestPowerSwing ? formatDelta(spotlight.biggestPowerSwing.deltas.power) : '—'} from baseline to current</p>
+                    <Card className="border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)]">
+                      <CardContent className="space-y-2.5 p-3 min-[390px]:p-3.5 sm:p-4">
+                        <p className="text-xs  text-tier-3">Largest Power Swing</p>
+                        <p className="clamp-title-mobile font-heading text-lg text-tier-1 min-[390px]:text-xl" title={spotlight.biggestPowerSwing?.governor.name || '—'}>{spotlight.biggestPowerSwing?.governor.name || '—'}</p>
+                        <p className="text-sm text-tier-3">{spotlight.biggestPowerSwing ? formatDelta(spotlight.biggestPowerSwing.deltas.power) : '—'} from baseline to current</p>
                       </CardContent>
                     </Card>
                   </div>
@@ -579,9 +588,9 @@ export default function CompareScreen() {
                       <div key={entry.tier} className="space-y-2">
                         <div className="flex items-center justify-between gap-3">
                           <StatusPill label={entry.tier} tone={tierTone(entry.tier)} />
-                          <span className="text-sm text-white/62">{entry.value}</span>
+                          <span className="text-sm text-tier-2">{entry.value}</span>
                         </div>
-                        <div className="h-2 overflow-hidden rounded-full bg-white/8">
+                        <div className="h-2 overflow-hidden rounded-full bg-[color:var(--surface-4)]">
                           <div
                             className="h-full rounded-full bg-[linear-gradient(90deg,#5a7fff,#7ce6ff)]"
                             style={{ width: `${(entry.value / tierMax) * 100}%` }}
@@ -610,12 +619,12 @@ export default function CompareScreen() {
               actions={
                 <FilterBar className="items-start sm:items-center">
                   <div className="relative min-w-0 w-full flex-1 sm:min-w-[220px]">
-                    <Search className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-white/34" />
+                    <Search className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-tier-3" />
                     <Input
                       value={search}
                       onChange={(event) => setSearch(event.target.value)}
                       placeholder="Search governor name or ID"
-                      className="rounded-full border-white/10 bg-white/4 pl-11 text-white placeholder:text-white/28 max-[390px]:h-9"
+                      className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] pl-11 text-tier-1 placeholder:text-tier-3 "
                     />
                   </div>
                   <div className="flex w-full flex-wrap gap-2 sm:w-auto">

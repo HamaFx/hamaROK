@@ -14,7 +14,6 @@ import { motion } from 'framer-motion';
 import { GrowthLineChart, WeeklyActivityLineChart } from '@/components/Charts';
 import { InlineError, SessionGate } from '@/components/app/session-gate';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import {
   Select,
@@ -23,6 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   DataTableLite,
   EmptyState,
@@ -31,6 +31,7 @@ import {
   MetricStrip,
   PageHero,
   Panel,
+  RowDetailDrawer,
   SkeletonSet,
   StatusPill,
 } from '@/components/ui/primitives';
@@ -379,8 +380,8 @@ export default function PlayersScreen() {
         label: 'Week',
         render: (row: WeeklyActivityHistoryEntry) => (
           <div className="space-y-1">
-            <strong className="font-heading text-base text-white">{formatWeekShort(row.weekKey)}</strong>
-            <p className="text-xs text-white/48">{row.weekName}</p>
+            <strong className="font-heading text-base text-tier-1">{formatWeekShort(row.weekKey)}</strong>
+            <p className="text-xs text-tier-3">{row.weekName}</p>
           </div>
         ),
       },
@@ -424,8 +425,76 @@ export default function PlayersScreen() {
     []
   );
 
+  const progressionContent = loadingProfile ? (
+    <SkeletonSet rows={4} />
+  ) : timeline && timeline.length > 0 ? (
+    <GrowthLineChart
+      timeline={timeline.map((entry) => ({
+        eventName: entry.event.name,
+        power: Number(entry.power),
+        killPoints: Number(entry.killPoints),
+        deads: Number(entry.deads),
+      }))}
+    />
+  ) : (
+    <EmptyState title="No progression history" description="This player does not have enough event snapshots for a timeline yet." />
+  );
+
+  const trendContent = loadingProfile ? (
+    <SkeletonSet rows={4} />
+  ) : weeklyHistory && weeklyHistory.some((entry) => entry.metrics) ? (
+    <div className="space-y-5">
+      <WeeklyActivityLineChart
+        timeline={[...(weeklyHistory || [])]
+          .reverse()
+          .filter((entry) => entry.metrics)
+          .map((entry) => ({
+            weekName: formatWeekShort(entry.weekKey),
+            contributionPoints: Number(entry.metrics?.contributionPoints || 0),
+            fortDestroying: Number(entry.metrics?.fortDestroying || 0),
+            powerGrowth: Number(entry.metrics?.powerGrowth || 0),
+            killPointsGrowth: Number(entry.metrics?.killPointsGrowth || 0),
+          }))}
+      />
+      <MetricStrip
+        items={[
+          {
+            label: 'Best Contribution Week',
+            value: profileSummary.bestContribution ? formatWeekShort(profileSummary.bestContribution.weekKey) : '—',
+            accent: 'teal',
+          },
+          {
+            label: 'Best Power Week',
+            value: profileSummary.bestPower ? formatWeekShort(profileSummary.bestPower.weekKey) : '—',
+            accent: 'gold',
+          },
+          {
+            label: 'History Rows',
+            value: `${weeklyHistory?.length || 0}`,
+            accent: 'slate',
+          },
+        ]}
+      />
+    </div>
+  ) : (
+    <EmptyState title="No weekly trend yet" description="Weekly activity history becomes available after enough weekly boards have been ingested." />
+  );
+
+  const movementContent = loadingProfile ? (
+    <SkeletonSet rows={4} />
+  ) : weeklyHistory && weeklyHistory.length ? (
+    <DataTableLite
+      rows={weeklyHistory}
+      rowKey={(row) => row.weekKey}
+      columns={historyColumns}
+      emptyLabel="No weekly history found for this player."
+    />
+  ) : (
+    <EmptyState title="No weekly history" description="This player has not been captured in the last weekly boards yet." />
+  );
+
   return (
-    <div className="space-y-5 sm:space-y-6">
+    <div className="space-y-4 sm:space-y-5 lg:space-y-6">
       <PageHero
         title="Players"
         subtitle="Directory, spotlight profile, and week-over-week movement without breaking the existing governor and activity APIs."
@@ -436,12 +505,12 @@ export default function PlayersScreen() {
         ]}
         actions={
           <>
-            <Button asChild variant="outline" className="rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white">
+            <Button asChild variant="outline" className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1">
               <Link href="/rankings">
                 <Crown data-icon="inline-start" /> Rankings
               </Link>
             </Button>
-            <Button asChild variant="outline" className="rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white">
+            <Button asChild variant="outline" className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1">
               <Link href="/compare">
                 <Swords data-icon="inline-start" /> Compare
               </Link>
@@ -466,19 +535,19 @@ export default function PlayersScreen() {
             title="Player Directory"
             subtitle="Search the roster, filter by alliance, and open a profile spotlight."
             actions={
-              <FilterBar className="w-full items-stretch gap-2.5 rounded-[20px] p-2.5 sm:items-center">
+              <FilterBar className="w-full items-stretch gap-2.5 sm:items-center">
                 <div className="relative min-w-0 flex-1 sm:min-w-[220px]">
-                  <Search className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-white/34" />
+                  <Search className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-tier-3" />
                   <Input
                     value={search}
                     onChange={(event) => setSearch(event.target.value)}
                     placeholder="Search player or governor ID"
-                    className="rounded-full border-white/10 bg-white/4 pl-11 text-white placeholder:text-white/28 max-[390px]:h-9"
+                    className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] pl-11 text-tier-1 placeholder:text-tier-3 "
                   />
                 </div>
                 <Select value={allianceFilter || ALL_VALUE} onValueChange={(value) => setAllianceFilter(value === ALL_VALUE ? '' : value)}>
-                  <SelectTrigger className="w-full min-w-0 rounded-full border-white/10 bg-white/4 text-white sm:min-w-40"><SelectValue placeholder="Alliance" /></SelectTrigger>
-                  <SelectContent className="border-white/10 bg-[rgba(8,10,16,0.98)] text-white">
+                  <SelectTrigger className="w-full min-w-0 rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 sm:min-w-40"><SelectValue placeholder="Alliance" /></SelectTrigger>
+                  <SelectContent className="border-[color:var(--stroke-soft)] bg-[rgba(8,10,16,0.98)] text-tier-1">
                     <SelectItem value={ALL_VALUE}>All Alliances</SelectItem>
                     <SelectItem value="GODt">[GODt]</SelectItem>
                     <SelectItem value="V57">[V57]</SelectItem>
@@ -486,8 +555,8 @@ export default function PlayersScreen() {
                   </SelectContent>
                 </Select>
                 <Select value={sortKey} onValueChange={(value) => setSortKey(value as DirectorySortKey)}>
-                  <SelectTrigger className="w-full min-w-0 rounded-full border-white/10 bg-white/4 text-white sm:min-w-40"><SelectValue placeholder="Sort" /></SelectTrigger>
-                  <SelectContent className="border-white/10 bg-[rgba(8,10,16,0.98)] text-white">
+                  <SelectTrigger className="w-full min-w-0 rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 sm:min-w-40"><SelectValue placeholder="Sort" /></SelectTrigger>
+                  <SelectContent className="border-[color:var(--stroke-soft)] bg-[rgba(8,10,16,0.98)] text-tier-1">
                     <SelectItem value="power">Latest Power</SelectItem>
                     <SelectItem value="contribution">Contribution</SelectItem>
                     <SelectItem value="snapshots">Snapshots</SelectItem>
@@ -507,7 +576,7 @@ export default function PlayersScreen() {
                     type="button"
                     onClick={() => setSelectedGovernorId(row.id)}
                     className={cn(
-                      'rounded-[24px] border border-white/10 bg-[linear-gradient(160deg,rgba(16,22,36,0.74),rgba(11,15,24,0.9))] p-4 text-left transition-all hover:bg-white/8 max-[390px]:rounded-[20px] max-[390px]:p-3.5 sm:p-5',
+                      'rounded-[20px] border border-[color:var(--stroke-soft)] bg-[linear-gradient(160deg,rgba(16,22,36,0.74),rgba(11,15,24,0.9))] p-3 text-left transition-all hover:bg-[color:var(--surface-4)] min-[390px]:rounded-[22px] min-[390px]:p-3.5 sm:rounded-[24px] sm:p-4',
                       row.id === selectedGovernorId && 'border-sky-300/22 bg-sky-300/10 shadow-[0_14px_40px_rgba(0,0,0,0.26)]'
                     )}
                   >
@@ -519,23 +588,23 @@ export default function PlayersScreen() {
                           {row.weekly ? <StatusPill label={row.weekly.compliance.overall} tone={statusTone(row.weekly.compliance.overall)} /> : null}
                         </div>
                         <div>
-                          <p className="truncate font-heading text-lg text-white max-[390px]:text-base sm:text-xl">{row.name}</p>
-                          <p className="mt-1 text-[13px] text-white/48 max-[390px]:text-xs sm:text-sm">ID {row.governorId}</p>
+                          <p className="clamp-title-mobile font-heading text-base text-tier-1 min-[390px]:text-lg sm:text-xl" title={row.name}>{row.name}</p>
+                          <p className="mt-1 text-xs text-tier-3 min-[390px]:text-[13px] sm:text-sm">ID {row.governorId}</p>
                         </div>
                       </div>
                       <div className="text-left sm:text-right">
-                        <p className="font-heading text-xl text-white sm:text-2xl">{formatCompactNumber(row.latestPower)}</p>
-                        <p className="mt-1 text-xs text-white/40">power</p>
+                        <p className="font-heading text-xl text-tier-1 sm:text-2xl">{formatCompactNumber(row.latestPower)}</p>
+                        <p className="mt-1 text-xs text-tier-3">power</p>
                       </div>
                     </div>
-                    <div className="mt-4 grid grid-cols-2 gap-2.5 text-[13px] text-white/58 max-[390px]:text-xs sm:text-sm">
+                    <div className="mt-4 grid grid-cols-2 gap-2.5 text-xs text-tier-3 min-[390px]:text-[13px] sm:text-sm">
                       <div>
-                        <p className="text-[11px] uppercase tracking-[0.18em] text-white/34">Contribution</p>
-                        <p className="mt-2 font-medium text-white">{formatCompactNumber(row.weekly?.contributionPoints || '0')}</p>
+                        <p className="text-xs  text-tier-3">Contribution</p>
+                        <p className="mt-2 font-medium text-tier-1">{formatCompactNumber(row.weekly?.contributionPoints || '0')}</p>
                       </div>
                       <div>
-                        <p className="text-[11px] uppercase tracking-[0.18em] text-white/34">Snapshots</p>
-                        <p className="mt-2 font-medium text-white">{row.snapshotCount}</p>
+                        <p className="text-xs  text-tier-3">Snapshots</p>
+                        <p className="mt-2 font-medium text-tier-1">{row.snapshotCount}</p>
                       </div>
                     </div>
                   </button>
@@ -552,8 +621,8 @@ export default function PlayersScreen() {
             subtitle={profile ? `${profile.name} • live weekly context plus progression history` : 'Select a player to inspect profile detail'}
           >
             {selectedGovernor && profile ? (
-              <motion.div key={selectedGovernor.id} initial={false} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.24 }} className="space-y-6">
-                <div className="space-y-4 rounded-[28px] border border-white/10 bg-[linear-gradient(145deg,rgba(14,19,31,0.94),rgba(8,11,19,0.92))] p-4 max-[390px]:rounded-[22px] max-[390px]:p-3.5 sm:p-5">
+              <motion.div key={selectedGovernor.id} initial={false} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.24 }} className="space-y-4 sm:space-y-5">
+                <div className="space-y-4 rounded-[20px] border border-[color:var(--stroke-soft)] bg-[linear-gradient(145deg,rgba(14,19,31,0.94),rgba(8,11,19,0.92))] p-3 min-[390px]:rounded-[22px] min-[390px]:p-3.5 sm:rounded-[24px] sm:p-4">
                   <div className="flex flex-wrap items-start justify-between gap-4">
                     <div className="space-y-3">
                       <div className="flex flex-wrap items-center gap-2">
@@ -562,14 +631,14 @@ export default function PlayersScreen() {
                         <StatusPill label={`ID ${profile.governorId || 'unknown'}`} tone="neutral" />
                       </div>
                       <div>
-                        <h2 className="font-heading text-2xl text-white sm:text-3xl">{profile.name}</h2>
-                        <p className="mt-1.5 text-[13px] text-white/56 max-[390px]:text-xs sm:mt-2 sm:text-sm">{profile.allianceLabel}</p>
+                        <h2 className="clamp-title-mobile font-heading text-xl text-tier-1 min-[390px]:text-2xl sm:text-3xl" title={profile.name}>{profile.name}</h2>
+                        <p className="clamp-secondary mt-1.5 text-xs text-tier-3 min-[390px]:text-[13px] sm:mt-2 sm:text-sm" title={profile.allianceLabel || ''}>{profile.allianceLabel}</p>
                       </div>
                     </div>
-                    <div className="rounded-[24px] border border-white/10 bg-white/4 px-4 py-3 text-left sm:px-5 sm:py-4 sm:text-right">
-                      <p className="text-[11px] uppercase tracking-[0.22em] text-white/36">Latest Power</p>
-                      <p className="mt-2 font-heading text-2xl text-white sm:text-3xl">{formatCompactNumber(profile.latestPower)}</p>
-                      <p className="mt-1.5 text-[13px] text-white/48 max-[390px]:text-xs sm:mt-2 sm:text-sm">{profile.snapshotCount} snapshots tracked</p>
+                    <div className="rounded-[20px] border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] px-4 py-3 text-left min-[390px]:rounded-[22px] sm:rounded-[24px] sm:px-5 sm:py-4 sm:text-right">
+                      <p className="text-xs  text-tier-3">Latest Power</p>
+                      <p className="mt-2 font-heading text-2xl text-tier-1 sm:text-3xl">{formatCompactNumber(profile.latestPower)}</p>
+                      <p className="mt-1.5 text-xs text-tier-3 min-[390px]:text-[13px] sm:mt-2 sm:text-sm">{profile.snapshotCount} snapshots tracked</p>
                     </div>
                   </div>
                   <MetricStrip
@@ -597,16 +666,42 @@ export default function PlayersScreen() {
                   />
                 </div>
 
-                <div className="grid gap-4 sm:grid-cols-2">
-                  {profile.metrics.map((metric) => (
-                    <Card key={metric.label} className="border-white/10 bg-white/4">
-                      <CardContent className="space-y-3 p-4 max-[390px]:p-3.5 sm:p-5">
-                        <p className="text-[11px] uppercase tracking-[0.18em] text-white/36">{metric.label}</p>
-                        <p className="font-heading text-xl text-white max-[390px]:text-lg sm:text-2xl">{metric.value != null ? formatCompactNumber(metric.value) : 'N/A'}</p>
-                        <p className="text-[13px] text-white/48 max-[390px]:text-xs sm:text-sm">Current week view</p>
-                      </CardContent>
-                    </Card>
-                  ))}
+                <div className="rounded-[20px] border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] p-3 min-[390px]:rounded-[22px] min-[390px]:p-3.5 sm:rounded-[24px] sm:p-4">
+                  <MetricStrip
+                    items={[
+                      {
+                        label: 'Contribution',
+                        value: formatCompactNumber(profile.metrics[0]?.value || '0'),
+                        accent: 'teal',
+                      },
+                      {
+                        label: 'Power Growth',
+                        value: profile.metrics[2]?.value ? formatCompactNumber(profile.metrics[2].value) : 'N/A',
+                        accent: 'gold',
+                      },
+                      {
+                        label: 'KP Growth',
+                        value: profile.metrics[3]?.value ? formatCompactNumber(profile.metrics[3].value) : 'N/A',
+                        accent: 'slate',
+                      },
+                    ]}
+                  />
+                  <div className="mt-3">
+                    <RowDetailDrawer
+                      triggerLabel="Open Full Metric Breakdown"
+                      title={`${profile.name} Weekly Metrics`}
+                      description="Current week metrics are compact by default and fully expanded in this drawer."
+                    >
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        {profile.metrics.map((metric) => (
+                          <div key={metric.label} className="rounded-2xl border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] p-3">
+                            <p className="text-xs  text-tier-3">{metric.label}</p>
+                            <p className="mt-2 font-heading text-lg text-tier-1">{metric.value != null ? formatCompactNumber(metric.value) : 'N/A'}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </RowDetailDrawer>
+                  </div>
                 </div>
               </motion.div>
             ) : loadingList ? (
@@ -618,83 +713,47 @@ export default function PlayersScreen() {
         </div>
 
         {selectedGovernor ? (
-          <>
-            <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
-              <Panel title="Event Progression" subtitle="Power, kill points, and deads across recorded snapshots.">
-                {loadingProfile ? (
-                  <SkeletonSet rows={4} />
-                ) : timeline && timeline.length > 0 ? (
-                  <GrowthLineChart
-                    timeline={timeline.map((entry) => ({
-                      eventName: entry.event.name,
-                      power: Number(entry.power),
-                      killPoints: Number(entry.killPoints),
-                      deads: Number(entry.deads),
-                    }))}
-                  />
-                ) : (
-                  <EmptyState title="No progression history" description="This player does not have enough event snapshots for a timeline yet." />
-                )}
-              </Panel>
-
-              <Panel title="Weekly Trend" subtitle="Rolling weekly metrics for contribution, fort, power, and KP growth.">
-                {loadingProfile ? (
-                  <SkeletonSet rows={4} />
-                ) : weeklyHistory && weeklyHistory.some((entry) => entry.metrics) ? (
-                  <div className="space-y-5">
-                    <WeeklyActivityLineChart
-                      timeline={[...(weeklyHistory || [])]
-                        .reverse()
-                        .filter((entry) => entry.metrics)
-                        .map((entry) => ({
-                          weekName: formatWeekShort(entry.weekKey),
-                          contributionPoints: Number(entry.metrics?.contributionPoints || 0),
-                          fortDestroying: Number(entry.metrics?.fortDestroying || 0),
-                          powerGrowth: Number(entry.metrics?.powerGrowth || 0),
-                          killPointsGrowth: Number(entry.metrics?.killPointsGrowth || 0),
-                        }))}
-                    />
-                    <MetricStrip
-                      items={[
-                        {
-                          label: 'Best Contribution Week',
-                          value: profileSummary.bestContribution ? formatWeekShort(profileSummary.bestContribution.weekKey) : '—',
-                          accent: 'teal',
-                        },
-                        {
-                          label: 'Best Power Week',
-                          value: profileSummary.bestPower ? formatWeekShort(profileSummary.bestPower.weekKey) : '—',
-                          accent: 'gold',
-                        },
-                        {
-                          label: 'History Rows',
-                          value: `${weeklyHistory?.length || 0}`,
-                          accent: 'slate',
-                        },
-                      ]}
-                    />
-                  </div>
-                ) : (
-                  <EmptyState title="No weekly trend yet" description="Weekly activity history becomes available after enough weekly boards have been ingested." />
-                )}
-              </Panel>
+          <Panel
+            title="Performance"
+            subtitle={`${selectedGovernor.name} progression, weekly trend, and movement in a compact reveal-first layout.`}
+          >
+            <div className="grid gap-2.5 md:hidden">
+              <RowDetailDrawer
+                triggerLabel="Event Progression"
+                title="Event Progression"
+                description="Power, kill points, and deads across recorded snapshots."
+              >
+                {progressionContent}
+              </RowDetailDrawer>
+              <RowDetailDrawer
+                triggerLabel="Weekly Trend"
+                title="Weekly Trend"
+                description="Rolling weekly metrics for contribution, fort, power, and KP growth."
+              >
+                {trendContent}
+              </RowDetailDrawer>
+              <RowDetailDrawer
+                triggerLabel="Recent Movement"
+                title="Recent Movement"
+                description={`${selectedGovernor.name} across the latest weekly checkpoints.`}
+              >
+                {movementContent}
+              </RowDetailDrawer>
             </div>
 
-            <Panel title="Recent Movement" subtitle={`${selectedGovernor.name} across the latest weekly checkpoints.`}>
-              {loadingProfile ? (
-                <SkeletonSet rows={4} />
-              ) : weeklyHistory && weeklyHistory.length ? (
-                <DataTableLite
-                  rows={weeklyHistory}
-                  rowKey={(row) => row.weekKey}
-                  columns={historyColumns}
-                  emptyLabel="No weekly history found for this player."
-                />
-              ) : (
-                <EmptyState title="No weekly history" description="This player has not been captured in the last weekly boards yet." />
-              )}
-            </Panel>
-          </>
+            <div className="hidden md:block">
+              <Tabs defaultValue="progression" className="space-y-4">
+                <TabsList className="flex w-full flex-wrap justify-start gap-2 rounded-full border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] p-1">
+                  <TabsTrigger value="progression" className="rounded-full px-4 text-xs  data-[state=active]:bg-sky-300/15 data-[state=active]:text-tier-1">Event Progression</TabsTrigger>
+                  <TabsTrigger value="trend" className="rounded-full px-4 text-xs  data-[state=active]:bg-sky-300/15 data-[state=active]:text-tier-1">Weekly Trend</TabsTrigger>
+                  <TabsTrigger value="movement" className="rounded-full px-4 text-xs  data-[state=active]:bg-sky-300/15 data-[state=active]:text-tier-1">Recent Movement</TabsTrigger>
+                </TabsList>
+                <TabsContent value="progression">{progressionContent}</TabsContent>
+                <TabsContent value="trend">{trendContent}</TabsContent>
+                <TabsContent value="movement">{movementContent}</TabsContent>
+              </Tabs>
+            </div>
+          </Panel>
         ) : null}
       </SessionGate>
     </div>

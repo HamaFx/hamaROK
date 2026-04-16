@@ -26,7 +26,7 @@ export function SessionGate({
           subtitle="A connected workspace is required before ranking and statboard surfaces can load."
         >
           <div className="space-y-4">
-            <p className="text-sm leading-6 text-white/62">{message}</p>
+            <p className="text-sm leading-6 text-tier-2">{message}</p>
             {!loading ? (
               <div className="flex flex-wrap gap-2.5">
                 <Button

@@ -54,6 +54,17 @@ export type PageViewState = 'loading' | 'ready' | 'error' | 'empty';
 
 export type MobileDataMode = 'cards' | 'table';
 
+export type UiDensity = 'comfortable' | 'balanced-compact' | 'compact';
+
+export type CompactControlDrawerId = 'rankingsFilters' | 'playersPerformance' | 'statsFilters';
+
+export type CompactControlDrawerState = Record<CompactControlDrawerId, boolean>;
+
+export interface SurfaceDensityProps {
+  density?: UiDensity;
+  compact?: boolean;
+}
+
 export interface NavGroups {
   primary: AppNavItem[];
   tools: AppNavItem[];
