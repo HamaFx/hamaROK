@@ -29,13 +29,14 @@ import {
 
 function toneClasses(tone: 'neutral' | 'good' | 'warn' | 'bad' | 'info') {
   return {
-    neutral: 'border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-[color:var(--text-2)]',
-    good: 'border-emerald-400/24 bg-emerald-400/12 text-emerald-100',
-    warn: 'border-cyan-300/26 bg-cyan-300/12 text-cyan-100',
-    bad: 'border-rose-300/24 bg-rose-400/12 text-rose-100',
-    info: 'border-sky-300/24 bg-sky-300/12 text-sky-100',
+    neutral: 'border-white/[0.08] bg-white/[0.03] text-tier-2 shadow-sm',
+    good: 'border-emerald-500/20 bg-emerald-500/10 text-emerald-100 shadow-[0_0_15px_rgba(16,185,129,0.02)]',
+    warn: 'border-cyan-400/20 bg-cyan-400/10 text-cyan-50 shadow-[0_0_15px_rgba(34,211,238,0.02)]',
+    bad: 'border-rose-500/20 bg-rose-500/10 text-rose-100 shadow-[0_0_15px_rgba(244,63,94,0.02)]',
+    info: 'border-sky-400/20 bg-sky-400/10 text-sky-50 shadow-[0_0_15px_rgba(56,189,248,0.02)]',
   }[tone];
 }
+
 
 function resolveDensity(density?: UiDensity, compact?: boolean): UiDensity {
   if (compact) return 'compact';
@@ -515,16 +516,19 @@ export function SkeletonSet({ rows = 4 }: { rows?: number }) {
 export function StatusPill({
   label,
   tone = 'neutral',
+  className,
 }: {
   label: string;
   tone?: 'neutral' | 'good' | 'warn' | 'bad' | 'info';
+  className?: string;
 }) {
   return (
-    <Badge className={cn('chip-label rounded-full border px-2.5 py-1 text-xs font-semibold min-[390px]:px-3', toneClasses(tone))}>
+    <Badge className={cn('chip-label rounded-full border px-2.5 py-1 text-xs font-semibold min-[390px]:px-3', toneClasses(tone), className)}>
       {label}
     </Badge>
   );
 }
+
 
 export function ActionFooter({
   children,

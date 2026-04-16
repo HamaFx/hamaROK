@@ -7,6 +7,12 @@ import { useWorkspaceSession } from '@/lib/workspace-session';
 import { InlineError, SessionGate } from '@/components/app/session-gate';
 import { Button } from '@/components/ui/button';
 import {
+  Pencil,
+  Trash2,
+  TrendingUp,
+  X,
+} from 'lucide-react';
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -14,6 +20,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
+import { cn } from '@/lib/utils';
 import { SUPPORTED_RANKING_BOARDS } from '@/lib/rankings/board-types';
 import { RankingReviewItemCard } from './ranking-review-item-card';
 import {
@@ -862,223 +869,131 @@ export default function RankingReviewPage() {
                     </div>
                   ) : null}
 
-                  {/* COMPACT UNIFIED MOBILE VIEW */}
-                  <div className="mt-4 flex flex-col gap-2 md:hidden">
+                  {/* UNIVERSAL ROW EXTRACT LIST - PREMIUM LEDGER STYLE */}
+                  <div className="mt-4 flex flex-col gap-2.5">
                     {group.rows.map((row) => {
+                      const rowSuggestions = Array.isArray(row.identitySuggestions)
+                        ? row.identitySuggestions.slice(0, 3)
+                        : [];
+                      const isExpanded = expandedRowId === row.id;
+
                       return (
-                        <div key={`${row.id}:mobile`} className="rounded-xl border border-[color:var(--stroke-soft)] bg-black/20 p-3 flex flex-col gap-3">
-                          
-                          <div className="flex justify-between items-start">
-                             <div>
-                               <div className="flex items-center gap-2">
-                                 <h4 className="font-heading font-medium text-tier-1">{row.governorNameRaw}</h4>
-                                 {row.allianceRaw && <span className="text-xs text-cyan-200">[{row.allianceRaw}]</span>}
-                               </div>
-                               <div className="text-xs text-tier-3 mt-1 font-mono">
-                                  Rank {row.sourceRank} • {row.metricValue} {row.run.metricKey === "kill_points_growth" ? "KP" : "Score"}
-                               </div>
-                             </div>
-                             <StatusPill label={row.identityStatus.replace("_", " ")} tone={row.identityStatus === "UNRESOLVED" ? "warn" : "good"} />
-                          </div>
-
-                          <div className="flex items-center gap-2 mt-1">
-                             <Button
-                               size="sm"
-                               className="h-8 flex-1 rounded-lg bg-[color:color-mix(in_oklab,var(--primary)_15%,transparent)] text-[color:var(--primary)] hover:bg-[color:var(--primary)] hover:text-white"
-                               onClick={() => void runAction(row, "LINK_TO_GOVERNOR")}
-                               disabled={!!busyRow}
-                             >
-                               Link
-                             </Button>
-                             <Button
-                               size="sm"
-                               variant="destructive"
-                               className="h-8 flex-1 rounded-lg opacity-80"
-                               onClick={() => void runAction(row, "REJECT_ROW")}
-                               disabled={!!busyRow}
-                             >
-                               Reject
-                             </Button>
-                          </div>
-
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  {/* DESKTOP VIEW: Legacy Table */}
-                  <div className="mt-3 hidden overflow-x-auto rounded-2xl border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] md:block">
-                    <table className="min-w-full text-sm">
-                      <thead>
-                        <tr className="border-b border-[color:var(--stroke-soft)] text-left text-tier-3">
-                          <th className="px-3 py-2">Rank</th>
-                          <th className="px-3 py-2">Name</th>
-                          <th className="px-3 py-2">Metric</th>
-                          <th className="px-3 py-2">Status</th>
-                          <th className="px-3 py-2">Quick Link</th>
-                          <th className="px-3 py-2">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {group.rows.map((row) => {
-                          const draft = drafts[row.id] || defaultRankingReviewDraft;
-                          const rowSuggestions = Array.isArray(row.identitySuggestions)
-                            ? row.identitySuggestions.slice(0, 3)
-                            : [];
-                          const searchResults = governorSearchResult[row.id] || [];
-                          const isExpanded = expandedRowId === row.id;
-                          return (
-                            <tr
-                              key={row.id}
-                              className="border-b border-[color:var(--stroke-subtle)] align-top last:border-none"
-                            >
-                              <td className="px-3 py-2 text-tier-2">{row.sourceRank ?? '—'}</td>
-                              <td className="px-3 py-2">
-                                <p className="font-medium text-tier-1">{row.governorNameRaw}</p>
-                                {row.allianceRaw ? (
-                                  <p className="text-xs text-tier-3">{row.allianceRaw}</p>
-                                ) : null}
-                              </td>
-                              <td className="px-3 py-2">
-                                <p className="font-mono text-tier-1">{row.metricValue}</p>
-                                <p className="text-xs text-tier-3">{row.metricRaw}</p>
-                              </td>
-                              <td className="px-3 py-2">
-                                <StatusPill
-                                  label={row.identityStatus}
-                                  tone={row.identityStatus === 'UNRESOLVED' ? 'warn' : row.identityStatus === 'REJECTED' ? 'bad' : 'good'}
-                                />
-                              </td>
-                              <td className="px-3 py-2">
-                                <div className="space-y-2 min-w-[260px]">
-                                  <div className="flex flex-wrap gap-1.5">
-                                    {rowSuggestions.map((suggestion) => (
-                                      <Button
-                                        key={`${row.id}:${suggestion.governorId}`}
-                                        size="sm"
-                                        variant="outline"
-                                        className="h-8 rounded-full border-[color:var(--stroke-soft)] bg-black/20 text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1"
-                                        disabled={Boolean(busyRow)}
-                                        onClick={() => void runAction(row, 'LINK_TO_GOVERNOR', {
-                                          governorGameId: suggestion.governorGameId,
-                                        })}
-                                      >
-                                        {suggestion.name}
-                                      </Button>
-                                    ))}
-                                  </div>
-                                  <div className="flex gap-1.5">
-                                    <Input
-                                      value={governorSearchText[row.id] || ''}
-                                      onChange={(event) =>
-                                        setGovernorSearchText((prev) => ({
-                                          ...prev,
-                                          [row.id]: event.target.value,
-                                        }))
-                                      }
-                                      placeholder="Search governor"
-                                      className="h-8 rounded-xl border-[color:var(--stroke-soft)] bg-black/20 text-tier-1"
-                                    />
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      className="h-8 rounded-full border-[color:var(--stroke-soft)] bg-black/20 text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1"
-                                      onClick={() => void runGovernorSearch(row.id)}
-                                      disabled={searchBusyRow === row.id}
-                                    >
-                                      {searchBusyRow === row.id ? '...' : 'Find'}
-                                    </Button>
-                                  </div>
-                                  {searchResults.length > 0 ? (
-                                    <div className="flex flex-wrap gap-1.5">
-                                      {searchResults.map((candidate) => (
-                                        <Button
-                                          key={`${row.id}:search:${candidate.id}`}
-                                          size="sm"
-                                          variant="outline"
-                                          className="h-7 rounded-full border-[color:var(--stroke-soft)] bg-black/20 text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1"
-                                          onClick={() => void runAction(row, 'LINK_TO_GOVERNOR', {
-                                            governorGameId: candidate.governorId,
-                                          })}
-                                          disabled={Boolean(busyRow)}
-                                        >
-                                          {candidate.name}
-                                        </Button>
-                                      ))}
-                                    </div>
-                                  ) : null}
+                        <div key={`${row.id}:row`} className="flex flex-col gap-2 group/row">
+                          <div className={cn(
+                             "relative overflow-hidden rounded-[18px] border transition-all duration-300",
+                             isExpanded 
+                               ? "border-cyan-400/40 bg-cyan-400/[0.03] shadow-[0_0_25px_rgba(34,211,238,0.08)]" 
+                               : "border-white/[0.06] bg-white/[0.02] hover:border-white/10 hover:bg-white/[0.04]"
+                          )}>
+                            <div className="flex flex-col md:flex-row gap-3 items-start md:items-center justify-between p-3.5 sm:p-4">
+                              
+                              {/* Left: Identity & Rank Info */}
+                              <div className="flex items-center gap-4 min-w-0 flex-1">
+                                <div className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/5 bg-black/40 font-mono text-[15px] font-bold text-tier-2 shadow-inner">
+                                  <span className="opacity-40 text-[10px] absolute top-1 left-1.5 font-sans">#</span>
+                                  {row.sourceRank ?? '-'}
                                 </div>
-                              </td>
-                              <td className="px-3 py-2">
-                                <div className="flex min-w-[220px] flex-wrap gap-1.5">
-                                  <Input
-                                    value={draft.governorGameId}
-                                    onChange={(event) => updateDraft(row.id, 'governorGameId', event.target.value)}
-                                    placeholder="Gov ID"
-                                    className="h-8 w-[110px] rounded-xl border-[color:var(--stroke-soft)] bg-black/20 text-tier-1"
-                                  />
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <h4 className="font-heading font-bold text-tier-1 text-[15px] tracking-tight truncate">{row.governorNameRaw}</h4>
+                                    {row.allianceRaw && (
+                                      <span className="inline-flex items-center rounded-md bg-cyan-400/10 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-cyan-300 border border-cyan-400/20">
+                                        {row.allianceRaw}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-2 mt-1 text-[11px] font-medium text-tier-3">
+                                    <span className="font-mono text-tier-2 bg-white/5 px-1.5 py-0.5 rounded-md">{row.metricValue}</span>
+                                    <span className="opacity-60">{row.run.metricKey === "kill_points_growth" ? "KP Growth" : "Score"}</span>
+                                    <span>•</span>
+                                    <span className={cn(row.confidence > 90 ? "text-emerald-400/80" : "text-amber-400/80")}>
+                                      {row.confidence.toFixed(0)}% Match
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Middle: Quick Links (Desktop Only) */}
+                              <div className="hidden xl:flex flex-wrap items-center gap-1.5 max-w-[280px] justify-center">
+                                {rowSuggestions.map((suggestion) => (
+                                  <Button
+                                    key={`${row.id}:${suggestion.governorId}`}
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-7 text-[10px] uppercase tracking-wider font-bold rounded-lg border-white/[0.08] bg-black/20 text-tier-2 hover:bg-white/5 hover:text-tier-1 transition-all"
+                                    disabled={!!busyRow}
+                                    onClick={() => void runAction(row, "LINK_TO_GOVERNOR", { governorGameId: suggestion.governorGameId })}
+                                  >
+                                    {suggestion.name}
+                                  </Button>
+                                ))}
+                              </div>
+
+                              {/* Right: Status & Actions */}
+                              <div className="flex w-full md:w-auto shrink-0 items-center gap-2 md:pl-4 justify-between md:justify-end border-t md:border-t-0 border-white/[0.05] pt-3 md:pt-0">
+                                <StatusPill 
+                                  label={row.identityStatus.replace('_', ' ')} 
+                                  tone={row.identityStatus === 'UNRESOLVED' ? 'warn' : row.identityStatus === 'REJECTED' ? 'bad' : 'good'} 
+                                  className="scale-90"
+                                />
+                                <div className="flex items-center gap-1.5">
                                   <Button
                                     size="sm"
-                                    className="h-8 rounded-full bg-[color:var(--primary)] text-primary-foreground hover:opacity-90"
-                                    onClick={() => void runAction(row, 'LINK_TO_GOVERNOR')}
-                                    disabled={Boolean(busyRow)}
+                                    className="h-8 min-w-[75px] rounded-lg bg-cyan-500/10 text-cyan-200 hover:bg-cyan-500 hover:text-white border border-cyan-500/20 transition-all font-bold text-xs"
+                                    onClick={() => void runAction(row, "LINK_TO_GOVERNOR")}
+                                    disabled={!!busyRow}
                                   >
                                     Link
                                   </Button>
                                   <Button
                                     size="sm"
                                     variant="outline"
-                                    className="h-8 rounded-full border-[color:var(--stroke-soft)] bg-black/20 text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1"
-                                    onClick={() => setExpandedRowId((prev) => (prev === row.id ? null : row.id))}
+                                    className="h-8 px-2.5 rounded-lg border-white/[0.08] bg-white/[0.02] text-tier-2 hover:text-tier-1"
+                                    onClick={() => setExpandedRowId(prev => prev === row.id ? null : row.id)}
                                   >
-                                    {isExpanded ? 'Hide' : 'Advanced'}
+                                    {isExpanded ? <X className="size-3.5" /> : <Pencil className="size-3.5" />}
                                   </Button>
                                   <Button
                                     size="sm"
                                     variant="destructive"
-                                    className="h-8 rounded-full"
-                                    onClick={() => void runAction(row, 'REJECT_ROW')}
-                                    disabled={Boolean(busyRow)}
+                                    className="h-8 px-2.5 rounded-lg opacity-60 hover:opacity-100 transition-opacity"
+                                    onClick={() => void runAction(row, "REJECT_ROW")}
+                                    disabled={!!busyRow}
                                   >
-                                    Reject
+                                    <Trash2 className="size-3.5" />
                                   </Button>
                                 </div>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Expanded Editor (Universal) */}
+                          {isExpanded && (
+                            <div className="rounded-2xl border border-white/[0.08] bg-black/40 p-4 mx-2 md:mx-6 mb-2 shadow-2xl">
+                               <RankingReviewItemCard
+                                  row={row}
+                                  draft={drafts[row.id] || defaultRankingReviewDraft}
+                                  rankingProfiles={rankingProfiles}
+                                  rerunProfileId={rerunProfileByRow[row.id] || ''}
+                                  rerunHint={rerunHints[row.id] || null}
+                                  busyRow={busyRow}
+                                  onUpdateDraft={(field, value) => updateDraft(row.id, field, value)}
+                                  onRerunProfileChange={(value) =>
+                                    setRerunProfileByRow((prev) => ({ ...prev, [row.id]: value }))
+                                  }
+                                  onRerun={() => void rerunOcr(row)}
+                                  onAction={(action) => {
+                                      void runAction(row, action);
+                                      setExpandedRowId(null);
+                                  }}
+                                />
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
 
-                  <div className="hidden md:block">
-                    {group.rows
-                      .filter((row) => expandedRowId === row.id)
-                      .map((row) => {
-                        const draft = drafts[row.id] || defaultRankingReviewDraft;
-                        return (
-                          <div key={`${row.id}:advanced`} className="mt-4">
-                            <RankingReviewItemCard
-                              row={row}
-                              draft={draft}
-                              rankingProfiles={rankingProfiles}
-                              rerunProfileId={rerunProfileByRow[row.id] || ''}
-                              rerunHint={rerunHints[row.id] || null}
-                              busyRow={busyRow}
-                              onUpdateDraft={(field, value) => updateDraft(row.id, field, value)}
-                              onRerunProfileChange={(value) =>
-                                setRerunProfileByRow((prev) => ({
-                                  ...prev,
-                                  [row.id]: value,
-                                }))
-                              }
-                              onRerun={() => void rerunOcr(row)}
-                              onAction={(action) => void runAction(row, action)}
-                            />
-                          </div>
-                        );
-                      })}
-                  </div>
                 </article>
               ))}
             </div>

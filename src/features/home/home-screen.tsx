@@ -494,30 +494,53 @@ export default function HomeScreen() {
           </Panel>
 
           <Panel title="Risers & Fallers" subtitle="Movement in combat efficiency since last week.">
-            {weekMovement ? (
-              <div className="flex flex-col gap-3">
-                <div className="rounded-2xl bg-[color:var(--surface-3)] p-4 border border-[color:var(--stroke-soft)]">
-                  <h3 className="font-heading text-sm text-tier-2 flex items-center gap-2 mb-3"><TrendingUp className="size-4 text-emerald-400" /> Top Weekly Risers</h3>
-                  <div className="grid gap-2.5">
-                    {weekMovement.risers.map((row) => (
-                      <div key={`riser-${row.governorDbId}`} className="flex items-center justify-between text-sm">
-                        <span className="truncate text-tier-1 pr-4 font-medium">{row.governorName}</span>
-                        <span className="font-mono text-emerald-300 font-bold">+{row.delta.toFixed(1)}</span>
+            {weekMovement && weekMovement.comparedCount > 0 ? (
+              <div className="space-y-6">
+                <div>
+                  <h3 className="font-heading text-xs uppercase tracking-widest text-emerald-400 font-bold flex items-center gap-2 mb-3">
+                    <TrendingUp className="size-3.5" /> Efficiency Risers
+                  </h3>
+                  <div className="grid gap-2">
+                    {weekMovement.risers.map((r) => (
+                      <div key={r.governorDbId} className="flex items-center justify-between p-2.5 rounded-xl bg-white/[0.02] border border-white/[0.04] hover:bg-white/[0.04] transition-all">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="size-8 shrink-0 rounded-lg overflow-hidden border border-emerald-500/20 bg-black/20">
+                            <img src={`https://api.dicebear.com/9.x/adventurer/svg?seed=${r.governorDbId}&backgroundColor=transparent`} alt="" className="size-full object-cover" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-sm font-bold text-tier-1 truncate">{r.governorName}</p>
+                            <p className="text-[10px] text-tier-3">{r.allianceLabel}</p>
+                          </div>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="text-sm font-mono font-bold text-emerald-400">+{r.delta.toFixed(1)}</p>
+                        </div>
                       </div>
                     ))}
-                    {weekMovement.risers.length === 0 && <p className="text-xs text-tier-3">No positive movement tracked.</p>}
                   </div>
                 </div>
-                <div className="rounded-2xl bg-[color:var(--surface-3)] p-4 border border-[color:var(--stroke-soft)]">
-                  <h3 className="font-heading text-sm text-tier-2 flex items-center gap-2 mb-3"><TrendingDown className="size-4 text-rose-400" /> Steeper Falls</h3>
-                  <div className="grid gap-2.5">
-                    {weekMovement.fallers.map((row) => (
-                      <div key={`faller-${row.governorDbId}`} className="flex items-center justify-between text-sm">
-                        <span className="truncate text-tier-1 pr-4 font-medium">{row.governorName}</span>
-                        <span className="font-mono text-rose-400 font-bold">{row.delta.toFixed(1)}</span>
+
+                <div>
+                  <h3 className="font-heading text-xs uppercase tracking-widest text-rose-400 font-bold flex items-center gap-2 mb-3">
+                    <TrendingDown className="size-3.5" /> Stability Risk
+                  </h3>
+                  <div className="grid gap-2">
+                    {weekMovement.fallers.map((r) => (
+                      <div key={r.governorDbId} className="flex items-center justify-between p-2.5 rounded-xl bg-white/[0.02] border border-white/[0.04] hover:bg-white/[0.04] transition-all">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="size-8 shrink-0 rounded-lg overflow-hidden border border-rose-500/20 bg-black/20">
+                             <img src={`https://api.dicebear.com/9.x/adventurer/svg?seed=${r.governorDbId}&backgroundColor=transparent`} alt="" className="size-full object-cover grayscale opacity-60" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-sm font-bold text-tier-1 truncate">{r.governorName}</p>
+                            <p className="text-[10px] text-tier-3">{r.allianceLabel}</p>
+                          </div>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="text-sm font-mono font-bold text-rose-400">{r.delta.toFixed(1)}</p>
+                        </div>
                       </div>
                     ))}
-                    {weekMovement.fallers.length === 0 && <p className="text-xs text-tier-3">No negative movement tracked.</p>}
                   </div>
                 </div>
               </div>

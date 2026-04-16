@@ -909,21 +909,24 @@ export default function PlayersScreen() {
             }
           />
         ) : (
-          <DataTableLite
-            columns={columns}
-            rows={filteredRows}
-            rowKey={(row) => row.id}
-            rowClassName={() => 'group/row h-[72px] border-b border-white/[0.04] bg-transparent hover:bg-white/[0.02] transition-colors'}
-            onSort={handleSort}
-            sortKey={sortKey}
-            sortDir={sortDir}
-            stickyFirst
-            dense
-            mobileCards={false}
-            emptyLabel={debouncedSearch ? `No players matching "${debouncedSearch}"` : 'No players found.'}
-            density="compact"
-          />
+          <div className="rounded-[24px] border border-white/[0.05] bg-white/[0.015] p-2 shadow-2xl overflow-hidden">
+            <DataTableLite
+              columns={columns}
+              rows={filteredRows}
+              rowKey={(row) => row.id}
+              rowClassName={() => 'group/row h-[75px] border-b border-white/[0.03] transition-all duration-200 hover:bg-white/[0.03]'}
+              onSort={handleSort}
+              sortKey={sortKey}
+              sortDir={sortDir}
+              stickyFirst
+              dense
+              mobileCards={false}
+              emptyLabel={debouncedSearch ? `No players matching "${debouncedSearch}"` : 'No players found.'}
+              density="compact"
+            />
+          </div>
         )}
+
       </div>
 
       {/* Registration Modal */}
