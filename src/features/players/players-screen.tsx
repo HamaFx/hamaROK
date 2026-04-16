@@ -425,7 +425,7 @@ export default function PlayersScreen() {
   );
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5 sm:space-y-6">
       <PageHero
         title="Players"
         subtitle="Directory, spotlight profile, and week-over-week movement without breaking the existing governor and activity APIs."
@@ -473,7 +473,7 @@ export default function PlayersScreen() {
                     value={search}
                     onChange={(event) => setSearch(event.target.value)}
                     placeholder="Search player or governor ID"
-                    className="rounded-full border-white/10 bg-white/4 pl-11 text-white placeholder:text-white/28"
+                    className="rounded-full border-white/10 bg-white/4 pl-11 text-white placeholder:text-white/28 max-[390px]:h-9"
                   />
                 </div>
                 <Select value={allianceFilter || ALL_VALUE} onValueChange={(value) => setAllianceFilter(value === ALL_VALUE ? '' : value)}>
@@ -507,7 +507,7 @@ export default function PlayersScreen() {
                     type="button"
                     onClick={() => setSelectedGovernorId(row.id)}
                     className={cn(
-                      'rounded-[24px] border border-white/10 bg-[linear-gradient(160deg,rgba(16,22,36,0.74),rgba(11,15,24,0.9))] p-4 text-left transition-all hover:bg-white/8 sm:p-5',
+                      'rounded-[24px] border border-white/10 bg-[linear-gradient(160deg,rgba(16,22,36,0.74),rgba(11,15,24,0.9))] p-4 text-left transition-all hover:bg-white/8 max-[390px]:rounded-[20px] max-[390px]:p-3.5 sm:p-5',
                       row.id === selectedGovernorId && 'border-sky-300/22 bg-sky-300/10 shadow-[0_14px_40px_rgba(0,0,0,0.26)]'
                     )}
                   >
@@ -519,16 +519,16 @@ export default function PlayersScreen() {
                           {row.weekly ? <StatusPill label={row.weekly.compliance.overall} tone={statusTone(row.weekly.compliance.overall)} /> : null}
                         </div>
                         <div>
-                          <p className="truncate font-heading text-xl text-white">{row.name}</p>
-                          <p className="mt-1 text-sm text-white/48">ID {row.governorId}</p>
+                          <p className="truncate font-heading text-lg text-white max-[390px]:text-base sm:text-xl">{row.name}</p>
+                          <p className="mt-1 text-[13px] text-white/48 max-[390px]:text-xs sm:text-sm">ID {row.governorId}</p>
                         </div>
                       </div>
                       <div className="text-left sm:text-right">
-                        <p className="font-heading text-2xl text-white">{formatCompactNumber(row.latestPower)}</p>
+                        <p className="font-heading text-xl text-white sm:text-2xl">{formatCompactNumber(row.latestPower)}</p>
                         <p className="mt-1 text-xs text-white/40">power</p>
                       </div>
                     </div>
-                    <div className="mt-4 grid grid-cols-2 gap-3 text-sm text-white/58">
+                    <div className="mt-4 grid grid-cols-2 gap-2.5 text-[13px] text-white/58 max-[390px]:text-xs sm:text-sm">
                       <div>
                         <p className="text-[11px] uppercase tracking-[0.18em] text-white/34">Contribution</p>
                         <p className="mt-2 font-medium text-white">{formatCompactNumber(row.weekly?.contributionPoints || '0')}</p>
@@ -553,7 +553,7 @@ export default function PlayersScreen() {
           >
             {selectedGovernor && profile ? (
               <motion.div key={selectedGovernor.id} initial={false} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.24 }} className="space-y-6">
-                <div className="space-y-4 rounded-[28px] border border-white/10 bg-[linear-gradient(145deg,rgba(14,19,31,0.94),rgba(8,11,19,0.92))] p-5">
+                <div className="space-y-4 rounded-[28px] border border-white/10 bg-[linear-gradient(145deg,rgba(14,19,31,0.94),rgba(8,11,19,0.92))] p-4 max-[390px]:rounded-[22px] max-[390px]:p-3.5 sm:p-5">
                   <div className="flex flex-wrap items-start justify-between gap-4">
                     <div className="space-y-3">
                       <div className="flex flex-wrap items-center gap-2">
@@ -563,13 +563,13 @@ export default function PlayersScreen() {
                       </div>
                       <div>
                         <h2 className="font-heading text-2xl text-white sm:text-3xl">{profile.name}</h2>
-                        <p className="mt-2 text-sm text-white/56">{profile.allianceLabel}</p>
+                        <p className="mt-1.5 text-[13px] text-white/56 max-[390px]:text-xs sm:mt-2 sm:text-sm">{profile.allianceLabel}</p>
                       </div>
                     </div>
                     <div className="rounded-[24px] border border-white/10 bg-white/4 px-4 py-3 text-left sm:px-5 sm:py-4 sm:text-right">
                       <p className="text-[11px] uppercase tracking-[0.22em] text-white/36">Latest Power</p>
                       <p className="mt-2 font-heading text-2xl text-white sm:text-3xl">{formatCompactNumber(profile.latestPower)}</p>
-                      <p className="mt-2 text-sm text-white/48">{profile.snapshotCount} snapshots tracked</p>
+                      <p className="mt-1.5 text-[13px] text-white/48 max-[390px]:text-xs sm:mt-2 sm:text-sm">{profile.snapshotCount} snapshots tracked</p>
                     </div>
                   </div>
                   <MetricStrip
@@ -600,10 +600,10 @@ export default function PlayersScreen() {
                 <div className="grid gap-4 sm:grid-cols-2">
                   {profile.metrics.map((metric) => (
                     <Card key={metric.label} className="border-white/10 bg-white/4">
-                      <CardContent className="space-y-3 p-5">
+                      <CardContent className="space-y-3 p-4 max-[390px]:p-3.5 sm:p-5">
                         <p className="text-[11px] uppercase tracking-[0.18em] text-white/36">{metric.label}</p>
-                        <p className="font-heading text-2xl text-white">{metric.value != null ? formatCompactNumber(metric.value) : 'N/A'}</p>
-                        <p className="text-sm text-white/48">Current week view</p>
+                        <p className="font-heading text-xl text-white max-[390px]:text-lg sm:text-2xl">{metric.value != null ? formatCompactNumber(metric.value) : 'N/A'}</p>
+                        <p className="text-[13px] text-white/48 max-[390px]:text-xs sm:text-sm">Current week view</p>
                       </CardContent>
                     </Card>
                   ))}

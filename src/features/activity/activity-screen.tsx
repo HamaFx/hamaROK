@@ -505,7 +505,7 @@ export default function ActivityScreen() {
   );
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5 sm:space-y-6">
       <PageHero
         title="Stats"
         subtitle="A player-facing weekly statboard with top performers, alliance pressure, and compliance data kept intact under a cleaner, mobile-first surface."
@@ -533,7 +533,7 @@ export default function ActivityScreen() {
 
         <Panel title="Weekly Filters" subtitle="Switch weeks, scope to one alliance, and preserve favorite views.">
           <div className="space-y-4">
-            <div className="sticky top-[78px] z-20 -mx-1 rounded-[24px] border border-white/10 bg-[rgba(8,11,19,0.94)] p-3.5 shadow-[0_14px_36px_rgba(0,0,0,0.32)] backdrop-blur xl:static xl:mx-0 xl:border-white/8 xl:bg-black/20 xl:shadow-none xl:backdrop-blur-none">
+            <div className="sticky top-[76px] z-20 -mx-1 rounded-[24px] border border-white/10 bg-[rgba(8,11,19,0.94)] p-3.5 shadow-[0_14px_36px_rgba(0,0,0,0.32)] backdrop-blur max-[390px]:top-[72px] max-[390px]:rounded-[20px] max-[390px]:p-2.5 xl:static xl:mx-0 xl:border-white/8 xl:bg-black/20 xl:shadow-none xl:backdrop-blur-none">
               <div className="grid gap-2.5 sm:grid-cols-[auto_minmax(0,1fr)_auto]">
                 <Button variant="outline" className="w-full rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white sm:w-auto" onClick={goPreviousWeek} disabled={currentWeekIndex >= weeks.length - 1 || loading}>
                   <ArrowLeft data-icon="inline-start" /> Older
@@ -572,14 +572,14 @@ export default function ActivityScreen() {
               </div>
             </div>
 
-            <FilterBar className="rounded-[22px] bg-black/20 p-3.5">
+            <FilterBar className="rounded-[22px] bg-black/20 p-3.5 max-[390px]:rounded-[18px] max-[390px]:p-2.5">
               {isHistoricalWeek ? <StatusPill label="Historical week" tone="neutral" /> : null}
               {data?.event?.startsAt ? <StatusPill label={`Starts ${new Date(data.event.startsAt).toLocaleDateString()}`} tone="neutral" /> : null}
               <StatusPill label={`No power baseline ${kpis.noPowerBaseline}`} tone={kpis.noPowerBaseline ? 'warn' : 'good'} />
               <StatusPill label={`No KP baseline ${kpis.noKillPointsBaseline}`} tone={kpis.noKillPointsBaseline ? 'warn' : 'good'} />
             </FilterBar>
 
-            <details className="rounded-[22px] border border-white/10 bg-black/20 p-4">
+            <details className="rounded-[22px] border border-white/10 bg-black/20 p-4 max-[390px]:rounded-[18px] max-[390px]:p-3">
               <summary className="cursor-pointer list-none text-sm font-medium text-white">
                 Advanced presets
               </summary>
@@ -592,7 +592,7 @@ export default function ActivityScreen() {
                       {presets.map((preset) => <SelectItem key={preset.id} value={preset.id}>{preset.name}</SelectItem>)}
                     </SelectContent>
                   </Select>
-                  <Input value={presetName} onChange={(event) => setPresetName(event.target.value)} placeholder="Preset name" className="w-full rounded-full border-white/10 bg-white/4 text-white placeholder:text-white/28" />
+                  <Input value={presetName} onChange={(event) => setPresetName(event.target.value)} placeholder="Preset name" className="w-full rounded-full border-white/10 bg-white/4 text-white placeholder:text-white/28 max-[390px]:h-9" />
                 </div>
                 <div className="grid gap-2.5 sm:grid-cols-3">
                   <Button variant="outline" className="w-full rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white" onClick={savePreset}>Save Preset</Button>
@@ -712,30 +712,30 @@ export default function ActivityScreen() {
                     emptyLabel="No activity rows found for these filters."
                   />
                 ) : (
-                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                     {sortedRows.map((row, index) => (
-                      <motion.article key={row.governorDbId} initial={false} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.24, delay: Math.min(index * 0.015, 0.16) }} className="rounded-[26px] border border-white/10 bg-[rgba(11,15,24,0.92)] p-5 shadow-[0_18px_40px_rgba(0,0,0,0.24)]">
+                      <motion.article key={row.governorDbId} initial={false} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.24, delay: Math.min(index * 0.015, 0.16) }} className="rounded-[26px] border border-white/10 bg-[rgba(11,15,24,0.92)] p-4 max-[390px]:rounded-[20px] max-[390px]:p-3.5 shadow-[0_18px_40px_rgba(0,0,0,0.24)]">
                         <div className="flex items-center justify-between gap-3">
                           <StatusPill label={`#${index + 1}`} tone="neutral" />
                           <StatusPill label={row.compliance.overall} tone={overallTone(row.compliance.overall)} />
                         </div>
                         <div className="mt-4 space-y-2">
-                          <p className="font-heading text-xl text-white">{row.governorName}</p>
+                          <p className="font-heading text-lg text-white max-[390px]:text-base sm:text-xl">{row.governorName}</p>
                           <div className="flex flex-wrap gap-2">
                             <StatusPill label={row.allianceTag} tone={row.allianceTag === 'GODt' ? 'warn' : row.allianceTag === 'V57' ? 'info' : 'neutral'} />
                             <StatusPill label={`ID ${row.governorId}`} tone="neutral" />
                           </div>
                         </div>
-                        <div className="mt-5 grid grid-cols-2 gap-3">
+                        <div className="mt-4 grid grid-cols-2 gap-2.5">
                           {[
                             { label: 'Contribution', value: row.contributionPoints, status: row.compliance.contributionPoints },
                             { label: 'Fort', value: row.fortDestroying, status: row.compliance.fortDestroying },
                             { label: 'Power', value: row.powerGrowth, status: row.compliance.powerGrowth },
                             { label: 'KP', value: row.killPointsGrowth, status: row.compliance.killPointsGrowth },
                           ].map((metric) => (
-                            <div key={`${row.governorDbId}-${metric.label}`} className="rounded-2xl border border-white/8 bg-white/4 p-3">
+                            <div key={`${row.governorDbId}-${metric.label}`} className="rounded-2xl border border-white/8 bg-white/4 p-2.5 max-[390px]:rounded-xl max-[390px]:p-2">
                               <p className="text-[11px] uppercase tracking-[0.18em] text-white/36">{metric.label}</p>
-                              <p className="mt-2 font-heading text-lg text-white">{metric.value != null ? formatMetric(metric.value) : 'N/A'}</p>
+                              <p className="mt-1.5 font-heading text-base text-white sm:text-lg">{metric.value != null ? formatMetric(metric.value) : 'N/A'}</p>
                               <div className="mt-2">
                                 <StatusPill label={metric.status} tone={metricTone(metric.status)} />
                               </div>

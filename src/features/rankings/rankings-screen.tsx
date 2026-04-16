@@ -677,7 +677,7 @@ export default function RankingsScreen() {
   );
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5 sm:space-y-6">
       <PageHero
         title="Rankings"
         subtitle="A cleaner, faster leaderboard surface for the current week, with spotlight cards, saved filter states, and mobile-friendly board browsing."
@@ -705,7 +705,7 @@ export default function RankingsScreen() {
         <motion.section initial={false} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }} className="relative z-10">
           <Panel title="Board Controls" subtitle="Week-aware filters and saved leaderboard presets.">
             <div className="space-y-4">
-              <div className="sticky top-[78px] z-20 -mx-1 rounded-[24px] border border-white/10 bg-[rgba(8,11,19,0.94)] p-3.5 shadow-[0_14px_36px_rgba(0,0,0,0.32)] backdrop-blur xl:static xl:mx-0 xl:border-white/8 xl:bg-black/20 xl:shadow-none xl:backdrop-blur-none">
+              <div className="sticky top-[76px] z-20 -mx-1 rounded-[24px] border border-white/10 bg-[rgba(8,11,19,0.94)] p-3.5 shadow-[0_14px_36px_rgba(0,0,0,0.32)] backdrop-blur max-[390px]:top-[72px] max-[390px]:rounded-[20px] max-[390px]:p-2.5 xl:static xl:mx-0 xl:border-white/8 xl:bg-black/20 xl:shadow-none xl:backdrop-blur-none">
                 <div className="grid gap-2.5 sm:grid-cols-[auto_minmax(0,1fr)_auto]">
                   <Button type="button" variant="outline" className="w-full rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white sm:w-auto" onClick={goPreviousWeek} disabled={loading || currentWeekIndex >= weeks.length - 1}>
                     <ArrowLeft data-icon="inline-start" /> Older
@@ -740,7 +740,7 @@ export default function RankingsScreen() {
                       }
                     }}
                     placeholder="Search player name or governor ID"
-                    className="rounded-full border-white/10 bg-white/4 pl-11 text-white placeholder:text-white/28"
+                    className="rounded-full border-white/10 bg-white/4 pl-11 text-white placeholder:text-white/28 max-[390px]:h-9"
                   />
                 </div>
                 <div className="mt-2.5 grid gap-2.5 sm:grid-cols-3">
@@ -765,7 +765,7 @@ export default function RankingsScreen() {
                 </div>
               </div>
 
-              <FilterBar className="rounded-[22px] bg-black/20 p-3.5">
+              <FilterBar className="rounded-[22px] bg-black/20 p-3.5 max-[390px]:rounded-[18px] max-[390px]:p-2.5">
                 {weeklyActivity ? <StatusPill label={`${weeklyActivity.summary.membersTracked} tracked`} tone="info" /> : null}
                 <StatusPill label={`Pending sync ${pendingSyncCount}`} tone={pendingSyncCount > 0 ? 'warn' : 'good'} />
                 {isHistoricalWeek ? <StatusPill label="Historical week" tone="neutral" /> : null}
@@ -774,7 +774,7 @@ export default function RankingsScreen() {
                 {sourceCoverage ? <StatusPill label={`KP P${sourceCoverage.killPoints.profile}/R${sourceCoverage.killPoints.rankboard}`} tone="neutral" /> : null}
               </FilterBar>
 
-              <details className="rounded-[22px] border border-white/10 bg-black/20 p-4">
+              <details className="rounded-[22px] border border-white/10 bg-black/20 p-4 max-[390px]:rounded-[18px] max-[390px]:p-3">
                 <summary className="cursor-pointer list-none text-sm font-medium text-white">
                   Advanced layout and presets
                 </summary>
@@ -787,7 +787,7 @@ export default function RankingsScreen() {
                         {presets.map((preset) => <SelectItem key={preset.id} value={preset.id}>{preset.name}</SelectItem>)}
                       </SelectContent>
                     </Select>
-                    <Input value={presetName} onChange={(event) => setPresetName(event.target.value)} placeholder="Preset name" className="w-full rounded-full border-white/10 bg-white/4 text-white placeholder:text-white/28" />
+                    <Input value={presetName} onChange={(event) => setPresetName(event.target.value)} placeholder="Preset name" className="w-full rounded-full border-white/10 bg-white/4 text-white placeholder:text-white/28 max-[390px]:h-9" />
                   </div>
                   <div className="grid gap-2.5 sm:grid-cols-3">
                     <Button variant="outline" className="w-full rounded-full border-white/12 bg-white/4 text-white hover:bg-white/8 hover:text-white" onClick={savePreset}>Save Preset</Button>
@@ -825,27 +825,27 @@ export default function RankingsScreen() {
         </motion.section>
 
         {spotlightRows.length ? (
-          <section className="grid gap-3 md:grid-cols-3">
+          <section className="grid gap-2.5 md:grid-cols-3">
             {spotlightRows.map((row, index) => (
               <motion.div key={row.id} initial={false} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.28, delay: index * 0.04 }}>
                 <Card className={index === 0 ? 'border-[#ffd57d]/20 bg-[linear-gradient(145deg,rgba(26,20,8,0.9),rgba(8,10,18,0.98))]' : 'border-white/10 bg-[rgba(11,15,24,0.92)]'}>
-                  <CardContent className="space-y-4 p-4 sm:p-5">
+                  <CardContent className="space-y-3.5 p-4 max-[390px]:space-y-3 max-[390px]:p-3.5 sm:p-5">
                     <div className="flex items-center justify-between">
                       <StatusPill label={`#${row.stableRank}`} tone={index === 0 ? 'warn' : 'neutral'} />
                       {index === 0 ? <Crown className="size-5 text-[#ffd57d]" /> : <Sparkles className="size-4 text-white/32" />}
                     </div>
                     <div>
-                      <p className="font-heading text-xl text-white">{row.displayName}</p>
-                      <p className="mt-1 text-sm text-white/56">{row.allianceLabel || 'No alliance'}</p>
+                      <p className="font-heading text-lg text-white max-[390px]:text-base sm:text-xl">{row.displayName}</p>
+                      <p className="mt-1 text-[13px] text-white/56 max-[390px]:text-xs">{row.allianceLabel || 'No alliance'}</p>
                     </div>
                     <div className="flex items-end justify-between gap-3">
                       <div>
                         <p className="text-[11px] uppercase tracking-[0.18em] text-white/38">{row.metricLabel}</p>
-                        <p className="mt-2 font-heading text-3xl text-white">{formatMetric(row.metricValue)}</p>
+                        <p className="mt-1.5 font-heading text-[1.85rem] text-white max-[390px]:text-[1.45rem] sm:text-3xl">{formatMetric(row.metricValue)}</p>
                       </div>
                       <StatusPill label={row.status} tone={statusTone(row.status)} />
                     </div>
-                    <p className="text-sm text-white/54">{row.boardLabel}</p>
+                    <p className="text-[13px] text-white/54 max-[390px]:text-xs">{row.boardLabel}</p>
                   </CardContent>
                 </Card>
               </motion.div>
@@ -869,16 +869,16 @@ export default function RankingsScreen() {
         >
           {displayRows.length ? (
             viewMode === 'cards' ? (
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-3">
                 {displayRows.map((row) => (
                   <article
                     key={row.id}
                     className={
                       row.status === 'ACTIVE'
-                        ? 'rounded-[24px] border border-white/10 bg-[rgba(11,15,24,0.92)] p-4 shadow-[0_12px_28px_rgba(0,0,0,0.24)]'
+                        ? 'rounded-[24px] border border-white/10 bg-[rgba(11,15,24,0.92)] p-4 shadow-[0_12px_28px_rgba(0,0,0,0.24)] max-[390px]:rounded-[20px] max-[390px]:p-3.5'
                         : row.status === 'UNRESOLVED'
-                          ? 'rounded-[24px] border border-sky-300/20 bg-[rgba(76,127,197,0.14)] p-4 shadow-[0_12px_28px_rgba(0,0,0,0.24)]'
-                          : 'rounded-[24px] border border-rose-300/20 bg-[rgba(150,62,90,0.15)] p-4 shadow-[0_12px_28px_rgba(0,0,0,0.24)]'
+                          ? 'rounded-[24px] border border-sky-300/20 bg-[rgba(76,127,197,0.14)] p-4 shadow-[0_12px_28px_rgba(0,0,0,0.24)] max-[390px]:rounded-[20px] max-[390px]:p-3.5'
+                          : 'rounded-[24px] border border-rose-300/20 bg-[rgba(150,62,90,0.15)] p-4 shadow-[0_12px_28px_rgba(0,0,0,0.24)] max-[390px]:rounded-[20px] max-[390px]:p-3.5'
                     }
                   >
                     <div className="flex items-center justify-between gap-3">
@@ -886,7 +886,7 @@ export default function RankingsScreen() {
                       <StatusPill label={row.status} tone={statusTone(row.status)} />
                     </div>
                     <div className="mt-4 space-y-2">
-                      <p className="font-heading text-xl text-white">{row.displayName}</p>
+                      <p className="font-heading text-lg text-white max-[390px]:text-base sm:text-xl">{row.displayName}</p>
                       <div className="flex flex-wrap gap-2">
                         <StatusPill label={row.allianceLabel || 'No alliance'} tone={allianceTone(row.allianceTag)} />
                         <StatusPill label={row.linkedGovernorId ? `ID ${row.linkedGovernorId}` : 'Unlinked'} tone="neutral" />
@@ -895,11 +895,11 @@ export default function RankingsScreen() {
                     <div className="mt-4 grid grid-cols-2 gap-3">
                       <div className="rounded-2xl border border-white/8 bg-white/4 p-3">
                         <p className="text-[11px] uppercase tracking-[0.16em] text-white/36">{row.metricLabel}</p>
-                        <p className="mt-2 font-heading text-lg text-white">{formatMetric(row.metricValue)}</p>
+                        <p className="mt-1.5 font-heading text-base text-white sm:text-lg">{formatMetric(row.metricValue)}</p>
                       </div>
                       <div className="rounded-2xl border border-white/8 bg-white/4 p-3">
                         <p className="text-[11px] uppercase tracking-[0.16em] text-white/36">Board</p>
-                        <p className="mt-2 text-sm text-white/78">{formatTokenLabel(row.rankingType)}</p>
+                        <p className="mt-1.5 text-[13px] text-white/78 max-[390px]:text-xs">{formatTokenLabel(row.rankingType)}</p>
                       </div>
                     </div>
                     <p className="mt-3 text-xs text-white/46">Updated {formatRelativeDate(row.updatedAt)}</p>

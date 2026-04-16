@@ -457,16 +457,16 @@ export default function HomeScreen() {
               }
             >
               <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
-                <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3">
+                <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3">
                   {podiumRows.map((row, index) => {
                     if (!row) {
                       return (
                         <Card key={`podium-empty-${index}`} className="h-full min-h-[220px] border-dashed border-white/14 bg-[rgba(11,15,24,0.6)]">
-                          <CardContent className="flex h-full flex-col justify-between gap-4 p-5">
+                          <CardContent className="flex h-full flex-col justify-between gap-4 p-4 max-[390px]:p-3.5 sm:p-5">
                             <StatusPill label={`#${index + 1}`} tone="neutral" />
                             <div>
-                              <p className="font-heading text-lg text-white/80">Open Podium Slot</p>
-                              <p className="mt-2 text-sm text-white/52">Upload and score this week to populate additional leaderboard positions.</p>
+                              <p className="font-heading text-base text-white/80 sm:text-lg">Open Podium Slot</p>
+                              <p className="mt-2 text-[13px] text-white/52 max-[390px]:text-xs sm:text-sm">Upload and score this week to populate additional leaderboard positions.</p>
                             </div>
                           </CardContent>
                         </Card>
@@ -491,20 +491,20 @@ export default function HomeScreen() {
                             : 'h-full min-h-[220px] border-white/10 bg-[rgba(11,15,24,0.92)]'
                         }
                       >
-                        <CardContent className="flex h-full flex-col gap-4 p-5">
+                        <CardContent className="flex h-full flex-col gap-4 p-4 max-[390px]:p-3.5 sm:p-5">
                           <div className="flex items-center justify-between">
                             <StatusPill label={`#${index + 1}`} tone={index === 0 ? 'warn' : 'neutral'} />
                             {index === 0 ? <Crown className="size-5 text-[#ffd57d]" /> : null}
                           </div>
                           <div>
-                            <p className="font-heading text-lg text-white">{row.governorName}</p>
-                            <p className="mt-1 text-sm text-white/52">{row.allianceLabel}</p>
+                            <p className="font-heading text-base text-white sm:text-lg">{row.governorName}</p>
+                            <p className="mt-1 text-[13px] text-white/52 max-[390px]:text-xs sm:text-sm">{row.allianceLabel}</p>
                           </div>
                           <div className="mt-auto">
                             <p className="text-[11px] uppercase tracking-[0.18em] text-white/38">
                               {METRIC_OPTIONS.find((option) => option.key === spotlightMetric)?.label}
                             </p>
-                            <p className="mt-2 font-heading text-2xl text-white">{formatMetric(value)}</p>
+                            <p className="mt-1.5 font-heading text-xl text-white max-[390px]:text-lg sm:text-2xl">{formatMetric(value)}</p>
                           </div>
                         </CardContent>
                       </Card>
@@ -537,11 +537,11 @@ export default function HomeScreen() {
                           ]}
                         />
                         <p className="text-sm leading-6 text-white/58">{featuredPlayer.note}</p>
-                        <div className="grid gap-2.5 md:grid-cols-2">
+                        <div className="grid gap-2 md:grid-cols-2">
                           {quickActions.map((action) => {
                             const Icon = action.icon;
                             return (
-                              <Button key={action.href} asChild variant="outline" className="h-11 justify-between rounded-2xl border-white/10 bg-white/4 text-white hover:bg-white/8 hover:text-white">
+                              <Button key={action.href} asChild variant="outline" className="h-10 justify-between rounded-2xl border-white/10 bg-white/4 text-white hover:bg-white/8 hover:text-white sm:h-11">
                                 <Link href={action.href}>
                                   <span className="flex items-center gap-2">
                                     <Icon className="size-4" />
@@ -565,7 +565,7 @@ export default function HomeScreen() {
 
           <motion.div initial={false} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, delay: 0.03 }} className="space-y-6">
             <Panel title="Week Pulse" subtitle="A compact read on the current board state.">
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-3 sm:grid-cols-2">
                 <KpiCard label="Tracked Players" value={weeklyActivity?.summary.membersTracked ?? 0} hint="Rows in the active weekly board" tone="info" icon={<Users className="size-5" />} />
                 <KpiCard label="Pass Rate" value={weeklyInsights ? `${weeklyInsights.overallPassRate}%` : '—'} hint={`${weeklyInsights?.totalPass ?? 0} pass / ${weeklyInsights?.totalMembers ?? 0} scored`} tone="good" icon={<ShieldCheck className="size-5" />} animated={false} />
                 <KpiCard label="Total Contribution" value={weeklyInsights ? formatCompactNumber(weeklyInsights.totalContribution) : '—'} hint="Contribution captured this week" tone="warn" icon={<Sparkles className="size-5" />} animated={false} />
@@ -575,11 +575,11 @@ export default function HomeScreen() {
 
             <Panel title="Alliance Leader" subtitle="Best pass-rate alliance in the active week.">
               {weeklyInsights?.topAlliance ? (
-                <div className="rounded-[26px] border border-white/10 bg-white/4 p-5">
+                <div className="rounded-[26px] border border-white/10 bg-white/4 p-4 max-[390px]:rounded-[20px] max-[390px]:p-3.5 sm:p-5">
                   <div className="flex items-center justify-between gap-4">
                     <div>
-                      <p className="font-heading text-xl text-white">{weeklyInsights.topAlliance.allianceLabel}</p>
-                      <p className="mt-1 text-sm text-white/54">{weeklyInsights.topAlliance.passCount} passing players out of {weeklyInsights.topAlliance.members}</p>
+                      <p className="font-heading text-lg text-white sm:text-xl">{weeklyInsights.topAlliance.allianceLabel}</p>
+                      <p className="mt-1 text-[13px] text-white/54 max-[390px]:text-xs sm:text-sm">{weeklyInsights.topAlliance.passCount} passing players out of {weeklyInsights.topAlliance.members}</p>
                     </div>
                     <StatusPill label={`${weeklyInsights.topAlliance.passRate}%`} tone="good" />
                   </div>
@@ -606,7 +606,7 @@ export default function HomeScreen() {
                   </CardHeader>
                   <CardContent className="space-y-3">
                     {weekMovement.risers.map((row) => (
-                      <div key={row.governorDbId} className="flex items-center justify-between gap-3 rounded-2xl border border-white/8 bg-black/10 px-4 py-3">
+                      <div key={row.governorDbId} className="flex items-center justify-between gap-3 rounded-2xl border border-white/8 bg-black/10 px-3.5 py-2.5 sm:px-4 sm:py-3">
                         <div>
                           <p className="text-sm font-medium text-white">{row.governorName}</p>
                           <p className="text-xs text-white/52">{row.allianceLabel}</p>
@@ -624,7 +624,7 @@ export default function HomeScreen() {
                   </CardHeader>
                   <CardContent className="space-y-3">
                     {weekMovement.fallers.length ? weekMovement.fallers.map((row) => (
-                      <div key={row.governorDbId} className="flex items-center justify-between gap-3 rounded-2xl border border-white/8 bg-black/10 px-4 py-3">
+                      <div key={row.governorDbId} className="flex items-center justify-between gap-3 rounded-2xl border border-white/8 bg-black/10 px-3.5 py-2.5 sm:px-4 sm:py-3">
                         <div>
                           <p className="text-sm font-medium text-white">{row.governorName}</p>
                           <p className="text-xs text-white/52">{row.allianceLabel}</p>
@@ -646,7 +646,7 @@ export default function HomeScreen() {
           <Panel title="Board Quick Read" subtitle="Snapshots, events, and MVP context in one place.">
             <div className="space-y-4">
               <Card className="border-white/10 bg-white/4">
-                <CardContent className="flex items-center justify-between gap-4 p-5">
+                <CardContent className="flex items-center justify-between gap-4 p-4 max-[390px]:p-3.5 sm:p-5">
                   <div>
                     <p className="text-[11px] uppercase tracking-[0.18em] text-white/36">Weekly MVP</p>
                     <p className="mt-2 font-heading text-xl text-white">{weeklyMvp?.row.governorName ?? 'Pending'}</p>
@@ -657,19 +657,19 @@ export default function HomeScreen() {
               </Card>
               <div className="grid gap-4 sm:grid-cols-2">
                 <Card className="border-white/10 bg-white/4">
-                  <CardContent className="p-5">
+                  <CardContent className="p-4 max-[390px]:p-3.5 sm:p-5">
                     <p className="text-[11px] uppercase tracking-[0.18em] text-white/36">Total Players</p>
                     <p className="mt-2 font-heading text-2xl text-white">{governorCount.toLocaleString()}</p>
                   </CardContent>
                 </Card>
                 <Card className="border-white/10 bg-white/4">
-                  <CardContent className="p-5">
+                  <CardContent className="p-4 max-[390px]:p-3.5 sm:p-5">
                     <p className="text-[11px] uppercase tracking-[0.18em] text-white/36">Snapshots Indexed</p>
                     <p className="mt-2 font-heading text-2xl text-white">{totalSnapshots.toLocaleString()}</p>
                   </CardContent>
                 </Card>
               </div>
-              <div className="rounded-[26px] border border-white/10 bg-white/4 p-5">
+              <div className="rounded-[26px] border border-white/10 bg-white/4 p-4 max-[390px]:rounded-[20px] max-[390px]:p-3.5 sm:p-5">
                 <div className="flex items-center justify-between gap-4">
                   <div>
                     <p className="text-[11px] uppercase tracking-[0.18em] text-white/36">Recent Events</p>

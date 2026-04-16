@@ -419,7 +419,7 @@ export default function CompareScreen() {
   const tierMax = Math.max(1, ...tierEntries.map((entry) => entry.value));
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5 sm:space-y-6">
       <PageHero
         title="Compare"
         subtitle="A cleaner head-to-head matchup surface with stronger event selection, delta storytelling, and a sortable warrior-scored board."
@@ -451,7 +451,7 @@ export default function CompareScreen() {
 
         <Panel title="Matchup Setup" subtitle="Pick baseline and current event snapshots, then rerun the comparison with one tap.">
           <div className="space-y-4">
-            <div className="sticky top-[78px] z-20 -mx-1 rounded-[24px] border border-white/10 bg-[rgba(8,11,19,0.94)] p-3.5 shadow-[0_14px_36px_rgba(0,0,0,0.32)] backdrop-blur xl:static xl:mx-0 xl:border-white/8 xl:bg-black/20 xl:shadow-none xl:backdrop-blur-none">
+            <div className="sticky top-[76px] z-20 -mx-1 rounded-[24px] border border-white/10 bg-[rgba(8,11,19,0.94)] p-3.5 shadow-[0_14px_36px_rgba(0,0,0,0.32)] backdrop-blur max-[390px]:top-[72px] max-[390px]:rounded-[20px] max-[390px]:p-2.5 xl:static xl:mx-0 xl:border-white/8 xl:bg-black/20 xl:shadow-none xl:backdrop-blur-none">
               <div className="grid gap-2.5 lg:grid-cols-[minmax(0,1fr)_84px_minmax(0,1fr)_auto] lg:items-end">
                 <div className="space-y-2">
                   <p className="text-[11px] uppercase tracking-[0.18em] text-white/36">Baseline Event</p>
@@ -528,41 +528,41 @@ export default function CompareScreen() {
             <div className="grid gap-6 xl:grid-cols-[minmax(0,1.05fr)_minmax(320px,0.95fr)]">
               <Panel title="Matchup Story" subtitle={`${result.eventA.name} → ${result.eventB.name}`}>
                 <div className="space-y-4">
-                  <div className="rounded-[28px] border border-white/10 bg-[linear-gradient(145deg,rgba(14,19,31,0.94),rgba(8,11,19,0.92))] p-5">
+                  <div className="rounded-[28px] border border-white/10 bg-[linear-gradient(145deg,rgba(14,19,31,0.94),rgba(8,11,19,0.92))] p-4 max-[390px]:rounded-[22px] max-[390px]:p-3.5 sm:p-5">
                     <div className="flex flex-wrap items-start justify-between gap-4">
                       <div>
                         <div className="flex flex-wrap gap-2">
                           <StatusPill label="Spotlight Player" tone="warn" />
                           {spotlight.top ? <StatusPill label={`${spotlight.top.score}% score`} tone={scoreTone(spotlight.top.score)} /> : null}
                         </div>
-                        <h2 className="mt-4 font-heading text-3xl text-white">{spotlight.top?.governorName || 'No matchup yet'}</h2>
-                        <p className="mt-3 max-w-2xl text-sm leading-6 text-white/56">Highest overall warrior score across the selected event pair. This is the fastest read on who converted the matchup into measurable output.</p>
+                        <h2 className="mt-3 font-heading text-2xl text-white max-[390px]:text-xl sm:mt-4 sm:text-3xl">{spotlight.top?.governorName || 'No matchup yet'}</h2>
+                        <p className="mt-2.5 max-w-2xl text-[13px] leading-5 text-white/56 max-[390px]:text-xs max-[390px]:leading-5 sm:mt-3 sm:text-sm sm:leading-6">Highest overall warrior score across the selected event pair. This is the fastest read on who converted the matchup into measurable output.</p>
                       </div>
-                      <div className="rounded-[24px] border border-white/10 bg-white/4 px-5 py-4 text-right">
+                      <div className="rounded-[24px] border border-white/10 bg-white/4 px-4 py-3 text-left max-[390px]:rounded-[18px] sm:px-5 sm:py-4 sm:text-right">
                         <p className="text-[11px] uppercase tracking-[0.22em] text-white/36">Actual DKP</p>
-                        <p className="mt-2 font-heading text-3xl text-white">{spotlight.top ? formatCompactNumber(spotlight.top.actualDkp) : '—'}</p>
-                        <p className="mt-2 text-sm text-white/48">Top contributor lane</p>
+                        <p className="mt-1.5 font-heading text-2xl text-white max-[390px]:text-xl sm:text-3xl">{spotlight.top ? formatCompactNumber(spotlight.top.actualDkp) : '—'}</p>
+                        <p className="mt-1.5 text-[13px] text-white/48 max-[390px]:text-xs sm:text-sm">Top contributor lane</p>
                       </div>
                     </div>
                   </div>
 
-                  <div className="grid gap-4 md:grid-cols-3">
+                  <div className="grid gap-3 md:grid-cols-3">
                     <Card className="border-white/10 bg-white/4">
-                      <CardContent className="space-y-3 p-5">
+                      <CardContent className="space-y-2.5 p-4 max-[390px]:p-3.5 sm:p-5">
                         <p className="text-[11px] uppercase tracking-[0.18em] text-white/36">Top KP Delta</p>
                         <p className="font-heading text-xl text-white">{spotlight.topKills?.governorName || '—'}</p>
                         <p className="text-sm text-white/56">{spotlight.topKills ? formatCompactNumber(spotlight.topKills.killPointsDelta) : '—'} kill points gained</p>
                       </CardContent>
                     </Card>
                     <Card className="border-white/10 bg-white/4">
-                      <CardContent className="space-y-3 p-5">
+                      <CardContent className="space-y-2.5 p-4 max-[390px]:p-3.5 sm:p-5">
                         <p className="text-[11px] uppercase tracking-[0.18em] text-white/36">Top Deads Delta</p>
                         <p className="font-heading text-xl text-white">{spotlight.topDeads?.governorName || '—'}</p>
                         <p className="text-sm text-white/56">{spotlight.topDeads ? formatCompactNumber(spotlight.topDeads.deadsDelta) : '—'} deads recorded</p>
                       </CardContent>
                     </Card>
                     <Card className="border-white/10 bg-white/4">
-                      <CardContent className="space-y-3 p-5">
+                      <CardContent className="space-y-2.5 p-4 max-[390px]:p-3.5 sm:p-5">
                         <p className="text-[11px] uppercase tracking-[0.18em] text-white/36">Largest Power Swing</p>
                         <p className="font-heading text-xl text-white">{spotlight.biggestPowerSwing?.governor.name || '—'}</p>
                         <p className="text-sm text-white/56">{spotlight.biggestPowerSwing ? formatDelta(spotlight.biggestPowerSwing.deltas.power) : '—'} from baseline to current</p>
@@ -615,7 +615,7 @@ export default function CompareScreen() {
                       value={search}
                       onChange={(event) => setSearch(event.target.value)}
                       placeholder="Search governor name or ID"
-                      className="rounded-full border-white/10 bg-white/4 pl-11 text-white placeholder:text-white/28"
+                      className="rounded-full border-white/10 bg-white/4 pl-11 text-white placeholder:text-white/28 max-[390px]:h-9"
                     />
                   </div>
                   <div className="flex w-full flex-wrap gap-2 sm:w-auto">

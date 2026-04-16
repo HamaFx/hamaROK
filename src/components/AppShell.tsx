@@ -39,15 +39,15 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 
 function BrandLockup() {
   return (
-    <Link href="/" className="group flex items-center gap-3">
-      <div className="relative overflow-hidden rounded-2xl border border-white/12 bg-white/5 p-2 shadow-[0_0_0_1px_rgba(255,255,255,0.02)] transition-colors group-hover:border-white/20 group-hover:bg-white/8">
+    <Link href="/" className="group flex items-center gap-2.5 max-[390px]:gap-2">
+      <div className="relative overflow-hidden rounded-2xl border border-white/12 bg-white/5 p-2 shadow-[0_0_0_1px_rgba(255,255,255,0.02)] transition-colors group-hover:border-white/20 group-hover:bg-white/8 max-[390px]:rounded-xl max-[390px]:p-1.5">
         <Image
           src="/hama-logo.svg"
           alt="HamaROK"
           width={112}
           height={28}
           priority
-          className="h-7 w-auto"
+          className="h-7 w-auto max-[390px]:h-6"
           style={{ width: 'auto', height: 'auto' }}
         />
       </div>
@@ -137,7 +137,7 @@ function MobileMoreNav() {
 
   return (
     <Drawer>
-      <nav className="fixed inset-x-4 bottom-[calc(env(safe-area-inset-bottom)+12px)] z-40 grid h-[74px] grid-cols-5 rounded-[28px] border border-white/10 bg-[rgba(8,10,16,0.92)] px-2 text-white/68 shadow-[0_16px_50px_rgba(0,0,0,0.55)] backdrop-blur-xl lg:hidden">
+      <nav className="fixed inset-x-4 bottom-[calc(env(safe-area-inset-bottom)+12px)] z-40 grid h-[74px] grid-cols-5 rounded-[28px] border border-white/10 bg-[rgba(8,10,16,0.92)] px-2 text-white/68 shadow-[0_16px_50px_rgba(0,0,0,0.55)] backdrop-blur-xl max-[390px]:inset-x-2.5 max-[390px]:h-[68px] max-[390px]:rounded-[24px] max-[390px]:px-1.5 lg:hidden">
         {MOBILE_PRIMARY_NAV.map((item) => {
           const Icon = item.icon;
           const active = isActivePath(pathname, item.href);
@@ -147,10 +147,11 @@ function MobileMoreNav() {
               href={item.href}
               className={cn(
                 'flex h-full flex-col items-center justify-center gap-1 rounded-[20px] px-1 text-[11px] font-medium tracking-wide transition-colors',
+                'max-[390px]:gap-0.5 max-[390px]:rounded-[18px] max-[390px]:text-[10px]',
                 active ? 'bg-[rgba(98,164,255,0.18)] text-white' : 'text-white/58'
               )}
             >
-              <Icon className="size-4" />
+              <Icon className="size-4 max-[390px]:size-3.5" />
               <span>{item.mobileLabel ?? item.label}</span>
             </Link>
           );
@@ -158,9 +159,9 @@ function MobileMoreNav() {
         <DrawerTrigger asChild>
           <Button
             variant="ghost"
-            className="flex h-full flex-col items-center justify-center gap-1 rounded-[20px] px-1 text-[11px] font-medium tracking-wide text-white/68 hover:bg-white/6 hover:text-white"
+            className="flex h-full flex-col items-center justify-center gap-1 rounded-[20px] px-1 text-[11px] font-medium tracking-wide text-white/68 hover:bg-white/6 hover:text-white max-[390px]:gap-0.5 max-[390px]:rounded-[18px] max-[390px]:text-[10px]"
           >
-            <Menu className="size-4" />
+            <Menu className="size-4 max-[390px]:size-3.5" />
             <span>More</span>
           </Button>
         </DrawerTrigger>
@@ -251,8 +252,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
     <div className="relative min-h-screen overflow-x-hidden bg-background text-foreground">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(84,137,255,0.18),_transparent_32%),radial-gradient(circle_at_bottom_right,_rgba(108,214,255,0.12),_transparent_24%)]" />
       <header className="sticky top-0 z-30 border-b border-white/10 bg-[rgba(7,9,15,0.8)] backdrop-blur-xl">
-        <div className="mx-auto flex w-full max-w-[1600px] items-center justify-between gap-4 px-4 py-3.5 sm:px-6 lg:px-8">
-          <div className="flex min-w-0 items-center gap-4">
+        <div className="mx-auto flex w-full max-w-[1600px] items-center justify-between gap-4 px-4 py-3.5 max-[390px]:gap-2 max-[390px]:px-3 max-[390px]:py-3 sm:px-6 lg:px-8">
+          <div className="flex min-w-0 items-center gap-4 max-[390px]:gap-2.5">
             <BrandLockup />
             <div className="hidden h-10 w-px bg-white/8 lg:block" />
             <div className="hidden min-w-0 lg:block">
@@ -272,7 +273,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
         </div>
       </header>
 
-      <main className="relative z-10 mx-auto flex w-full max-w-[1600px] flex-col px-4 pb-28 pt-5 sm:px-6 lg:px-8 lg:pb-14 lg:pt-7">
+      <main className="relative z-10 mx-auto flex w-full max-w-[1600px] flex-col px-4 pb-28 pt-5 max-[390px]:px-3 max-[390px]:pb-[6.5rem] max-[390px]:pt-4 sm:px-6 lg:px-8 lg:pb-14 lg:pt-7">
         {weeklySchemaWarning ? (
           <Alert className="mb-6 border-amber-300/16 bg-[rgba(120,78,9,0.18)] text-amber-50">
             <AlertTitle className="font-heading text-sm">Schema Attention Needed</AlertTitle>
