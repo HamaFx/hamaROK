@@ -13,6 +13,11 @@ import {
   ReferenceLine,
   ResponsiveContainer,
   Tooltip,
+  Radar,
+  RadarChart,
+  PolarGrid,
+  PolarAngleAxis,
+  PolarRadiusAxis,
   XAxis,
   YAxis,
 } from 'recharts';
@@ -220,6 +225,101 @@ export function WeeklyActivityLineChart({
               name="KP Growth"
             />
           </LineChart>
+        </ResponsiveContainer>
+      </div>
+    </section>
+  );
+}
+
+export function WeeklyRadarChart({
+  timeline,
+}: {
+  timeline: Array<{
+    weekName: string;
+    contributionPoints: number;
+    fortDestroying: number;
+    t4KillsGrowth: number;
+    t5KillsGrowth: number;
+    deadsGrowth: number;
+  }>;
+}) {
+  if (!timeline || timeline.length === 0) return null;
+  
+  // Use the most recent week for the radar
+  const latest = timeline[0];
+
+  // Dynamically scale against the player's OWN historical best!
+  // This completely solves early kingdom scaling, automatically making it 0-100.
+  const maxContrib = Math.max(...timeline.map((t) => t.contributionPoints), 1);
+  const maxForts = Math.max(...timeline.map((t) => t.fortDestroying), 1);
+  const maxT4 = Math.max(...timeline.map((t) => t.t4KillsGrowth), 1);
+  const maxT5 = Math.max(...timeline.map((t) => t.t5KillsGrowth), 1);
+  const maxDeads = Math.max(...timeline.map((t) => t.deadsGrowth), 1);
+
+  const data = [
+    {
+      subject: 'Contrib',
+      normalized: (Math.max(0, latest.contributionPoints) / maxContrib) * 100,
+      raw: latest.contributionPoints,
+      fullMark: 100,
+    },
+    {
+      subject: 'Forts',
+      normalized: (Math.max(0, latest.fortDestroying) / maxForts) * 100,
+      raw: latest.fortDestroying,
+      fullMark: 100,
+    },
+    {
+      subject: 'T4 Kills',
+      normalized: (Math.max(0, latest.t4KillsGrowth) / maxT4) * 100,
+      raw: latest.t4KillsGrowth,
+      fullMark: 100,
+    },
+    {
+      subject: 'T5 Kills',
+      normalized: (Math.max(0, latest.t5KillsGrowth) / maxT5) * 100,
+      raw: latest.t5KillsGrowth,
+      fullMark: 100,
+    },
+    {
+      subject: 'Deads',
+      normalized: (Math.max(0, latest.deadsGrowth) / maxDeads) * 100,
+      raw: latest.deadsGrowth,
+      fullMark: 100,
+    },
+  ];
+
+  return (
+    <section className="chart-container" aria-label="Latest weekly radar chart">
+      <h3>{latest.weekName} Combat Shape (vs All-Time Best)</h3>
+      <div style={{ width: '100%', minWidth: 0, height: 320 }}>
+        <ResponsiveContainer>
+          <RadarChart cx="50%" cy="50%" outerRadius="70%" data={data}>
+            <PolarGrid stroke="rgba(113, 138, 165, 0.2)" />
+            <PolarAngleAxis dataKey="subject" tick={{ fill: '#8da5c2', fontSize: 12 }} />
+            <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} axisLine={false} />
+            <Radar
+              name={latest.weekName}
+              dataKey="normalized"
+              stroke="#00E5FF"
+              fill="#0088FF"
+              fillOpacity={0.4}
+            />
+            {/* Custom Tooltip to show Raw Stats instead of normalized 0-100 */}
+            <Tooltip
+              content={({ active, payload }) => {
+                if (active && payload && payload.length) {
+                  const rawVal = payload[0].payload.raw;
+                  return (
+                    <div className="custom-tooltip" style={{ background: '#050505', border: '1px solid rgba(255,255,255,0.1)', padding: '8px' }}>
+                      <p style={{ color: '#fff', fontSize: '12px' }}>{payload[0].payload.subject}: {abbreviateNumber(rawVal)}</p>
+                    </div>
+                  );
+                }
+                return null;
+              }}
+            />
+          </RadarChart>
         </ResponsiveContainer>
       </div>
     </section>

@@ -455,7 +455,7 @@ export async function getWeeklyActivityReport(args: {
         eventId: event.id,
         governorId: { in: govIdFilter },
       },
-      select: { governorId: true, killPoints: true, createdAt: true },
+      select: { governorId: true, killPoints: true, t4Kills: true, t5Kills: true, deads: true, createdAt: true },
     }),
     // Kill points from profile snapshots (previous week fallback)
     previousEvent
@@ -465,7 +465,7 @@ export async function getWeeklyActivityReport(args: {
             eventId: previousEvent.id,
             governorId: { in: govIdFilter },
           },
-          select: { governorId: true, killPoints: true, createdAt: true },
+          select: { governorId: true, killPoints: true, t4Kills: true, t5Kills: true, deads: true, createdAt: true },
         })
       : Promise.resolve([]),
     prisma.rankingSnapshot.count({
@@ -538,13 +538,22 @@ export async function getWeeklyActivityReport(args: {
     }
   }
   // Fallback to profile snapshot kill points
+  const currentT4ByGovernor = new Map<string, bigint>();
+  const currentT5ByGovernor = new Map<string, bigint>();
+  const currentDeadsByGovernor = new Map<string, bigint>();
   for (const row of currentSnapshotKp) {
     if (!currentKpByGovernor.has(row.governorId)) {
       currentKpByGovernor.set(row.governorId, row.killPoints);
+      currentT4ByGovernor.set(row.governorId, row.t4Kills);
+      currentT5ByGovernor.set(row.governorId, row.t5Kills);
+      currentDeadsByGovernor.set(row.governorId, row.deads);
     }
   }
 
   const previousKpByGovernor = new Map<string, bigint>();
+  const previousT4ByGovernor = new Map<string, bigint>();
+  const previousT5ByGovernor = new Map<string, bigint>();
+  const previousDeadsByGovernor = new Map<string, bigint>();
   for (const row of previousObservationRows) {
     if (row.metricKey !== METRIC_KEY_KILL_POINTS) continue;
     const existing = previousKpByGovernor.get(row.governorId);
@@ -562,6 +571,9 @@ export async function getWeeklyActivityReport(args: {
   for (const row of previousSnapshotKp) {
     if (!previousKpByGovernor.has(row.governorId)) {
       previousKpByGovernor.set(row.governorId, row.killPoints);
+      previousT4ByGovernor.set(row.governorId, row.t4Kills);
+      previousT5ByGovernor.set(row.governorId, row.t5Kills);
+      previousDeadsByGovernor.set(row.governorId, row.deads);
     }
   }
 
@@ -641,6 +653,17 @@ export async function getWeeklyActivityReport(args: {
     const kpGrowthValue = killPointsBaselineReady
       ? currentKpValue - previousKpValue
       : null;
+      
+    const currentT4Value = currentT4ByGovernor.get(governorId) ?? BigInt(0);
+    const previousT4Value = previousT4ByGovernor.get(governorId) ?? BigInt(0);
+    const currentT5Value = currentT5ByGovernor.get(governorId) ?? BigInt(0);
+    const previousT5Value = previousT5ByGovernor.get(governorId) ?? BigInt(0);
+    const currentDeadsValue = currentDeadsByGovernor.get(governorId) ?? BigInt(0);
+    const previousDeadsValue = previousDeadsByGovernor.get(governorId) ?? BigInt(0);
+    
+    const t4GrowthValue = killPointsBaselineReady ? currentT4Value - previousT4Value : null;
+    const t5GrowthValue = killPointsBaselineReady ? currentT5Value - previousT5Value : null;
+    const deadsGrowthValue = killPointsBaselineReady ? currentDeadsValue - previousDeadsValue : null;
 
     const contributionMin = standardsByAllianceMetric.get(`${tag}::contribution_points`) ?? null;
     const powerGrowthMin = standardsByAllianceMetric.get(`${tag}::power_growth`) ?? null;
@@ -690,6 +713,9 @@ export async function getWeeklyActivityReport(args: {
       fortDestroying: (fortMetric.value || BigInt(0)).toString(),
       powerGrowth: growthMetric.value?.toString() || null,
       killPointsGrowth: kpGrowthMetric.value?.toString() || null,
+      t4KillsGrowth: t4GrowthValue?.toString() || null,
+      t5KillsGrowth: t5GrowthValue?.toString() || null,
+      deadsGrowth: deadsGrowthValue?.toString() || null,
       currentPower: (currentPowerValue || BigInt(0)).toString(),
       previousPower: (previousPowerValue || BigInt(0)).toString(),
       currentKillPoints: (currentKpValue || BigInt(0)).toString(),

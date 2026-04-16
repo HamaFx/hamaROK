@@ -52,11 +52,14 @@
   --stroke-strong: rgba(255, 255, 255, 0.16);
   --text-1: #ffffff;
   --text-2: #a1a1aa;
-  --text-3: #71717a;
+  --text-3: #82828a; /* Improved Contrast */
   --text-4: #52525b;
   --tone-teal: #00E5FF;
   --tone-teal-soft: rgba(0, 229, 255, 0.16);
   --rank-gold: #d8b878;
+  --rok-gold: #ebb34b;
+  --rok-amber: #d97706;
+  --rok-crimson: #e11d48;
   --glow-soft: 0 12px 32px rgba(0, 229, 255, 0.08), 0 0 12px rgba(0, 229, 255, 0.04);
 
   --radius: 0.75rem;
@@ -248,6 +251,10 @@ a {
     color: var(--text-4);
   }
 
+  .surface-0 {
+    background-color: var(--surface-0);
+    border: 1px solid transparent;
+  }
   .surface-1 {
     background: linear-gradient(160deg, color-mix(in oklab, var(--surface-1) 88%, #000 12%), color-mix(in oklab, var(--surface-2) 88%, #000 12%));
     border: 1px solid var(--stroke-soft);
@@ -257,6 +264,17 @@ a {
   .surface-2 {
     background: color-mix(in oklab, var(--surface-2) 92%, transparent);
     border: 1px solid var(--stroke-soft);
+  }
+  .glass-panel {
+    background: rgba(5, 5, 5, 0.65);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.05);
+  }
+  .focus-ring {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--background), 0 0 0 4px var(--primary);
   }
 
   .surface-3 {

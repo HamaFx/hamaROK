@@ -374,16 +374,22 @@ export default function ReviewQueuePage() {
       const failures: string[] = [];
       let warningCount = 0;
 
-      for (const item of items) {
-        try {
-          const result = await requestReviewUpdate(item.id, status);
-          if (result?.syncState === 'PENDING_WEEK_LINK' || result?.warning) warningCount += 1;
-          successCount += 1;
-        } catch (err) {
-          const message = err instanceof Error ? err.message : 'Unknown error';
-          const label = item.values.governorName.value || item.id.slice(-6);
-          failures.push(`${label}: ${message}`);
-        }
+      const concurrencyLimit = 5;
+      for (let i = 0; i < items.length; i += concurrencyLimit) {
+        const chunk = items.slice(i, i + concurrencyLimit);
+        await Promise.all(
+          chunk.map(async (item) => {
+            try {
+              const result = await requestReviewUpdate(item.id, status);
+              if (result?.syncState === 'PENDING_WEEK_LINK' || result?.warning) warningCount += 1;
+              successCount += 1;
+            } catch (err) {
+              const message = err instanceof Error ? err.message : 'Unknown error';
+              const label = item.values.governorName.value || item.id.slice(-6);
+              failures.push(`${label}: ${message}`);
+            }
+          })
+        );
       }
 
       await loadQueue();

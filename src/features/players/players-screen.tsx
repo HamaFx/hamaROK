@@ -11,7 +11,7 @@ import {
   Users,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { GrowthLineChart, WeeklyActivityLineChart } from '@/components/Charts';
+import { GrowthLineChart, WeeklyActivityLineChart, WeeklyRadarChart } from '@/components/Charts';
 import { InlineError, SessionGate } from '@/components/app/session-gate';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -97,6 +97,9 @@ interface WeeklyActivityHistoryEntry {
     fortDestroying: string;
     powerGrowth: string | null;
     killPointsGrowth: string | null;
+    t4KillsGrowth?: string | null;
+    t5KillsGrowth?: string | null;
+    deadsGrowth?: string | null;
     powerBaselineReady: boolean;
     killPointsBaselineReady: boolean;
     compliance: {
@@ -456,6 +459,18 @@ export default function PlayersScreen() {
             killPointsGrowth: Number(entry.metrics?.killPointsGrowth || 0),
           }))}
       />
+      <WeeklyRadarChart
+        timeline={[...(weeklyHistory || [])]
+          .filter((entry) => entry.metrics)
+          .map((entry) => ({
+            weekName: formatWeekShort(entry.weekKey),
+            contributionPoints: Number(entry.metrics?.contributionPoints || 0),
+            fortDestroying: Number(entry.metrics?.fortDestroying || 0),
+            t4KillsGrowth: Number(entry.metrics?.t4KillsGrowth || 0),
+            t5KillsGrowth: Number(entry.metrics?.t5KillsGrowth || 0),
+            deadsGrowth: Number(entry.metrics?.deadsGrowth || 0),
+          }))}
+      />
       <MetricStrip
         items={[
           {
@@ -743,7 +758,7 @@ export default function PlayersScreen() {
 
             <div className="hidden md:block">
               <Tabs defaultValue="progression" className="space-y-4">
-                <TabsList className="flex w-full flex-wrap justify-start gap-2 rounded-full border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] p-1">
+                <TabsList className="flex w-full justify-start gap-2 rounded-full border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] p-1 overflow-x-auto no-scrollbar whitespace-nowrap">
                   <TabsTrigger value="progression" className="rounded-full px-4 text-xs  data-[state=active]:bg-sky-300/15 data-[state=active]:text-tier-1">Event Progression</TabsTrigger>
                   <TabsTrigger value="trend" className="rounded-full px-4 text-xs  data-[state=active]:bg-sky-300/15 data-[state=active]:text-tier-1">Weekly Trend</TabsTrigger>
                   <TabsTrigger value="movement" className="rounded-full px-4 text-xs  data-[state=active]:bg-sky-300/15 data-[state=active]:text-tier-1">Recent Movement</TabsTrigger>

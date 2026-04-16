@@ -42,7 +42,7 @@ import {
   Panel,
   StatusPill,
 } from '@/components/ui/primitives';
-import { csvValue, downloadCsv, formatMetric, toSafeBigInt } from '@/features/shared/formatters';
+import { csvValue, downloadCsv, formatMetric, formatCompactNumber, toSafeBigInt } from '@/features/shared/formatters';
 import type { CompactControlDrawerState } from '@/features/shared/types';
 
 const ALL_VALUE = '__all__';
@@ -84,6 +84,9 @@ interface ActivityRow {
   fortDestroying: string;
   powerGrowth: string | null;
   killPointsGrowth: string | null;
+  t4KillsGrowth: string | null;
+  t5KillsGrowth: string | null;
+  deadsGrowth: string | null;
   currentPower: string;
   previousPower: string;
   currentKillPoints: string;
@@ -175,6 +178,7 @@ export default function ActivityScreen() {
   const [sortKey, setSortKey] = useState<ActivitySortKey>('contribution');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [viewMode, setViewMode] = useState<ActivityViewMode>('cards');
+  const [broadcasting, setBroadcasting] = useState(false);
   const [denseRows, setDenseRows] = useState(true);
   const [presets, setPresets] = useState<ActivityFilterPreset[]>([]);
   const [selectedPresetId, setSelectedPresetId] = useState('');
@@ -267,6 +271,42 @@ export default function ActivityScreen() {
   const goNextWeek = () => {
     if (currentWeekIndex > 0) setSelectedWeekKey(weeks[currentWeekIndex - 1].weekKey);
   };
+
+  const handleBroadcast = async () => {
+    if (!workspaceId || !selectedWeekKey || !accessToken) return;
+    setBroadcasting(true);
+    setUiNotice(null);
+    try {
+      const headers = { 'Content-Type': 'application/json', 'x-access-token': accessToken };
+      const res = await fetch('/api/v2/activity/broadcast', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ workspaceId, weekKey: selectedWeekKey })
+      });
+      if (!res.ok) throw new Error((await res.json())?.error?.message || 'Failed to broadcast');
+      setUiNotice('Broadcasted to Discord successfully 🚀');
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Broadcast failed');
+    } finally {
+      setBroadcasting(false);
+    }
+  };
+
+  const handleCopyPurgeList = () => {
+    const deadweight = sortedRows.filter(r => 
+      r.compliance.overall === 'FAIL' && 
+      Number(r.killPointsGrowth || 0) <= 0 && 
+      Number(r.fortDestroying) <= 0
+    );
+    if (!deadweight.length) {
+      setUiNotice('No deadweights detected this week! 🎉');
+      return;
+    }
+    const text = `🚨 Recommended Purge List (Week ${selectedWeekKey}):\n` + deadweight.map(r => `- ${r.governorName} (ID: ${r.governorId})`).join('\n');
+    void navigator.clipboard.writeText(text);
+    setUiNotice(`Copied ${deadweight.length} deadweights to clipboard.`);
+  };
+
 
   const filteredRows = useMemo(() => {
     if (!data?.rows) return [];
@@ -444,6 +484,31 @@ export default function ActivityScreen() {
     setUiNotice(`Exported ${sortedRows.length} rows.`);
   }, [sortedRows, data?.event, selectedWeekKey]);
 
+  const maxStats = useMemo(() => {
+    let maxDeads = BigInt(0);
+    let maxT5 = BigInt(0);
+    let topDeadsGovId = '';
+    let topT5GovId = '';
+
+    for (const r of sortedRows) {
+      if (r.deadsGrowth) {
+        const deads = BigInt(r.deadsGrowth);
+        if (deads > maxDeads && deads > BigInt(0)) {
+          maxDeads = deads;
+          topDeadsGovId = r.governorId;
+        }
+      }
+      if (r.t5KillsGrowth) {
+        const t5 = BigInt(r.t5KillsGrowth);
+        if (t5 > maxT5 && t5 > BigInt(0)) {
+          maxT5 = t5;
+          topT5GovId = r.governorId;
+        }
+      }
+    }
+    return { topDeadsGovId, topT5GovId };
+  }, [sortedRows]);
+
   const columns = useMemo(
     () => [
       {
@@ -456,15 +521,28 @@ export default function ActivityScreen() {
         key: 'player',
         label: 'Player',
         sortable: true,
-        render: (row: ActivityRow) => (
-          <div className="space-y-2">
-            <strong className="font-heading text-base text-tier-1">{row.governorName}</strong>
-            <div className="flex flex-wrap gap-2">
-              <StatusPill label={row.allianceTag} tone={row.allianceTag === 'GODt' ? 'warn' : row.allianceTag === 'V57' ? 'info' : 'neutral'} />
-              <StatusPill label={`ID ${row.governorId}`} tone="neutral" />
+        render: (row: ActivityRow) => {
+          const isAnvil = maxStats.topDeadsGovId === row.governorId;
+          const isExecutioner = maxStats.topT5GovId === row.governorId;
+          const isGhost = row.compliance.overall === 'FAIL' && 
+                          Number(row.killPointsGrowth || 0) <= 0 && 
+                          Number(row.fortDestroying) <= 0;
+
+          return (
+            <div className="space-y-2">
+              <strong className="font-heading text-base text-tier-1 flex items-center gap-2">
+                {row.governorName}
+                {isGhost && <span title="Failed all metrics completely" className="text-lg leading-none">👻</span>}
+                {isAnvil && <span title="The Anvil (Highest Deads)" className="text-lg leading-none" style={{ textShadow: '0 0 10px var(--rok-gold)' }}>🛡️</span>}
+                {isExecutioner && <span title="The Executioner (Highest T5 Kills)" className="text-lg leading-none" style={{ textShadow: '0 0 10px var(--rok-crimson)' }}>🗡️</span>}
+              </strong>
+              <div className="flex flex-wrap gap-2">
+                <StatusPill label={row.allianceTag} tone={row.allianceTag === 'GODt' ? 'warn' : row.allianceTag === 'V57' ? 'info' : 'neutral'} />
+                <StatusPill label={`ID ${row.governorId}`} tone="neutral" />
+              </div>
             </div>
-          </div>
-        ),
+          );
+        },
       },
       {
         key: 'contribution',
@@ -495,12 +573,28 @@ export default function ActivityScreen() {
         label: 'Power Growth',
         sortable: true,
         className: 'text-right',
-        render: (row: ActivityRow) => (
-          <div className="flex flex-col items-end gap-2">
-            <span className="font-heading text-lg text-tier-1">{row.powerGrowth != null ? formatMetric(row.powerGrowth) : 'N/A'}</span>
-            <StatusPill label={row.compliance.powerGrowth} tone={metricTone(row.compliance.powerGrowth)} />
-          </div>
-        ),
+        render: (row: ActivityRow) => {
+          const powerValue = row.powerGrowth ? Number(row.powerGrowth) : 0;
+          const isPowerDrop = powerValue < 0;
+          const powerColorClass = isPowerDrop 
+            ? 'text-[color:var(--rok-crimson,var(--text-error))]' 
+            : 'text-emerald-400';
+            
+          return (
+            <div className="flex flex-col items-end gap-1">
+              <div className="flex items-center gap-2">
+                <span className={`font-mono text-sm ${powerColorClass}`}>
+                  {powerValue > 0 ? '+' : ''}
+                  {formatCompactNumber(row.powerGrowth)}
+                </span>
+                <StatusPill label={row.compliance.powerGrowth} tone={metricTone(row.compliance.powerGrowth)} />
+              </div>
+              <span className="text-xs text-tier-3">
+                {formatCompactNumber(row.currentPower)} Cur
+              </span>
+            </div>
+          );
+        },
       },
       {
         key: 'kp',
@@ -508,9 +602,19 @@ export default function ActivityScreen() {
         sortable: true,
         className: 'text-right',
         render: (row: ActivityRow) => (
-          <div className="flex flex-col items-end gap-2">
-            <span className="font-heading text-lg text-tier-1">{row.killPointsGrowth != null ? formatMetric(row.killPointsGrowth) : 'N/A'}</span>
-            <StatusPill label={row.compliance.killPointsGrowth} tone={metricTone(row.compliance.killPointsGrowth)} />
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-sm text-tier-1">{formatCompactNumber(row.killPointsGrowth)}</span>
+              <StatusPill label={row.compliance.killPointsGrowth} tone={metricTone(row.compliance.killPointsGrowth)} />
+            </div>
+            <div className="flex gap-2">
+              {row.deadsGrowth && Number(row.deadsGrowth) > 0 && (
+                <span className="text-[10px] text-[color:var(--rok-crimson)] font-mono">{formatCompactNumber(row.deadsGrowth)} Dead</span>
+              )}
+              {row.t5KillsGrowth && Number(row.t5KillsGrowth) > 0 && (
+                <span className="text-[10px] text-[color:var(--rok-gold)] font-mono">{formatCompactNumber(row.t5KillsGrowth)} T5</span>
+              )}
+            </div>
           </div>
         ),
       },
@@ -521,7 +625,7 @@ export default function ActivityScreen() {
         render: (row: ActivityRow) => <StatusPill label={row.compliance.overall} tone={overallTone(row.compliance.overall)} />,
       },
     ],
-    []
+    [maxStats]
   );
 
   return (
@@ -535,16 +639,22 @@ export default function ActivityScreen() {
           data?.previousEvent ? `vs ${data.previousEvent.name}` : 'No previous week',
         ]}
         actions={
-          <>
+          <div className="flex flex-wrap gap-2 justify-end">
             <Button asChild variant="outline" className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1">
               <Link href="/rankings">
                 <Trophy data-icon="inline-start" /> Rankings
               </Link>
             </Button>
             <Button variant="outline" className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1" onClick={exportActivityCsv} disabled={!sortedRows.length}>
-              <Download data-icon="inline-start" /> Export CSV
+              <Download data-icon="inline-start" /> CSV
             </Button>
-          </>
+            <Button variant="outline" className="rounded-full border-sky-400/20 bg-sky-400/10 text-sky-100 hover:bg-sky-400/20" onClick={handleBroadcast} disabled={broadcasting || !sortedRows.length}>
+              {broadcasting ? '📢 Broadcasting...' : '📢 Broadcaster'}
+            </Button>
+            <Button variant="outline" className="rounded-full border-rose-400/20 bg-rose-400/10 text-rose-100 hover:bg-rose-400/20" onClick={handleCopyPurgeList} disabled={!sortedRows.length}>
+              💀 Purge List
+            </Button>
+          </div>
         }
       />
 
@@ -639,7 +749,7 @@ export default function ActivityScreen() {
 
             <Panel title="Insights" subtitle="Alliance pressure and top performers in one compact secondary module.">
               <Tabs defaultValue="alliance" className="space-y-4">
-                <TabsList className="flex w-full flex-wrap justify-start gap-2 rounded-full border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] p-1">
+                <TabsList className="flex w-full justify-start gap-2 rounded-full border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] p-1 overflow-x-auto no-scrollbar whitespace-nowrap">
                   <TabsTrigger value="alliance" className="rounded-full px-4 text-xs  data-[state=active]:bg-sky-300/15 data-[state=active]:text-tier-1">Alliance Pressure</TabsTrigger>
                   <TabsTrigger value="performers" className="rounded-full px-4 text-xs  data-[state=active]:bg-sky-300/15 data-[state=active]:text-tier-1">Top Performers</TabsTrigger>
                 </TabsList>
@@ -726,7 +836,7 @@ export default function ActivityScreen() {
                   <DataTableLite
                     stickyFirst
                     dense={denseRows}
-                    mobileCards
+                    mobileCards={viewMode !== 'table'}
                     rows={sortedRows}
                     rowKey={(row) => row.governorDbId}
                     columns={columns}
