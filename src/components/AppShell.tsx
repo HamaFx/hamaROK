@@ -75,8 +75,8 @@ function DesktopNav() {
             asChild
             variant="ghost"
             className={cn(
-              'h-11 rounded-full px-4 text-sm text-tier-3 hover:bg-[color:var(--surface-4)] hover:text-tier-1',
-              active && 'bg-card/90 backdrop-blur-xl text-tier-1 shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--tone-teal)_20%,transparent)]'
+              'h-11 rounded-full px-4 text-sm text-tier-3 hover:bg-white/5 hover:text-tier-1 transition-all duration-300',
+              active && 'bg-[color:color-mix(in_oklab,var(--rok-cyan)_15%,transparent)] text-tier-1 shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--rok-cyan)_40%,transparent),0_0_12px_color-mix(in_oklab,var(--rok-cyan)_20%,transparent)]'
             )}
           >
             <Link href={item.href}>
@@ -100,15 +100,15 @@ function ToolsMenu() {
         <Button
           variant="ghost"
           className={cn(
-            'hidden h-11 rounded-full border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] px-4 text-tier-3 hover:bg-[color:var(--surface-4)] hover:text-tier-1 lg:inline-flex',
-            activeTool && 'border-[color:color-mix(in_oklab,var(--tone-teal)_40%,transparent)] bg-[color:var(--tone-teal-soft)] text-tier-1'
+            'hidden h-11 rounded-full border border-[color:var(--stroke-soft)] bg-white/5 px-4 text-tier-3 hover:bg-white/10 hover:text-tier-1 transition-all duration-300 transform-gpu lg:inline-flex',
+            activeTool && 'border-[color:color-mix(in_oklab,var(--rok-cyan)_40%,transparent)] bg-[color:color-mix(in_oklab,var(--rok-cyan)_15%,transparent)] text-tier-1 shadow-[0_0_12px_color-mix(in_oklab,var(--rok-cyan)_20%,transparent)]'
           )}
         >
           <Menu data-icon="inline-start" />
           Tools
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-80 border-[color:var(--stroke-soft)] bg-card/90 backdrop-blur-2xl shadow-2xl text-tier-1">
+      <DropdownMenuContent align="end" className="w-80 border-white/10 glass-panel shadow-2xl text-tier-1">
         <DropdownMenuLabel className="text-tier-3">Operational Pages</DropdownMenuLabel>
         <DropdownMenuSeparator className="bg-[color:var(--stroke-subtle)]" />
         {TOOL_NAV_ITEMS.map((item) => {
@@ -137,7 +137,7 @@ function MobileMoreNav() {
 
   return (
     <Drawer>
-      <nav className="fixed inset-x-2.5 bottom-[calc(env(safe-area-inset-bottom)+12px)] z-40 grid h-[64px] grid-cols-5 rounded-[20px] border border-white/10 bg-black/60 px-1.5 text-tier-3 shadow-[0_8px_32px_rgba(0,229,255,0.15)] ring-1 ring-white/5 backdrop-blur-2xl min-[390px]:inset-x-4 min-[390px]:h-[70px] min-[390px]:rounded-[24px] min-[390px]:px-2 lg:hidden">
+      <nav className="fixed inset-x-2.5 bottom-[calc(env(safe-area-inset-bottom)+12px)] z-40 grid h-[64px] grid-cols-5 rounded-[24px] glass-panel px-1.5 text-tier-3 shadow-[0_8px_32px_rgba(0,229,255,0.15)] min-[390px]:inset-x-4 min-[390px]:h-[70px] min-[390px]:px-2 lg:hidden">
         {MOBILE_PRIMARY_NAV.map((item) => {
           const Icon = item.icon;
           const active = isActivePath(pathname, item.href);
@@ -148,7 +148,7 @@ function MobileMoreNav() {
               className={cn(
                 'flex h-full flex-col items-center justify-center gap-1 rounded-[20px] px-1 text-xs font-medium tracking-wide transition-colors',
                 'gap-0.5 rounded-[18px] text-xs min-[390px]:gap-1 min-[390px]:rounded-[20px] min-[390px]:text-xs',
-                active ? 'bg-[color:var(--tone-teal-soft)] text-tier-1' : 'text-tier-3'
+                active ? 'bg-[color:color-mix(in_oklab,var(--rok-cyan)_15%,transparent)] text-tier-1 shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--rok-cyan)_40%,transparent),0_0_12px_color-mix(in_oklab,var(--rok-cyan)_20%,transparent)]' : 'text-tier-3'
               )}
             >
               <Icon className="size-3.5 min-[390px]:size-4" />
@@ -166,7 +166,7 @@ function MobileMoreNav() {
           </Button>
         </DrawerTrigger>
       </nav>
-      <DrawerContent className="border-[color:var(--stroke-soft)] bg-card/90 backdrop-blur-2xl shadow-2xl text-tier-1">
+      <DrawerContent className="border-white/10 glass-panel shadow-2xl text-tier-1">
         <DrawerHeader>
           <DrawerTitle className="font-heading text-xl text-tier-1">More</DrawerTitle>
           <DrawerDescription className="text-tier-3">
@@ -251,7 +251,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="relative min-h-screen overflow-x-hidden bg-background text-foreground">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,color-mix(in_oklab,var(--tone-teal)_12%,transparent),transparent_45%),radial-gradient(circle_at_bottom_right,color-mix(in_oklab,var(--tone-teal)_10%,transparent),transparent_35%)]" />
-      <header className="sticky top-2 sm:top-4 z-30 mx-auto w-[calc(100%-1rem)] max-w-[1600px] rounded-2xl border border-white/10 bg-black/60 shadow-2xl ring-1 ring-white/5 backdrop-blur-2xl sm:w-[calc(100%-3rem)] lg:top-6">
+      <header className="sticky top-2 sm:top-4 z-30 mx-auto w-[calc(100%-1rem)] max-w-[1600px] rounded-[24px] glass-panel shadow-[0_8px_32px_rgba(0,0,0,0.5)] transition-all duration-300 sm:w-[calc(100%-3rem)] lg:top-6">
         <div className="mx-auto flex w-full items-center justify-between gap-2 px-3 py-3 min-[390px]:gap-4 min-[390px]:px-4 min-[390px]:py-3.5 sm:px-6 lg:px-8">
           <div className="flex min-w-0 items-center gap-2.5 min-[390px]:gap-4">
             <BrandLockup />
