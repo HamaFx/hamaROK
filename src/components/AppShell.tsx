@@ -76,7 +76,7 @@ function DesktopNav() {
             variant="ghost"
             className={cn(
               'h-11 rounded-full px-4 text-sm text-tier-3 hover:bg-white/5 hover:text-tier-1 transition-all duration-300',
-              active && 'bg-[color:color-mix(in_oklab,var(--rok-cyan)_15%,transparent)] text-tier-1 shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--rok-cyan)_40%,transparent),0_0_12px_color-mix(in_oklab,var(--rok-cyan)_20%,transparent)]'
+              active && 'bg-[color:color-mix(in_oklab,var(--primary)_15%,transparent)] text-tier-1 shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--primary)_40%,transparent),0_0_12px_color-mix(in_oklab,var(--primary)_20%,transparent)]'
             )}
           >
             <Link href={item.href}>
@@ -101,7 +101,7 @@ function ToolsMenu() {
           variant="ghost"
           className={cn(
             'hidden h-11 rounded-full border border-[color:var(--stroke-soft)] bg-white/5 px-4 text-tier-3 hover:bg-white/10 hover:text-tier-1 transition-all duration-300 transform-gpu lg:inline-flex',
-            activeTool && 'border-[color:color-mix(in_oklab,var(--rok-cyan)_40%,transparent)] bg-[color:color-mix(in_oklab,var(--rok-cyan)_15%,transparent)] text-tier-1 shadow-[0_0_12px_color-mix(in_oklab,var(--rok-cyan)_20%,transparent)]'
+            activeTool && 'border-[color:color-mix(in_oklab,var(--primary)_40%,transparent)] bg-[color:color-mix(in_oklab,var(--primary)_15%,transparent)] text-tier-1 shadow-[0_0_12px_color-mix(in_oklab,var(--primary)_20%,transparent)]'
           )}
         >
           <Menu data-icon="inline-start" />
@@ -148,7 +148,7 @@ function MobileMoreNav() {
               className={cn(
                 'flex h-full flex-col items-center justify-center gap-1 rounded-[20px] px-1 text-xs font-medium tracking-wide transition-colors',
                 'gap-0.5 rounded-[18px] text-xs min-[390px]:gap-1 min-[390px]:rounded-[20px] min-[390px]:text-xs',
-                active ? 'bg-[color:color-mix(in_oklab,var(--rok-cyan)_15%,transparent)] text-tier-1 shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--rok-cyan)_40%,transparent),0_0_12px_color-mix(in_oklab,var(--rok-cyan)_20%,transparent)]' : 'text-tier-3'
+                active ? 'bg-[color:color-mix(in_oklab,var(--primary)_15%,transparent)] text-tier-1 shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--primary)_40%,transparent),0_0_12px_color-mix(in_oklab,var(--primary)_20%,transparent)]' : 'text-tier-3'
               )}
             >
               <Icon className="size-3.5 min-[390px]:size-4" />
@@ -166,7 +166,7 @@ function MobileMoreNav() {
           </Button>
         </DrawerTrigger>
       </nav>
-      <DrawerContent className="border-white/10 glass-panel shadow-2xl text-tier-1">
+      <DrawerContent className="border-white/10 !bg-[#050505]/95 backdrop-blur-3xl shadow-2xl text-tier-1">
         <DrawerHeader>
           <DrawerTitle className="font-heading text-xl text-tier-1">More</DrawerTitle>
           <DrawerDescription className="text-tier-3">
