@@ -591,8 +591,8 @@ export default function PlayersScreen() {
                     type="button"
                     onClick={() => setSelectedGovernorId(row.id)}
                     className={cn(
-                      'rounded-[20px] surface-2 p-3 text-left transition-all min-[390px]:rounded-[22px] min-[390px]:p-3.5 sm:rounded-[24px] sm:p-4',
-                      row.id === selectedGovernorId && 'border-sky-300/22 bg-sky-300/10 shadow-[0_14px_40px_rgba(0,0,0,0.26)]'
+                      'rounded-[24px] glass-panel p-4 text-left transition-all duration-300 hover:border-white/20 hover:shadow-[0_8px_32px_rgba(0,229,255,0.1)] hover:-translate-y-0.5',
+                      row.id === selectedGovernorId && 'border-[color:var(--rok-gold)] bg-[color:color-mix(in_oklab,var(--rok-gold)_15%,transparent)] shadow-[0_0_24px_rgba(216,184,120,0.2)]'
                     )}
                   >
                     <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">

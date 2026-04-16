@@ -781,7 +781,7 @@ export default function RankingsScreen() {
                 return (
                   <article
                     key={row.id}
-                    className={`group flex flex-col gap-3 rounded-2xl border border-white/5 bg-card p-3 shadow-lg transition-colors hover:bg-white/5 sm:p-4 ${isConflict ? 'border-none ring-1 ring-amber-400/20 bg-amber-400/5' : ''}`}
+                    className={`group flex flex-col gap-3 rounded-[24px] glass-panel p-4 transition-all duration-300 hover:border-white/20 hover:shadow-[0_8px_32px_rgba(0,229,255,0.1)] hover:-translate-y-0.5 ${isConflict ? 'border-none ring-1 ring-amber-400/20 bg-amber-400/10' : ''}`}
                   >
                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                     <div className="flex items-center gap-3 sm:w-[45%]">
