@@ -468,7 +468,7 @@ export default function ReviewQueuePage() {
             <SelectTrigger className="w-[168px] min-w-[168px] rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1">
               <SelectValue placeholder="Severity" />
             </SelectTrigger>
-            <SelectContent className="border-[color:var(--stroke-soft)] bg-[rgba(8,10,16,0.98)] text-tier-1">
+            <SelectContent className="border-[color:var(--stroke-soft)] bg-popover backdrop-blur-xl shadow-2xl text-tier-1">
               <SelectItem value={ALL_SEVERITY}>All Severities</SelectItem>
               <SelectItem value="HIGH">High Severity</SelectItem>
               <SelectItem value="MEDIUM">Medium Severity</SelectItem>
@@ -480,7 +480,7 @@ export default function ReviewQueuePage() {
             <SelectTrigger className="w-[196px] min-w-[196px] rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1">
               <SelectValue placeholder="Status" />
             </SelectTrigger>
-            <SelectContent className="border-[color:var(--stroke-soft)] bg-[rgba(8,10,16,0.98)] text-tier-1">
+            <SelectContent className="border-[color:var(--stroke-soft)] bg-popover backdrop-blur-xl shadow-2xl text-tier-1">
               {REVIEW_STATUS_PRESETS.map((preset) => (
                 <SelectItem key={preset.value} value={preset.value}>
                   {preset.label}
@@ -490,7 +490,7 @@ export default function ReviewQueuePage() {
           </Select>
 
           <Button
-            className="rounded-full bg-[linear-gradient(135deg,#5a7fff,#7ce6ff)] text-black hover:opacity-95"
+            className="rounded-full bg-[color:var(--primary)] text-primary-foreground hover:opacity-90 shadow-lg hover:opacity-95"
             onClick={() => void loadQueue()}
             disabled={loading}
           >

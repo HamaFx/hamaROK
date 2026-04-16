@@ -101,7 +101,7 @@ export function PageHero({
 
   return (
     <section className={cn('surface-1 relative overflow-hidden', shellDensity)}>
-      <div className="absolute inset-x-0 top-0 h-px bg-[linear-gradient(90deg,transparent,color-mix(in_oklab,var(--tone-teal)_56%,transparent),transparent)]" />
+      <div className="absolute inset-x-0 top-0 h-px bg-[color:var(--stroke-subtle)]" />
       <div className="absolute -right-10 -top-10 h-44 w-44 rounded-full bg-[radial-gradient(circle,color-mix(in_oklab,var(--tone-teal)_20%,transparent),transparent_65%)] blur-2xl" />
       <div className="absolute -bottom-8 left-1/3 h-32 w-32 rounded-full bg-[radial-gradient(circle,color-mix(in_oklab,var(--tone-teal)_14%,transparent),transparent_65%)] blur-2xl" />
       <div className="relative grid gap-3 min-[390px]:gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
@@ -312,7 +312,7 @@ export function StickyControlBar({
   return (
     <div
       className={cn(
-        'sticky z-20 border border-[color:var(--stroke-subtle)] bg-[color:color-mix(in_oklab,var(--surface-0)_84%,transparent)] shadow-[0_8px_18px_rgba(0,0,0,0.22)] backdrop-blur',
+        'sticky z-20 border border-[color:var(--stroke-subtle)] bg-card/60 backdrop-blur-xl ring-1 ring-white/5 shadow-lg',
         'top-[74px]',
         shellDensity,
         'xl:static xl:border-[color:var(--stroke-subtle)] xl:bg-transparent xl:shadow-none xl:backdrop-blur-none',
@@ -335,7 +335,7 @@ export function CompactControlRow({
   return (
     <div
       className={cn(
-        'flex items-center gap-2 overflow-x-auto rounded-[20px] border border-[color:var(--stroke-soft)] bg-[color:color-mix(in_oklab,var(--surface-1)_88%,transparent)] p-2.5 shadow-[0_8px_18px_rgba(0,0,0,0.2)]',
+        'flex items-center gap-2 overflow-x-auto rounded-[20px] border border-[color:var(--stroke-soft)] bg-card/80 p-2.5 backdrop-blur-xl ring-1 ring-white/5 shadow-[0_8px_18px_rgba(0,0,0,0.2)]',
         'min-[390px]:rounded-[22px] min-[390px]:p-3 sm:rounded-[24px] sm:gap-2.5 sm:p-3.5',
         '[&>*]:shrink-0 [&_button]:min-h-11 [&_input]:min-h-11 [&_[role=combobox]]:min-h-11',
         className
@@ -378,7 +378,7 @@ export function CompactControlDrawer({
           {triggerLabel}
         </button>
       </DrawerTrigger>
-      <DrawerContent className={cn('border-[color:var(--stroke-soft)] bg-[color:color-mix(in_oklab,var(--surface-0)_96%,black_4%)] text-tier-1', contentClassName)}>
+      <DrawerContent className={cn('border-[color:var(--stroke-soft)] bg-card/90 backdrop-blur-2xl shadow-2xl text-tier-1', contentClassName)}>
         <DrawerHeader>
           <DrawerTitle className="font-heading text-xl text-tier-1">{title}</DrawerTitle>
           {description ? <DrawerDescription className="text-tier-3">{description}</DrawerDescription> : null}
@@ -574,7 +574,7 @@ export function RowDetailDrawer({
           {triggerLabel}
         </button>
       </DrawerTrigger>
-      <DrawerContent className={cn('border-[color:var(--stroke-soft)] bg-[color:color-mix(in_oklab,var(--surface-0)_96%,black_4%)] text-tier-1', className)}>
+      <DrawerContent className={cn('border-[color:var(--stroke-soft)] bg-card/90 backdrop-blur-2xl shadow-2xl text-tier-1', className)}>
         <DrawerHeader>
           <DrawerTitle className="font-heading text-xl text-tier-1">{title}</DrawerTitle>
           {description ? <DrawerDescription className="text-tier-3">{description}</DrawerDescription> : null}
@@ -642,7 +642,7 @@ export function DataTableLite<T>({
   const tableContent = (
     <div
       className={cn(
-        'overflow-hidden border border-[color:var(--stroke-soft)] bg-[color:color-mix(in_oklab,var(--surface-1)_90%,black_10%)]',
+        'overflow-hidden surface-2 shadow-xl',
         activeDensity === 'comfortable'
           ? 'rounded-[24px]'
           : activeDensity === 'compact'
@@ -661,7 +661,7 @@ export function DataTableLite<T>({
                   className={cn(
                     'h-12 border-b border-[color:var(--stroke-subtle)] bg-[color:var(--surface-3)] px-3 text-xs font-semibold tracking-[0.06em] text-tier-3',
                     column.thClassName,
-                    index === 0 && stickyFirst && 'sticky left-0 z-10 bg-[color:color-mix(in_oklab,var(--surface-1)_96%,black_4%)]'
+                    index === 0 && stickyFirst && 'sticky left-0 z-10 bg-[color:var(--card)] shadow-[4px_0_12px_rgba(0,0,0,0.4)]'
                   )}
                 >
                   {sortable ? (
@@ -704,7 +704,7 @@ export function DataTableLite<T>({
                       dense ? 'px-3 py-3' : 'px-3 py-4',
                       'align-middle',
                       column.className,
-                      colIdx === 0 && stickyFirst && 'sticky left-0 bg-[color:color-mix(in_oklab,var(--surface-1)_96%,black_4%)]'
+                      colIdx === 0 && stickyFirst && 'sticky left-0 z-10 bg-[color:var(--card)] shadow-[4px_0_12px_rgba(0,0,0,0.4)]'
                     )}
                   >
                     {column.render(row, idx)}
@@ -728,8 +728,8 @@ export function DataTableLite<T>({
             key={rowKey(row, idx)}
             className={cn(
               activeDensity === 'compact'
-                ? 'rounded-[18px] border border-[color:var(--stroke-soft)] bg-[color:color-mix(in_oklab,var(--surface-1)_92%,black_8%)] p-2.5 shadow-[0_8px_20px_rgba(0,0,0,0.2)] min-[390px]:rounded-[20px] min-[390px]:p-3'
-                : 'rounded-[20px] border border-[color:var(--stroke-soft)] bg-[color:color-mix(in_oklab,var(--surface-1)_92%,black_8%)] p-3 shadow-[0_10px_24px_rgba(0,0,0,0.22)] min-[390px]:rounded-[22px] min-[390px]:p-3.5',
+                ? 'rounded-[18px] surface-2 p-2.5 shadow-md min-[390px]:rounded-[20px] min-[390px]:p-3'
+                : 'rounded-[20px] surface-2 p-3 shadow-lg min-[390px]:rounded-[22px] min-[390px]:p-3.5',
               rowClassName?.(row, idx)
             )}
           >

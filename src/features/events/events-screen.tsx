@@ -206,7 +206,7 @@ export default function EventsPage() {
               </Link>
             </Button>
             <Button
-              className="rounded-full bg-[linear-gradient(135deg,#5a7fff,#7ce6ff)] text-black hover:opacity-95"
+              className="rounded-full bg-[color:var(--primary)] text-primary-foreground hover:opacity-90 shadow-lg hover:opacity-95"
               onClick={() => setShowCreate(true)}
             >
               <CalendarPlus data-icon="inline-start" />
@@ -250,7 +250,7 @@ export default function EventsPage() {
                   <SelectTrigger className="w-full rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1">
                     <SelectValue placeholder="Type" />
                   </SelectTrigger>
-                  <SelectContent className="border-[color:var(--stroke-soft)] bg-[rgba(8,10,16,0.98)] text-tier-1">
+                  <SelectContent className="border-[color:var(--stroke-soft)] bg-popover backdrop-blur-xl shadow-2xl text-tier-1">
                     {eventTypeOptions.map((option) => (
                       <SelectItem key={option} value={option}>
                         {option === 'ALL' ? 'All Types' : EVENT_TYPE_LABELS[option] || option}
@@ -274,7 +274,7 @@ export default function EventsPage() {
               }
               action={
                 <Button
-                  className="rounded-full bg-[linear-gradient(135deg,#5a7fff,#7ce6ff)] text-black hover:opacity-95"
+                  className="rounded-full bg-[color:var(--primary)] text-primary-foreground hover:opacity-90 shadow-lg hover:opacity-95"
                   onClick={() => setShowCreate(true)}
                 >
                   Create Event
@@ -286,7 +286,7 @@ export default function EventsPage() {
               {filteredEvents.map((event) => (
                 <article
                   key={event.id}
-                  className="rounded-[20px] border border-[color:var(--stroke-soft)] bg-[linear-gradient(160deg,rgba(16,22,36,0.74),rgba(11,15,24,0.9))] p-3 shadow-[0_14px_40px_rgba(0,0,0,0.26)] min-[390px]:rounded-[22px] min-[390px]:p-3.5 sm:rounded-[24px] sm:p-4"
+                  className="rounded-[20px] surface-2 p-3 min-[390px]:rounded-[22px] min-[390px]:p-3.5 sm:rounded-[24px] sm:p-4"
                 >
                   <div className="space-y-3">
                     <div className="flex flex-wrap items-center gap-2">
@@ -336,7 +336,7 @@ export default function EventsPage() {
       </SessionGate>
 
       <Dialog open={showCreate} onOpenChange={setShowCreate}>
-        <DialogContent className="border-[color:var(--stroke-soft)] bg-[rgba(8,10,16,0.98)] text-tier-1 sm:max-w-lg">
+        <DialogContent className="border-[color:var(--stroke-soft)] bg-popover backdrop-blur-xl shadow-2xl text-tier-1 sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="font-heading text-xl text-tier-1">Create Event</DialogTitle>
             <DialogDescription className="text-tier-3">
@@ -360,7 +360,7 @@ export default function EventsPage() {
                 <SelectTrigger className="rounded-2xl border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1">
                   <SelectValue placeholder="Choose type" />
                 </SelectTrigger>
-                <SelectContent className="border-[color:var(--stroke-soft)] bg-[rgba(8,10,16,0.98)] text-tier-1">
+                <SelectContent className="border-[color:var(--stroke-soft)] bg-popover backdrop-blur-xl shadow-2xl text-tier-1">
                   {Object.entries(EVENT_TYPE_LABELS).map(([value, label]) => (
                     <SelectItem key={value} value={value}>
                       {label}
@@ -388,7 +388,7 @@ export default function EventsPage() {
               Cancel
             </Button>
             <Button
-              className="rounded-full bg-[linear-gradient(135deg,#5a7fff,#7ce6ff)] text-black hover:opacity-95"
+              className="rounded-full bg-[color:var(--primary)] text-primary-foreground hover:opacity-90 shadow-lg hover:opacity-95"
               onClick={createEvent}
             >
               Create Event

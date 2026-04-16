@@ -119,7 +119,7 @@ export function UploadWorkerPanel({
             <Button
               onClick={onStartWorker}
               disabled={!awsOcrControl?.enabled || awsControlBusy === 'START'}
-              className="rounded-full bg-[linear-gradient(135deg,#5a7fff,#7ce6ff)] text-black hover:opacity-95"
+              className="rounded-full bg-[color:var(--primary)] text-primary-foreground hover:opacity-90 shadow-lg hover:opacity-95"
             >
               <Play data-icon="inline-start" /> {awsControlBusy === 'START' ? 'Starting...' : 'Start Worker'}
             </Button>

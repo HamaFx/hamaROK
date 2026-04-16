@@ -20,9 +20,9 @@ import {
 import { abbreviateNumber } from '@/lib/utils';
 
 const TIER_COLORS: Record<string, string> = {
-  'War Legend': '#3b82f6',
-  'Elite Warrior': '#60a5fa',
-  'Frontline Fighter': '#93c5fd',
+  'War Legend': '#ffd57d',
+  'Elite Warrior': '#00E5FF',
+  'Frontline Fighter': '#0088FF',
   'Support Role': '#e2e8f0',
   Inactive: '#64748b',
 };
@@ -55,7 +55,7 @@ export function KillsBarChart({ data }: { data: { name: string; killDelta: numbe
     .slice(0, 15)
     .map((entry, index) => ({
       ...entry,
-      tone: index < 3 ? '#3b82f6' : index < 7 ? '#60a5fa' : '#93c5fd',
+      tone: index < 3 ? '#00E5FF' : index < 7 ? '#0088FF' : '#93c5fd',
     }));
 
   return (
@@ -143,16 +143,16 @@ export function GrowthLineChart({
             {avgPower > 0 ? (
               <ReferenceLine
                 y={Math.round(avgPower)}
-                stroke="#60a5fa"
+                stroke="#0088FF"
                 strokeDasharray="5 5"
-                label={{ value: 'Avg Power', fill: '#60a5fa', fontSize: 11 }}
+                label={{ value: 'Avg Power', fill: '#0088FF', fontSize: 11 }}
               />
             ) : null}
-            <Line type="monotone" dataKey="power" stroke="#3b82f6" strokeWidth={2.2} dot={{ r: 3 }} name="Power" />
+            <Line type="monotone" dataKey="power" stroke="#00E5FF" strokeWidth={2.2} dot={{ r: 3 }} name="Power" />
             <Line
               type="monotone"
               dataKey="killPoints"
-              stroke="#93c5fd"
+              stroke="#0088FF"
               strokeWidth={2.2}
               dot={{ r: 3 }}
               name="Kill Points"
@@ -190,7 +190,7 @@ export function WeeklyActivityLineChart({
             <Line
               type="monotone"
               dataKey="contributionPoints"
-              stroke="#3b82f6"
+              stroke="#ffd57d"
               strokeWidth={2}
               dot={{ r: 2.5 }}
               name="Contribution"

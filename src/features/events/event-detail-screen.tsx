@@ -156,7 +156,7 @@ export default function EventDetailScreen() {
               </Button>
               <Button
                 asChild
-                className="rounded-full bg-[linear-gradient(135deg,#5a7fff,#7ce6ff)] text-black hover:opacity-95"
+                className="rounded-full bg-[color:var(--primary)] text-primary-foreground hover:opacity-90 shadow-lg hover:opacity-95"
               >
                 <Link href="/upload">
                   <Upload data-icon="inline-start" />
@@ -167,7 +167,7 @@ export default function EventDetailScreen() {
           ) : (
             <Button
               asChild
-              className="rounded-full bg-[linear-gradient(135deg,#5a7fff,#7ce6ff)] text-black hover:opacity-95"
+              className="rounded-full bg-[color:var(--primary)] text-primary-foreground hover:opacity-90 shadow-lg hover:opacity-95"
             >
               <Link href="/events">Back to Events</Link>
             </Button>
@@ -189,7 +189,7 @@ export default function EventDetailScreen() {
             action={
               <Button
                 asChild
-                className="rounded-full bg-[linear-gradient(135deg,#5a7fff,#7ce6ff)] text-black hover:opacity-95"
+                className="rounded-full bg-[color:var(--primary)] text-primary-foreground hover:opacity-90 shadow-lg hover:opacity-95"
               >
                 <Link href="/events">Back to Events</Link>
               </Button>

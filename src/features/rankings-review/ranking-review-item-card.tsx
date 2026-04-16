@@ -132,7 +132,7 @@ export function RankingReviewItemCard({
   );
 
   return (
-    <article className="rounded-[20px] border border-[color:var(--stroke-soft)] bg-[rgba(10,14,24,0.92)] p-3 shadow-[0_16px_32px_rgba(0,0,0,0.24)] min-[390px]:rounded-[22px] min-[390px]:p-3.5 sm:rounded-[24px] sm:p-4">
+    <article className="rounded-[20px] surface-2 p-3 min-[390px]:rounded-[22px] min-[390px]:p-3.5 sm:rounded-[24px] sm:p-4">
       <header className="space-y-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
@@ -225,7 +225,7 @@ export function RankingReviewItemCard({
                 <SelectTrigger className="w-full rounded-xl border-[color:var(--stroke-soft)] bg-black/20 text-tier-1">
                   <SelectValue placeholder="Auto-select rankboard profile" />
                 </SelectTrigger>
-                <SelectContent className="border-[color:var(--stroke-soft)] bg-[rgba(8,10,16,0.98)] text-tier-1">
+                <SelectContent className="border-[color:var(--stroke-soft)] bg-popover backdrop-blur-xl shadow-2xl text-tier-1">
                   <SelectItem value={AUTO_PROFILE}>Auto-select rankboard profile</SelectItem>
                   {rankingProfiles.map((profile) => (
                     <SelectItem key={profile.id} value={profile.id}>
@@ -266,7 +266,7 @@ export function RankingReviewItemCard({
                 {busyRow === `${row.id}:CREATE_ALIAS` ? 'Saving...' : 'Create Alias'}
               </Button>
               <Button
-                className="rounded-full bg-[linear-gradient(135deg,#5a7fff,#7ce6ff)] text-black hover:opacity-95"
+                className="rounded-full bg-[color:var(--primary)] text-primary-foreground hover:opacity-90 shadow-lg hover:opacity-95"
                 onClick={() => onAction('CORRECT_ROW')}
                 disabled={busy}
               >

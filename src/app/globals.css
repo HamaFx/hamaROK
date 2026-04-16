@@ -4,12 +4,20 @@
 
 @custom-variant dark (&:is(.dark *));
 
+@theme {
+  --shadow-sm: 0 1px 2px 0 rgba(0, 229, 255, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 229, 255, 0.08), 0 2px 4px -2px rgba(0, 229, 255, 0.04);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 229, 255, 0.08), 0 4px 6px -4px rgba(0, 229, 255, 0.04);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 229, 255, 0.1), 0 8px 10px -6px rgba(0, 229, 255, 0.04);
+  --shadow-2xl: 0 25px 50px -12px rgba(0, 229, 255, 0.15);
+}
+
 :root {
   --font-heading: var(--font-outfit, "Outfit"), "Avenir Next", "Segoe UI", sans-serif;
   --font-body: var(--font-plus-jakarta, "Plus Jakarta Sans"), "Inter", "Avenir Next", "Segoe UI", sans-serif;
   --font-mono: var(--font-geist-mono, "Geist Mono"), "SFMono-Regular", "Menlo", "Consolas", monospace;
 
-  --background: #000000;
+  --background: #020308;
   --foreground: #ffffff;
   --card: #050505;
   --card-foreground: #ffffff;
@@ -49,7 +57,7 @@
   --tone-teal: #00E5FF;
   --tone-teal-soft: rgba(0, 229, 255, 0.16);
   --rank-gold: #d8b878;
-  --glow-soft: 0 12px 32px rgba(0, 0, 0, 0.8);
+  --glow-soft: 0 12px 32px rgba(0, 229, 255, 0.08), 0 0 12px rgba(0, 229, 255, 0.04);
 
   --radius: 0.75rem;
   --sidebar: #050505;

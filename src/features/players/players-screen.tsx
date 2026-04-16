@@ -547,7 +547,7 @@ export default function PlayersScreen() {
                 </div>
                 <Select value={allianceFilter || ALL_VALUE} onValueChange={(value) => setAllianceFilter(value === ALL_VALUE ? '' : value)}>
                   <SelectTrigger className="w-full min-w-0 rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 sm:min-w-40"><SelectValue placeholder="Alliance" /></SelectTrigger>
-                  <SelectContent className="border-[color:var(--stroke-soft)] bg-[rgba(8,10,16,0.98)] text-tier-1">
+                  <SelectContent className="border-[color:var(--stroke-soft)] bg-popover backdrop-blur-xl shadow-2xl text-tier-1">
                     <SelectItem value={ALL_VALUE}>All Alliances</SelectItem>
                     <SelectItem value="GODt">[GODt]</SelectItem>
                     <SelectItem value="V57">[V57]</SelectItem>
@@ -556,7 +556,7 @@ export default function PlayersScreen() {
                 </Select>
                 <Select value={sortKey} onValueChange={(value) => setSortKey(value as DirectorySortKey)}>
                   <SelectTrigger className="w-full min-w-0 rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 sm:min-w-40"><SelectValue placeholder="Sort" /></SelectTrigger>
-                  <SelectContent className="border-[color:var(--stroke-soft)] bg-[rgba(8,10,16,0.98)] text-tier-1">
+                  <SelectContent className="border-[color:var(--stroke-soft)] bg-popover backdrop-blur-xl shadow-2xl text-tier-1">
                     <SelectItem value="power">Latest Power</SelectItem>
                     <SelectItem value="contribution">Contribution</SelectItem>
                     <SelectItem value="snapshots">Snapshots</SelectItem>
@@ -576,7 +576,7 @@ export default function PlayersScreen() {
                     type="button"
                     onClick={() => setSelectedGovernorId(row.id)}
                     className={cn(
-                      'rounded-[20px] border border-[color:var(--stroke-soft)] bg-[linear-gradient(160deg,rgba(16,22,36,0.74),rgba(11,15,24,0.9))] p-3 text-left transition-all hover:bg-[color:var(--surface-4)] min-[390px]:rounded-[22px] min-[390px]:p-3.5 sm:rounded-[24px] sm:p-4',
+                      'rounded-[20px] surface-2 p-3 text-left transition-all min-[390px]:rounded-[22px] min-[390px]:p-3.5 sm:rounded-[24px] sm:p-4',
                       row.id === selectedGovernorId && 'border-sky-300/22 bg-sky-300/10 shadow-[0_14px_40px_rgba(0,0,0,0.26)]'
                     )}
                   >
@@ -622,7 +622,7 @@ export default function PlayersScreen() {
           >
             {selectedGovernor && profile ? (
               <motion.div key={selectedGovernor.id} initial={false} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.24 }} className="space-y-4 sm:space-y-5">
-                <div className="space-y-4 rounded-[20px] border border-[color:var(--stroke-soft)] bg-[linear-gradient(145deg,rgba(14,19,31,0.94),rgba(8,11,19,0.92))] p-3 min-[390px]:rounded-[22px] min-[390px]:p-3.5 sm:rounded-[24px] sm:p-4">
+                <div className="space-y-4 rounded-[20px] surface-2 p-3 min-[390px]:rounded-[22px] min-[390px]:p-3.5 sm:rounded-[24px] sm:p-4">
                   <div className="flex flex-wrap items-start justify-between gap-4">
                     <div className="space-y-3">
                       <div className="flex flex-wrap items-center gap-2">

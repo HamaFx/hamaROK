@@ -193,7 +193,7 @@ export default function InsightsPage() {
               <SelectTrigger className="w-full min-w-0 rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 sm:min-w-52">
                 <SelectValue placeholder="Event A" />
               </SelectTrigger>
-              <SelectContent className="border-[color:var(--stroke-soft)] bg-[rgba(8,10,16,0.98)] text-tier-1">
+              <SelectContent className="border-[color:var(--stroke-soft)] bg-popover backdrop-blur-xl shadow-2xl text-tier-1">
                 <SelectItem value={AUTO_VALUE}>Auto (Event A)</SelectItem>
                 {events.map((event) => (
                   <SelectItem key={event.id} value={event.id}>
@@ -206,7 +206,7 @@ export default function InsightsPage() {
               <SelectTrigger className="w-full min-w-0 rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 sm:min-w-52">
                 <SelectValue placeholder="Event B" />
               </SelectTrigger>
-              <SelectContent className="border-[color:var(--stroke-soft)] bg-[rgba(8,10,16,0.98)] text-tier-1">
+              <SelectContent className="border-[color:var(--stroke-soft)] bg-popover backdrop-blur-xl shadow-2xl text-tier-1">
                 <SelectItem value={AUTO_VALUE}>Auto (Event B)</SelectItem>
                 {events.map((event) => (
                   <SelectItem key={event.id} value={event.id}>
@@ -265,7 +265,7 @@ export default function InsightsPage() {
               subtitle="Top-N by warrior score"
               actions={
                 <Button
-                  className="rounded-full bg-[linear-gradient(135deg,#5a7fff,#7ce6ff)] text-black hover:opacity-95"
+                  className="rounded-full bg-[color:var(--primary)] text-primary-foreground hover:opacity-90 shadow-lg hover:opacity-95"
                   onClick={createRankboard}
                 >
                   <Share2 data-icon="inline-start" /> Create Rankboard

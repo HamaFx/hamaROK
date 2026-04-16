@@ -76,7 +76,7 @@ function DesktopNav() {
             variant="ghost"
             className={cn(
               'h-11 rounded-full px-4 text-sm text-tier-3 hover:bg-[color:var(--surface-4)] hover:text-tier-1',
-              active && 'bg-[linear-gradient(135deg,color-mix(in_oklab,var(--tone-teal)_12%,transparent),color-mix(in_oklab,var(--surface-3)_90%,transparent))] text-tier-1 shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--tone-teal)_20%,transparent)]'
+              active && 'bg-card/90 backdrop-blur-xl text-tier-1 shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--tone-teal)_20%,transparent)]'
             )}
           >
             <Link href={item.href}>
@@ -108,7 +108,7 @@ function ToolsMenu() {
           Tools
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-80 border-[color:var(--stroke-soft)] bg-[color:color-mix(in_oklab,var(--surface-0)_94%,black_6%)] text-tier-1 backdrop-blur-xl">
+      <DropdownMenuContent align="end" className="w-80 border-[color:var(--stroke-soft)] bg-card/90 backdrop-blur-2xl shadow-2xl text-tier-1">
         <DropdownMenuLabel className="text-tier-3">Operational Pages</DropdownMenuLabel>
         <DropdownMenuSeparator className="bg-[color:var(--stroke-subtle)]" />
         {TOOL_NAV_ITEMS.map((item) => {
@@ -166,7 +166,7 @@ function MobileMoreNav() {
           </Button>
         </DrawerTrigger>
       </nav>
-      <DrawerContent className="border-[color:var(--stroke-soft)] bg-[color:color-mix(in_oklab,var(--surface-0)_96%,black_4%)] text-tier-1">
+      <DrawerContent className="border-[color:var(--stroke-soft)] bg-card/90 backdrop-blur-2xl shadow-2xl text-tier-1">
         <DrawerHeader>
           <DrawerTitle className="font-heading text-xl text-tier-1">More</DrawerTitle>
           <DrawerDescription className="text-tier-3">
@@ -250,7 +250,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="relative min-h-screen overflow-x-hidden bg-background text-foreground">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,color-mix(in_oklab,var(--tone-teal)_8%,transparent),transparent_34%),radial-gradient(circle_at_bottom_right,color-mix(in_oklab,var(--tone-teal)_5%,transparent),transparent_26%)]" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,color-mix(in_oklab,var(--tone-teal)_12%,transparent),transparent_45%),radial-gradient(circle_at_bottom_right,color-mix(in_oklab,var(--tone-teal)_10%,transparent),transparent_35%)]" />
       <header className="sticky top-2 sm:top-4 z-30 mx-auto w-[calc(100%-1rem)] max-w-[1600px] rounded-2xl border border-white/10 bg-black/60 shadow-2xl ring-1 ring-white/5 backdrop-blur-2xl sm:w-[calc(100%-3rem)] lg:top-6">
         <div className="mx-auto flex w-full items-center justify-between gap-2 px-3 py-3 min-[390px]:gap-4 min-[390px]:px-4 min-[390px]:py-3.5 sm:px-6 lg:px-8">
           <div className="flex min-w-0 items-center gap-2.5 min-[390px]:gap-4">

@@ -606,7 +606,7 @@ export default function RankingsScreen() {
               <SelectTrigger className="w-[168px] rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1">
                 <SelectValue placeholder="Select week" />
               </SelectTrigger>
-              <SelectContent className="border-[color:var(--stroke-soft)] bg-[rgba(8,10,16,0.98)] text-tier-1">
+              <SelectContent className="border-[color:var(--stroke-soft)] bg-popover backdrop-blur-xl shadow-2xl text-tier-1">
                 {weeks.map((week) => (
                   <SelectItem key={week.id} value={week.weekKey || ALL_VALUE}>
                     {week.name}
@@ -649,19 +649,19 @@ export default function RankingsScreen() {
               <div className="grid gap-2.5 sm:grid-cols-3">
                 <Select value={rankingTypeFilter || ALL_VALUE} onValueChange={(value) => setRankingTypeFilter(value === ALL_VALUE ? '' : value)}>
                   <SelectTrigger className="w-full min-w-0 rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1"><SelectValue placeholder="Board" /></SelectTrigger>
-                  <SelectContent className="border-[color:var(--stroke-soft)] bg-[rgba(8,10,16,0.98)] text-tier-1">
+                  <SelectContent className="border-[color:var(--stroke-soft)] bg-popover backdrop-blur-xl shadow-2xl text-tier-1">
                     {RANKING_TYPE_FILTERS.map((item) => <SelectItem key={item.label} value={item.value || ALL_VALUE}>{item.label}</SelectItem>)}
                   </SelectContent>
                 </Select>
                 <Select value={metricFilter || ALL_VALUE} onValueChange={(value) => setMetricFilter(value === ALL_VALUE ? '' : value)}>
                   <SelectTrigger className="w-full min-w-0 rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1"><SelectValue placeholder="Metric" /></SelectTrigger>
-                  <SelectContent className="border-[color:var(--stroke-soft)] bg-[rgba(8,10,16,0.98)] text-tier-1">
+                  <SelectContent className="border-[color:var(--stroke-soft)] bg-popover backdrop-blur-xl shadow-2xl text-tier-1">
                     {METRIC_FILTERS.map((item) => <SelectItem key={item.label} value={item.value || ALL_VALUE}>{item.label}</SelectItem>)}
                   </SelectContent>
                 </Select>
                 <Select value={allianceFilter || ALL_VALUE} onValueChange={(value) => setAllianceFilter(value === ALL_VALUE ? '' : value)}>
                   <SelectTrigger className="w-full min-w-0 rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1"><SelectValue placeholder="Alliance" /></SelectTrigger>
-                  <SelectContent className="border-[color:var(--stroke-soft)] bg-[rgba(8,10,16,0.98)] text-tier-1">
+                  <SelectContent className="border-[color:var(--stroke-soft)] bg-popover backdrop-blur-xl shadow-2xl text-tier-1">
                     {ALLIANCE_FILTERS.map((item) => <SelectItem key={item.label} value={item.value || ALL_VALUE}>{item.label}</SelectItem>)}
                   </SelectContent>
                 </Select>
@@ -680,7 +680,7 @@ export default function RankingsScreen() {
                 <Button onClick={exportLeaderboardCsv} variant="outline" className="w-full rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1" disabled={!displayRows.length}>
                   <Download data-icon="inline-start" /> Export
                 </Button>
-                <Button onClick={runMetricSync} className="w-full rounded-full bg-[linear-gradient(135deg,#5a7fff,#7ce6ff)] text-black hover:opacity-95" disabled={loading || syncBusy || !ready}>
+                <Button onClick={runMetricSync} className="w-full rounded-full bg-[color:var(--primary)] text-primary-foreground hover:opacity-90 shadow-lg hover:opacity-95" disabled={loading || syncBusy || !ready}>
                   <RefreshCcw data-icon="inline-start" className={syncBusy ? 'animate-spin' : ''} />
                   {syncBusy ? 'Syncing...' : 'Run Sync'}
                 </Button>
@@ -690,7 +690,7 @@ export default function RankingsScreen() {
                 <div className="grid gap-3.5 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:grid-cols-[minmax(0,1fr)_11rem]">
                   <Select value={selectedPresetId || PRESET_NONE} onValueChange={(value) => applyPreset(value === PRESET_NONE ? '' : value)}>
                     <SelectTrigger className="w-full min-w-0 rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1"><SelectValue placeholder="Saved presets" /></SelectTrigger>
-                    <SelectContent className="border-[color:var(--stroke-soft)] bg-[rgba(8,10,16,0.98)] text-tier-1">
+                    <SelectContent className="border-[color:var(--stroke-soft)] bg-popover backdrop-blur-xl shadow-2xl text-tier-1">
                       <SelectItem value={PRESET_NONE}>Saved presets</SelectItem>
                       {presets.map((preset) => <SelectItem key={preset.id} value={preset.id}>{preset.name}</SelectItem>)}
                     </SelectContent>

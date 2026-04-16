@@ -441,7 +441,7 @@ export default function CompareScreen() {
             <Button variant="outline" className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1" onClick={exportCsv} disabled={!result}>
               <Download data-icon="inline-start" /> Export
             </Button>
-            <Button className="rounded-full bg-[linear-gradient(135deg,#5a7fff,#7ce6ff)] text-black hover:opacity-95" onClick={publishToDiscord} disabled={!result || publishing || !ready}>
+            <Button className="rounded-full bg-[color:var(--primary)] text-primary-foreground hover:opacity-90 shadow-lg hover:opacity-95" onClick={publishToDiscord} disabled={!result || publishing || !ready}>
               <Send data-icon="inline-start" /> {publishing ? 'Publishing...' : 'Publish'}
             </Button>
           </>
@@ -457,7 +457,7 @@ export default function CompareScreen() {
             <CompactControlRow>
               <Select value={eventAId || EMPTY_VALUE} onValueChange={(value) => setEventAId(value === EMPTY_VALUE ? '' : value)}>
                 <SelectTrigger className="w-[188px] min-w-[188px] rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1"><SelectValue placeholder="Baseline event" /></SelectTrigger>
-                <SelectContent className="border-[color:var(--stroke-soft)] bg-[rgba(8,10,16,0.98)] text-tier-1">
+                <SelectContent className="border-[color:var(--stroke-soft)] bg-popover backdrop-blur-xl shadow-2xl text-tier-1">
                   <SelectItem value={EMPTY_VALUE}>Baseline event</SelectItem>
                   {events.map((event) => (
                     <SelectItem key={event.id} value={event.id}>{event.name}</SelectItem>
@@ -467,7 +467,7 @@ export default function CompareScreen() {
 
               <Select value={eventBId || EMPTY_VALUE} onValueChange={(value) => setEventBId(value === EMPTY_VALUE ? '' : value)}>
                 <SelectTrigger className="w-[188px] min-w-[188px] rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1"><SelectValue placeholder="Current event" /></SelectTrigger>
-                <SelectContent className="border-[color:var(--stroke-soft)] bg-[rgba(8,10,16,0.98)] text-tier-1">
+                <SelectContent className="border-[color:var(--stroke-soft)] bg-popover backdrop-blur-xl shadow-2xl text-tier-1">
                   <SelectItem value={EMPTY_VALUE}>Current event</SelectItem>
                   {events.map((event) => (
                     <SelectItem key={event.id} value={event.id}>{event.name}</SelectItem>
@@ -475,7 +475,7 @@ export default function CompareScreen() {
                 </SelectContent>
               </Select>
 
-              <Button onClick={() => void loadComparison()} className="rounded-full bg-[linear-gradient(135deg,#5a7fff,#7ce6ff)] text-black hover:opacity-95" disabled={!ready || loading || !eventAId || !eventBId}>
+              <Button onClick={() => void loadComparison()} className="rounded-full bg-[color:var(--primary)] text-primary-foreground hover:opacity-90 shadow-lg hover:opacity-95" disabled={!ready || loading || !eventAId || !eventBId}>
                 <Swords data-icon="inline-start" /> {loading ? 'Running...' : 'Run Compare'}
               </Button>
 
@@ -537,7 +537,7 @@ export default function CompareScreen() {
             <div className="grid gap-6 xl:grid-cols-[minmax(0,1.05fr)_minmax(320px,0.95fr)]">
               <Panel title="Matchup Story" subtitle={`${result.eventA.name} → ${result.eventB.name}`}>
                 <div className="space-y-4">
-                  <div className="rounded-[20px] border border-[color:var(--stroke-soft)] bg-[linear-gradient(145deg,rgba(14,19,31,0.94),rgba(8,11,19,0.92))] p-3 min-[390px]:rounded-[22px] min-[390px]:p-3.5 sm:rounded-[24px] sm:p-4">
+                  <div className="rounded-[20px] surface-2 p-3 min-[390px]:rounded-[22px] min-[390px]:p-3.5 sm:rounded-[24px] sm:p-4">
                     <div className="flex flex-wrap items-start justify-between gap-4">
                       <div>
                         <div className="flex flex-wrap gap-2">
@@ -592,7 +592,7 @@ export default function CompareScreen() {
                         </div>
                         <div className="h-2 overflow-hidden rounded-full bg-[color:var(--surface-4)]">
                           <div
-                            className="h-full rounded-full bg-[linear-gradient(90deg,#5a7fff,#7ce6ff)]"
+                            className="h-full rounded-full bg-[color:var(--primary)] shadow-[0_0_8px_var(--primary)]"
                             style={{ width: `${(entry.value / tierMax) * 100}%` }}
                           />
                         </div>

@@ -559,7 +559,7 @@ export default function ActivityScreen() {
               </Button>
               <Select value={selectedWeekKey || (weeks[0]?.weekKey ?? ALL_VALUE)} onValueChange={(value) => setSelectedWeekKey(value === ALL_VALUE ? '' : value)}>
                 <SelectTrigger className="w-[172px] min-w-[172px] rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1"><SelectValue placeholder="Select week" /></SelectTrigger>
-                <SelectContent className="border-[color:var(--stroke-soft)] bg-[rgba(8,10,16,0.98)] text-tier-1">
+                <SelectContent className="border-[color:var(--stroke-soft)] bg-popover backdrop-blur-xl shadow-2xl text-tier-1">
                   {weeks.length ? weeks.map((week) => (
                     <SelectItem key={week.id} value={week.weekKey}>{week.name}</SelectItem>
                   )) : <SelectItem value={ALL_VALUE}>No weeks available</SelectItem>}
@@ -578,7 +578,7 @@ export default function ActivityScreen() {
                 <div className="grid gap-2.5 sm:grid-cols-2">
                   <Select value={allianceFilter || ALL_VALUE} onValueChange={(value) => setAllianceFilter(value === ALL_VALUE ? '' : value)}>
                     <SelectTrigger className="w-full rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1"><SelectValue placeholder="Alliance" /></SelectTrigger>
-                    <SelectContent className="border-[color:var(--stroke-soft)] bg-[rgba(8,10,16,0.98)] text-tier-1">
+                    <SelectContent className="border-[color:var(--stroke-soft)] bg-popover backdrop-blur-xl shadow-2xl text-tier-1">
                       {ALLIANCE_FILTER_OPTIONS.map((option) => (
                         <SelectItem key={option.label} value={option.value || ALL_VALUE}>{option.label}</SelectItem>
                       ))}
@@ -586,7 +586,7 @@ export default function ActivityScreen() {
                   </Select>
                   <Select value={viewMode} onValueChange={(value) => setViewMode(value as ActivityViewMode)}>
                     <SelectTrigger className="w-full rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1"><SelectValue placeholder="View" /></SelectTrigger>
-                    <SelectContent className="border-[color:var(--stroke-soft)] bg-[rgba(8,10,16,0.98)] text-tier-1">
+                    <SelectContent className="border-[color:var(--stroke-soft)] bg-popover backdrop-blur-xl shadow-2xl text-tier-1">
                       <SelectItem value="cards">Cards</SelectItem>
                       <SelectItem value="table">Table</SelectItem>
                     </SelectContent>
@@ -601,7 +601,7 @@ export default function ActivityScreen() {
                   <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_11rem]">
                     <Select value={selectedPresetId || PRESET_NONE} onValueChange={(value) => applyPreset(value === PRESET_NONE ? '' : value)}>
                       <SelectTrigger className="w-full min-w-0 rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1"><SelectValue placeholder="Saved presets" /></SelectTrigger>
-                      <SelectContent className="border-[color:var(--stroke-soft)] bg-[rgba(8,10,16,0.98)] text-tier-1">
+                      <SelectContent className="border-[color:var(--stroke-soft)] bg-popover backdrop-blur-xl shadow-2xl text-tier-1">
                         <SelectItem value={PRESET_NONE}>Saved presets</SelectItem>
                         {presets.map((preset) => <SelectItem key={preset.id} value={preset.id}>{preset.name}</SelectItem>)}
                       </SelectContent>
@@ -660,7 +660,7 @@ export default function ActivityScreen() {
                               <StatusPill label={`${passPercent}%`} tone={passPercent >= 70 ? 'good' : passPercent >= 45 ? 'warn' : 'bad'} />
                             </div>
                             <div className="h-2 overflow-hidden rounded-full bg-[color:var(--surface-4)]">
-                              <div className="h-full rounded-full bg-[linear-gradient(90deg,#5a7fff,#7ce6ff)]" style={{ width: `${passPercent}%` }} />
+                              <div className="h-full rounded-full bg-[color:var(--primary)] shadow-[0_0_8px_var(--primary)]" style={{ width: `${passPercent}%` }} />
                             </div>
                             <MetricStrip items={[
                               { label: 'Pass', value: alliance.passCount, accent: 'teal' },
@@ -738,7 +738,7 @@ export default function ActivityScreen() {
                 ) : (
                   <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                     {sortedRows.map((row, index) => (
-                      <motion.article key={row.governorDbId} initial={false} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.24, delay: Math.min(index * 0.015, 0.16) }} className="rounded-[20px] border border-[color:var(--stroke-soft)] bg-[rgba(11,15,24,0.92)] p-3 shadow-[0_18px_40px_rgba(0,0,0,0.24)] min-[390px]:rounded-[22px] min-[390px]:p-3.5 sm:rounded-[24px] sm:p-4">
+                      <motion.article key={row.governorDbId} initial={false} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.24, delay: Math.min(index * 0.015, 0.16) }} className="rounded-[20px] surface-2 p-3 min-[390px]:rounded-[22px] min-[390px]:p-3.5 sm:rounded-[24px] sm:p-4">
                         <div className="flex items-center justify-between gap-3">
                           <StatusPill label={`#${index + 1}`} tone="neutral" />
                           <StatusPill label={row.compliance.overall} tone={overallTone(row.compliance.overall)} />

@@ -335,7 +335,7 @@ export default function SettingsPage() {
         subtitle="Configure combat scoring, weekly standards, and Discord delivery."
         actions={
           <Button
-            className="rounded-full bg-[linear-gradient(135deg,#5a7fff,#7ce6ff)] text-black hover:opacity-95"
+            className="rounded-full bg-[color:var(--primary)] text-primary-foreground hover:opacity-90 shadow-lg hover:opacity-95"
             onClick={saveAll}
             disabled={saving || loading}
           >

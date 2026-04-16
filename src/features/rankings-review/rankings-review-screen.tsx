@@ -450,7 +450,7 @@ export default function RankingReviewPage() {
             <SelectTrigger className="w-[196px] min-w-[196px] rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1">
               <SelectValue placeholder="Status Filter" />
             </SelectTrigger>
-            <SelectContent className="border-[color:var(--stroke-soft)] bg-[rgba(8,10,16,0.98)] text-tier-1">
+            <SelectContent className="border-[color:var(--stroke-soft)] bg-popover backdrop-blur-xl shadow-2xl text-tier-1">
               <SelectItem value="UNRESOLVED">Unresolved</SelectItem>
               <SelectItem value="AUTO_LINKED,MANUAL_LINKED">Linked (Auto + Manual)</SelectItem>
               <SelectItem value="REJECTED">Rejected</SelectItem>
@@ -465,7 +465,7 @@ export default function RankingReviewPage() {
             <SelectTrigger className="w-[196px] min-w-[196px] rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1">
               <SelectValue placeholder="Ranking Type" />
             </SelectTrigger>
-            <SelectContent className="border-[color:var(--stroke-soft)] bg-[rgba(8,10,16,0.98)] text-tier-1">
+            <SelectContent className="border-[color:var(--stroke-soft)] bg-popover backdrop-blur-xl shadow-2xl text-tier-1">
               <SelectItem value={ALL_RANKING_TYPE}>All Ranking Types</SelectItem>
               {RANKING_TYPE_FILTERS.filter((option) => option.value).map((option) => (
                 <SelectItem key={option.value} value={option.value}>
@@ -476,7 +476,7 @@ export default function RankingReviewPage() {
           </Select>
 
           <Button
-            className="rounded-full bg-[linear-gradient(135deg,#5a7fff,#7ce6ff)] text-black hover:opacity-95"
+            className="rounded-full bg-[color:var(--primary)] text-primary-foreground hover:opacity-90 shadow-lg hover:opacity-95"
             onClick={() => void loadRows()}
             disabled={loading}
           >
@@ -495,7 +495,7 @@ export default function RankingReviewPage() {
               <SelectTrigger className="w-full rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1">
                 <SelectValue placeholder="Metric Key" />
               </SelectTrigger>
-              <SelectContent className="border-[color:var(--stroke-soft)] bg-[rgba(8,10,16,0.98)] text-tier-1">
+              <SelectContent className="border-[color:var(--stroke-soft)] bg-popover backdrop-blur-xl shadow-2xl text-tier-1">
                 <SelectItem value={ALL_METRIC}>All Metrics</SelectItem>
                 {METRIC_FILTERS.filter((option) => option.value).map((option) => (
                   <SelectItem key={option.value} value={option.value}>

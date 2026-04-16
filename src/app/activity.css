@@ -1,14 +1,15 @@
 .activity-progress-bar {
   height: 8px;
-  background: rgba(18, 28, 41, 0.6);
+  background: var(--surface-4);
   border-radius: 4px;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--stroke-soft);
 }
 
 .activity-progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, #3b82f6 0%, #10b981 100%);
+  background: var(--primary);
+  box-shadow: 0 0 10px var(--primary);
   border-radius: 4px;
   transition: width 0.8s cubic-bezier(0.2, 0.8, 0.2, 1);
 }

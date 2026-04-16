@@ -418,7 +418,7 @@ export default function HomeScreen() {
         ]}
         actions={
           <>
-            <Button asChild className="rounded-full bg-[linear-gradient(135deg,#5a7fff,#7cc9ff)] text-black hover:opacity-95">
+            <Button asChild className="rounded-full bg-[color:var(--primary)] text-primary-foreground hover:opacity-90 shadow-lg hover:opacity-95">
               <Link href="/rankings">
                 <Trophy data-icon="inline-start" />
                 Open Rankings
@@ -461,7 +461,7 @@ export default function HomeScreen() {
                   {podiumRows.map((row, index) => {
                     if (!row) {
                       return (
-                        <Card key={`podium-empty-${index}`} className="border-dashed border-[color:var(--stroke-strong)] bg-[rgba(11,15,24,0.6)]">
+                        <Card key={`podium-empty-${index}`} className="border-dashed border-[color:var(--stroke-strong)] bg-card/60 backdrop-blur-md shadow-lg">
                           <CardContent className="flex flex-col justify-between gap-3 p-3 min-[390px]:p-3.5 sm:p-4">
                             <StatusPill label={`#${index + 1}`} tone="neutral" />
                             <div>
@@ -487,8 +487,8 @@ export default function HomeScreen() {
                         key={row.governorDbId}
                         className={
                           index === 0
-                            ? 'border-[#ffd57d]/18 bg-[linear-gradient(145deg,rgba(29,21,7,0.86),rgba(10,12,18,0.96))]'
-                            : 'border-[color:var(--stroke-soft)] bg-[rgba(11,15,24,0.92)]'
+                            ? 'border-[#ffd57d]/18 surface-2'
+                            : 'surface-2'
                         }
                       >
                         <CardContent className="flex flex-col gap-3 p-3 min-[390px]:p-3.5 sm:p-4">
@@ -512,7 +512,7 @@ export default function HomeScreen() {
                   })}
                 </div>
 
-                <Card className="border-[color:var(--stroke-soft)] bg-[linear-gradient(145deg,rgba(14,18,30,0.98),rgba(8,11,19,0.98))]">
+                <Card className="surface-2">
                   <CardHeader>
                     <CardTitle className="font-heading text-tier-1">Featured Player</CardTitle>
                   </CardHeader>
@@ -584,7 +584,7 @@ export default function HomeScreen() {
                     <StatusPill label={`${weeklyInsights.topAlliance.passRate}%`} tone="good" />
                   </div>
                   <div className="mt-5 h-2 overflow-hidden rounded-full bg-[color:var(--surface-4)]">
-                    <div className="h-full rounded-full bg-[linear-gradient(90deg,#6aa4ff,#8ee7ff)]" style={{ width: `${weeklyInsights.topAlliance.passRate}%` }} />
+                    <div className="h-full rounded-full bg-[color:var(--primary)] shadow-[0_0_8px_var(--primary)]" style={{ width: `${weeklyInsights.topAlliance.passRate}%` }} />
                   </div>
                 </div>
               ) : (
