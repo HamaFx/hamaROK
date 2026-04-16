@@ -60,7 +60,7 @@
   --rok-gold: #ebb34b;
   --rok-amber: #d97706;
   --rok-crimson: #e11d48;
-  --glow-soft: 0 12px 32px rgba(0, 229, 255, 0.08), 0 0 12px rgba(0, 229, 255, 0.04);
+  --glow-soft: 0 8px 24px rgba(0, 229, 255, 0.03), 0 0 8px rgba(0, 229, 255, 0.02);
 
   --radius: 0.75rem;
   --sidebar: #050505;

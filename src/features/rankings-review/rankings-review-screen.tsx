@@ -862,7 +862,35 @@ export default function RankingReviewPage() {
                     </div>
                   ) : null}
 
-                  <div className="mt-3 overflow-x-auto rounded-2xl border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)]">
+                  {/* MOBILE VIEW: Review Cards */}
+                  <div className="mt-4 grid gap-3 md:hidden">
+                    {group.rows.map((row) => {
+                      const draft = drafts[row.id] || defaultRankingReviewDraft;
+                      return (
+                        <RankingReviewItemCard
+                          key={`${row.id}:mobile`}
+                          row={row}
+                          draft={draft}
+                          rankingProfiles={rankingProfiles}
+                          rerunProfileId={rerunProfileByRow[row.id] || ''}
+                          rerunHint={rerunHints[row.id] || null}
+                          busyRow={busyRow}
+                          onUpdateDraft={(field, value) => updateDraft(row.id, field, value)}
+                          onRerunProfileChange={(value) =>
+                            setRerunProfileByRow((prev) => ({
+                              ...prev,
+                              [row.id]: value,
+                            }))
+                          }
+                          onRerun={() => void rerunOcr(row)}
+                          onAction={(action) => void runAction(row, action)}
+                        />
+                      );
+                    })}
+                  </div>
+
+                  {/* DESKTOP VIEW: Legacy Table */}
+                  <div className="mt-3 hidden overflow-x-auto rounded-2xl border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] md:block">
                     <table className="min-w-full text-sm">
                       <thead>
                         <tr className="border-b border-[color:var(--stroke-soft)] text-left text-tier-3">
@@ -1006,32 +1034,34 @@ export default function RankingReviewPage() {
                     </table>
                   </div>
 
-                  {group.rows
-                    .filter((row) => expandedRowId === row.id)
-                    .map((row) => {
-                      const draft = drafts[row.id] || defaultRankingReviewDraft;
-                      return (
-                        <div key={`${row.id}:advanced`} className="mt-4">
-                          <RankingReviewItemCard
-                            row={row}
-                            draft={draft}
-                            rankingProfiles={rankingProfiles}
-                            rerunProfileId={rerunProfileByRow[row.id] || ''}
-                            rerunHint={rerunHints[row.id] || null}
-                            busyRow={busyRow}
-                            onUpdateDraft={(field, value) => updateDraft(row.id, field, value)}
-                            onRerunProfileChange={(value) =>
-                              setRerunProfileByRow((prev) => ({
-                                ...prev,
-                                [row.id]: value,
-                              }))
-                            }
-                            onRerun={() => void rerunOcr(row)}
-                            onAction={(action) => void runAction(row, action)}
-                          />
-                        </div>
-                      );
-                    })}
+                  <div className="hidden md:block">
+                    {group.rows
+                      .filter((row) => expandedRowId === row.id)
+                      .map((row) => {
+                        const draft = drafts[row.id] || defaultRankingReviewDraft;
+                        return (
+                          <div key={`${row.id}:advanced`} className="mt-4">
+                            <RankingReviewItemCard
+                              row={row}
+                              draft={draft}
+                              rankingProfiles={rankingProfiles}
+                              rerunProfileId={rerunProfileByRow[row.id] || ''}
+                              rerunHint={rerunHints[row.id] || null}
+                              busyRow={busyRow}
+                              onUpdateDraft={(field, value) => updateDraft(row.id, field, value)}
+                              onRerunProfileChange={(value) =>
+                                setRerunProfileByRow((prev) => ({
+                                  ...prev,
+                                  [row.id]: value,
+                                }))
+                              }
+                              onRerun={() => void rerunOcr(row)}
+                              onAction={(action) => void runAction(row, action)}
+                            />
+                          </div>
+                        );
+                      })}
+                  </div>
                 </article>
               ))}
             </div>

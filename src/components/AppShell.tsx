@@ -251,7 +251,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="relative min-h-screen overflow-x-hidden bg-background text-foreground">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,color-mix(in_oklab,var(--tone-teal)_12%,transparent),transparent_45%),radial-gradient(circle_at_bottom_right,color-mix(in_oklab,var(--tone-teal)_10%,transparent),transparent_35%)]" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,color-mix(in_oklab,var(--tone-teal)_4%,transparent),transparent_40%),radial-gradient(circle_at_bottom_right,color-mix(in_oklab,var(--tone-teal)_3%,transparent),transparent_30%)]" />
       <header className="sticky top-2 sm:top-4 z-30 mx-auto w-[calc(100%-1rem)] max-w-[1600px] rounded-[24px] glass-panel shadow-[0_8px_32px_rgba(0,0,0,0.5)] transition-all duration-300 sm:w-[calc(100%-3rem)] lg:top-6">
         <div className="mx-auto flex w-full items-center justify-between gap-2 px-3 py-3 min-[390px]:gap-4 min-[390px]:px-4 min-[390px]:py-3.5 sm:px-6 lg:px-8">
           <div className="flex min-w-0 items-center gap-2.5 min-[390px]:gap-4">
