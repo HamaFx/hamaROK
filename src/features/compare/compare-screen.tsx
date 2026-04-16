@@ -527,7 +527,7 @@ export default function CompareScreen() {
 
         {!loading && result ? (
           <>
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
               <KpiCard label="Governors Compared" value={result.summary.totalGovernors} hint="Players found in both selected snapshots" tone="info" icon={<Users className="size-5" />} />
               <KpiCard label="Average Score" value={`${result.summary.avgWarriorScore}%`} hint="Warrior score across all matched players" tone="good" icon={<Sparkles className="size-5" />} animated={false} />
               <KpiCard label="Deadweight Flags" value={result.summary.deadweightCount} hint="Players with major power loss and weak combat output" tone={result.summary.deadweightCount ? 'bad' : 'neutral'} icon={<TrendingDown className="size-5" />} />

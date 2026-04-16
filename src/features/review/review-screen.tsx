@@ -531,7 +531,7 @@ export default function ReviewQueuePage() {
           <CompactAlert title="Queue Update" description={actionNotice} tone="info" />
         ) : null}
 
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
           <KpiCard label="Queue Total" value={summary.total} hint="Rows in current queue filter" tone="info" />
           <KpiCard label="High Severity" value={summary.high} hint="Likely correction needed" tone="bad" />
           <KpiCard label="Medium Severity" value={summary.medium} hint="Validate before approve" tone="warn" />
@@ -539,7 +539,7 @@ export default function ReviewQueuePage() {
         </div>
 
         {metricsSummary ? (
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4">
             <KpiCard
               label="Low-Confidence Rate"
               value={`${Math.round(metricsSummary.lowConfidenceRate * 100)}%`}

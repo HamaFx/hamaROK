@@ -97,6 +97,37 @@ interface WeeklyEventInfo {
   isClosed?: boolean;
 }
 
+interface ActivityRow {
+  governorDbId: string;
+  governorId: string;
+  governorName: string;
+  allianceTag: string;
+  allianceLabel: string;
+  contributionPoints: string;
+  fortDestroying: string;
+  powerGrowth: string | null;
+  killPointsGrowth: string | null;
+  currentPower: string;
+  previousPower: string;
+  currentKillPoints: string;
+  previousKillPoints: string;
+  powerBaselineReady: boolean;
+  killPointsBaselineReady: boolean;
+  standards: {
+    contributionPoints: string | null;
+    fortDestroying: string | null;
+    powerGrowth: string | null;
+    killPointsGrowth: string | null;
+  };
+  compliance: {
+    contributionPoints: 'PASS' | 'FAIL' | 'NO_STANDARD' | 'NO_BASELINE';
+    fortDestroying: 'PASS' | 'FAIL' | 'NO_STANDARD' | 'NO_BASELINE';
+    powerGrowth: 'PASS' | 'FAIL' | 'NO_STANDARD' | 'NO_BASELINE';
+    killPointsGrowth: 'PASS' | 'FAIL' | 'NO_STANDARD' | 'NO_BASELINE';
+    overall: 'PASS' | 'FAIL' | 'PARTIAL' | 'NO_STANDARD';
+  };
+}
+
 interface WeeklyActivitySummary {
   membersTracked: number;
   unresolvedIdentityCount?: number;
@@ -125,6 +156,7 @@ interface WeeklyActivityResponse {
     name: string;
     startsAt: string | null;
   };
+  rows: ActivityRow[];
   summary: WeeklyActivitySummary;
 }
 
@@ -749,8 +781,9 @@ export default function RankingsScreen() {
                 return (
                   <article
                     key={row.id}
-                    className={`group flex flex-col gap-3 rounded-2xl border border-white/5 bg-card p-3 shadow-lg transition-colors hover:bg-white/5 sm:flex-row sm:items-center sm:p-4 ${isConflict ? 'border-none ring-1 ring-amber-400/20 bg-amber-400/5' : ''}`}
+                    className={`group flex flex-col gap-3 rounded-2xl border border-white/5 bg-card p-3 shadow-lg transition-colors hover:bg-white/5 sm:p-4 ${isConflict ? 'border-none ring-1 ring-amber-400/20 bg-amber-400/5' : ''}`}
                   >
+                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                     <div className="flex items-center gap-3 sm:w-[45%]">
                       <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border font-heading text-lg font-bold ${rankColor} ${rankGlow}`}>
                         {row.stableRank}
@@ -798,6 +831,34 @@ export default function RankingsScreen() {
                         )}
                       </div>
                     </div>
+                   </div>
+
+                   {weeklyActivity?.rows && weeklyActivity.rows.find(r => r.governorId === row.linkedGovernorId) && (() => {
+                     const match = weeklyActivity.rows.find(r => r.governorId === row.linkedGovernorId)!;
+                     return (
+                       <div className="mt-2 grid grid-cols-3 gap-2 rounded-xl bg-white/5 p-3 sm:flex sm:justify-end sm:gap-6">
+                         <div className="flex flex-col">
+                           <span className="text-[10px] font-medium uppercase tracking-wider text-tier-3">Weekly KP</span>
+                           <span className={`font-heading text-sm font-bold ${match.killPointsGrowth && BigInt(match.killPointsGrowth) > 0 ? 'text-emerald-400' : 'text-tier-2'}`}>
+                             {match.killPointsGrowth ? '+' + formatMetric(match.killPointsGrowth) : 'N/A'}
+                           </span>
+                         </div>
+                         <div className="flex flex-col">
+                           <span className="text-[10px] font-medium uppercase tracking-wider text-tier-3">Forts</span>
+                           <span className="font-heading text-sm font-bold text-tier-2">
+                             {formatMetric(match.fortDestroying)}
+                           </span>
+                         </div>
+                         <div className="flex flex-col">
+                           <span className="text-[10px] font-medium uppercase tracking-wider text-tier-3">Power Growth</span>
+                           <span className={`font-heading text-sm font-bold ${match.powerGrowth && BigInt(match.powerGrowth) > 0 ? 'text-emerald-400' : match.powerGrowth && BigInt(match.powerGrowth) < 0 ? 'text-rose-400' : 'text-tier-2'}`}>
+                             {match.powerGrowth ? (BigInt(match.powerGrowth) > 0 ? '+' : '') + formatMetric(match.powerGrowth) : 'N/A'}
+                           </span>
+                         </div>
+                       </div>
+                     );
+                   })()}
+
                   </article>
                 );
               })}

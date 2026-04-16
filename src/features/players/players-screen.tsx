@@ -522,7 +522,7 @@ export default function PlayersScreen() {
       <SessionGate ready={ready} loading={sessionLoading} error={sessionError} onRetry={() => void refreshSession()}>
         {error ? <InlineError message={error} /> : null}
 
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
           <KpiCard label="Tracked Players" value={kpis.tracked} hint="Roster identities indexed in this workspace" tone="info" icon={<Users className="size-5" />} />
           <KpiCard label="Visible in Directory" value={kpis.visible} hint="Rows after current alliance and search filters" tone="neutral" icon={<Search className="size-5" />} />
           <KpiCard label="Avg Snapshots" value={kpis.avgSnapshots} hint="Average snapshot depth across the visible roster" tone="good" icon={<LineChart className="size-5" />} />

@@ -197,7 +197,7 @@ export default function EventDetailScreen() {
           />
         ) : (
           <>
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4">
               <KpiCard label="Snapshots" value={event.snapshots.length} hint="Governor rows in this event" tone="info" />
               <KpiCard
                 label="Verified Rows"

@@ -348,7 +348,7 @@ export default function SettingsPage() {
       <SessionGate ready={workspaceReady} loading={sessionLoading} error={sessionError}>
         {message && message.type === 'error' ? <InlineError message={message.text} /> : null}
 
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
           <KpiCard label="T4 Weight" value={config.t4Weight} hint="Kill score multiplier" tone="info" />
           <KpiCard label="T5 Weight" value={config.t5Weight} hint="Kill score multiplier" tone="warn" />
           <KpiCard label="Dead Weight" value={config.deadWeight} hint="Commitment multiplier" tone="good" />

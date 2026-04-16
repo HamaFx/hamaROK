@@ -197,10 +197,10 @@ export function KpiCard({
   const activeDensity = resolveDensity(density, compact);
   const bodyDensity =
     activeDensity === 'comfortable'
-      ? 'p-3.5 min-[390px]:p-4 sm:p-5'
+      ? 'p-3.5 sm:p-4'
       : activeDensity === 'compact'
-        ? 'p-2.5 min-[390px]:p-3 sm:p-3.5'
-        : 'p-3 min-[390px]:p-3.5 sm:p-4';
+        ? 'p-2.5 sm:p-3'
+        : 'p-3 sm:p-3.5';
 
   const valueDensity =
     activeDensity === 'comfortable'
@@ -211,19 +211,15 @@ export function KpiCard({
 
   return (
     <Card className={cn('overflow-hidden', toneClasses(tone))}>
-      <CardContent className={bodyDensity}>
-        <div className="flex items-start justify-between gap-4">
-          <div className="space-y-2">
-            <p className="chip-label text-xs font-medium text-tier-3">{label}</p>
-            <p className={cn('font-heading font-semibold tracking-tight text-tier-1', valueDensity)}>
-              {animated && typeof value === 'number' ? <AnimatedCounter value={value} /> : value}
-            </p>
-            {hint ? <p className="text-xs leading-5 text-tier-3 min-[390px]:text-[13px]">{hint}</p> : null}
-          </div>
-          {icon ? (
-            <div className="rounded-xl border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] p-1.5 text-tier-2 min-[390px]:p-2">{icon}</div>
-          ) : null}
+      <CardContent className={cn('flex h-full flex-col gap-2 relative', bodyDensity)}>
+        <div className="flex items-center justify-between gap-2">
+          <p className="chip-label text-[10px] font-medium uppercase tracking-wider text-tier-3">{label}</p>
+          {icon ? <div className="text-tier-2 opacity-50 [&>svg]:size-4 sm:[&>svg]:size-5">{icon}</div> : null}
         </div>
+        <p className={cn('font-heading font-semibold tracking-tight text-tier-1 mt-1', valueDensity)}>
+          {animated && typeof value === 'number' ? <AnimatedCounter value={value} /> : value}
+        </p>
+        {hint ? <p className="mt-auto pt-2 text-[11px] leading-snug text-tier-3 opacity-80">{hint}</p> : null}
       </CardContent>
     </Card>
   );
@@ -242,9 +238,9 @@ export function MetricStrip({
   } as const;
 
   return (
-    <div className="grid gap-2 sm:flex sm:flex-wrap sm:gap-2.5">
+    <div className="flex flex-wrap gap-2">
       {items.map((item) => (
-        <div key={item.label} className="flex w-full min-w-0 items-center justify-between gap-3 rounded-full border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] px-3 py-1.5 text-xs text-tier-3 min-[390px]:px-3.5 min-[390px]:text-[13px] sm:inline-flex sm:w-auto sm:justify-start sm:text-sm">
+        <div key={item.label} className="inline-flex min-w-0 items-center justify-start gap-2 rounded-lg border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] px-3 py-1.5 text-xs text-tier-3 sm:text-sm">
           <span className="shrink-0">{item.label}</span>
           <strong className={cn('min-w-0 truncate font-medium text-tier-1', item.accent ? accentMap[item.accent] : null)}>{item.value}</strong>
         </div>

@@ -630,7 +630,7 @@ export default function ActivityScreen() {
 
         {data ? (
           <>
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
               <KpiCard label="Tracked Players" value={kpis.total} hint="Members with activity rows this week" tone="info" icon={<Activity className="size-5" />} />
               <KpiCard label="Pass Rate" value={`${kpis.passRate}%`} hint={`${kpis.pass} pass / ${kpis.total} scored`} tone="good" icon={<CheckCircle2 className="size-5" />} animated={false} />
               <KpiCard label="Fails" value={kpis.fail} hint="Below the current alliance standards" tone={kpis.fail > 0 ? 'bad' : 'good'} icon={<XCircle className="size-5" />} />

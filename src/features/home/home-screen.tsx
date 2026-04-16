@@ -565,7 +565,7 @@ export default function HomeScreen() {
 
           <motion.div initial={false} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, delay: 0.03 }} className="space-y-4 sm:space-y-5">
             <Panel title="Week Pulse" subtitle="A compact read on the current board state.">
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid grid-cols-2 gap-3 md:gap-4">
                 <KpiCard label="Tracked Players" value={weeklyActivity?.summary.membersTracked ?? 0} hint="Rows in the active weekly board" tone="info" icon={<Users className="size-5" />} />
                 <KpiCard label="Pass Rate" value={weeklyInsights ? `${weeklyInsights.overallPassRate}%` : '—'} hint={`${weeklyInsights?.totalPass ?? 0} pass / ${weeklyInsights?.totalMembers ?? 0} scored`} tone="good" icon={<ShieldCheck className="size-5" />} animated={false} />
                 <KpiCard label="Total Contribution" value={weeklyInsights ? formatCompactNumber(weeklyInsights.totalContribution) : '—'} hint="Contribution captured this week" tone="warn" icon={<Sparkles className="size-5" />} animated={false} />

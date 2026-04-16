@@ -239,7 +239,7 @@ export default function InsightsPage() {
 
         {analytics?.selectedComparison ? (
           <>
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4">
               <KpiCard
                 label="Compared Governors"
                 value={analytics.selectedComparison.summary.totalGovernors}

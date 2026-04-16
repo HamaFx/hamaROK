@@ -527,7 +527,7 @@ export default function RankingReviewPage() {
 
         {error ? <InlineError message={error} /> : null}
 
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
           <KpiCard label="Rows in View" value={rows.length} hint="Filtered review rows" tone="info" />
           <KpiCard label="Unresolved" value={summary.unresolved} hint="Needs manual identity action" tone="warn" />
           <KpiCard label="Linked" value={summary.linked} hint="Auto/manual links ready" tone="good" />

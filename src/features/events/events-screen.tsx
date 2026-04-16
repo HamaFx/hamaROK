@@ -219,7 +219,7 @@ export default function EventsPage() {
       <SessionGate ready={workspaceReady} loading={sessionLoading} error={sessionError} onRetry={() => void fetchEvents()}>
         {error ? <InlineError message={error} /> : null}
 
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4">
           <KpiCard label="Total Events" value={events.length} hint="Tracked event checkpoints" tone="info" />
           <KpiCard label="KvK Events" value={kvkCount} hint="Events tagged with KvK type" tone="warn" />
           <KpiCard
