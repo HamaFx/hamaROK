@@ -906,6 +906,7 @@ export default function PlayersScreen() {
             sortDir={sortDir}
             stickyFirst
             dense
+            mobileCards={false}
             emptyLabel={debouncedSearch ? `No players matching "${debouncedSearch}"` : 'No players found.'}
             density="compact"
           />
