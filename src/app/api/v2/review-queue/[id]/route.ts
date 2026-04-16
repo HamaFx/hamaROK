@@ -631,11 +631,15 @@ export async function PATCH(
           const currentPowerDigits = approvedPayload.power.toString();
           const currentKillPointsDigits = approvedPayload.killPoints.toString();
           let samePairCount = 0;
+          let sameKillPointsCount = 0;
           for (const peer of approvedPeers) {
             const peerPower = extractNormalizedNumericField(peer.normalized, 'power');
             const peerKillPoints = extractNormalizedNumericField(peer.normalized, 'killPoints');
             if (peerPower === currentPowerDigits && peerKillPoints === currentKillPointsDigits) {
               samePairCount += 1;
+            }
+            if (peerKillPoints && peerKillPoints === currentKillPointsDigits) {
+              sameKillPointsCount += 1;
             }
           }
 
@@ -643,6 +647,17 @@ export async function PATCH(
             shouldSyncProfileMetrics = false;
             syncSkipReason =
               'Profile metrics were not synced: repeated identical power/kill points were detected across this upload batch.';
+          }
+
+          if (
+            shouldSyncProfileMetrics &&
+            approvedPayload.killPoints > BigInt(0) &&
+            currentKillPointsDigits.length >= 4 &&
+            sameKillPointsCount >= 2
+          ) {
+            shouldSyncProfileMetrics = false;
+            syncSkipReason =
+              'Profile metrics were not synced: repeated identical kill points were detected across this upload batch.';
           }
         }
 

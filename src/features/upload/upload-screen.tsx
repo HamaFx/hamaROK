@@ -189,8 +189,19 @@ export default function UploadPage() {
         });
 
         setEntries((prev) => {
-          const uploading = prev.filter((entry) => entry.status === 'uploading' && !entry.taskId);
-          return [...uploading, ...fromTasks];
+          const localOnlyRows = prev.filter((entry) => !entry.taskId);
+          const fetchedTaskIds = new Set(
+            fromTasks
+              .map((entry) => entry.taskId)
+              .filter((taskId): taskId is string => typeof taskId === 'string' && taskId.length > 0)
+          );
+          const inFlightMissingFromPoll = prev.filter(
+            (entry) =>
+              Boolean(entry.taskId) &&
+              !fetchedTaskIds.has(entry.taskId as string) &&
+              (entry.status === 'uploading' || entry.status === 'queued' || entry.status === 'processing')
+          );
+          return [...localOnlyRows, ...inFlightMissingFromPoll, ...fromTasks];
         });
 
         const completed = rows.filter((row) => row.status === 'COMPLETED').length;
@@ -336,6 +347,7 @@ export default function UploadPage() {
       scanJobId: string;
       eventId: string | null;
       file: File;
+      rowId: string;
       artifactUrl: string;
     }) => {
       const res = await fetch(`/api/v2/scan-jobs/${args.scanJobId}/artifacts`, {
@@ -351,7 +363,7 @@ export default function UploadPage() {
           artifactType: 'SCREENSHOT',
           fileName: args.file.name,
           bytes: args.file.size,
-          idempotencyKey: `task-${args.scanJobId}-${args.file.name}-${args.file.size}`,
+          idempotencyKey: `task-${args.scanJobId}-${args.rowId}`,
         }),
       });
 
@@ -421,6 +433,7 @@ export default function UploadPage() {
               scanJobId: job.id,
               eventId: job.eventId || activeWeekly?.id || null,
               file,
+              rowId,
               artifactUrl,
             });
 

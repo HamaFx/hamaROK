@@ -848,9 +848,10 @@ def _extract_label_value(
         if value:
             return value, conf
 
-    # For optional combat sub-metrics (T4/T5/DEAD), avoid global "best number" fallback.
-    # If a label/anchor was not detected we prefer an empty value over random digits.
-    allow_global_fallback = ('POWER' in keyword_upper) or ('KILL POINT' in keyword_upper)
+    # For kill points and optional combat sub-metrics (T4/T5/DEAD), avoid
+    # global "best number" fallback. If a label/anchor was not detected we
+    # prefer an empty value over random digits.
+    allow_global_fallback = ('POWER' in keyword_upper)
     if not allow_global_fallback:
         return '', 0.0
 
