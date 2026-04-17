@@ -2563,22 +2563,33 @@ export async function bulkApplyRankingReviewAction(args: {
   eventId?: string | null;
 }) {
   return prisma.$transaction(async (tx) => {
-    const statuses =
+    const candidateStatuses =
       args.mode === 'ACCEPT_LINKED'
-        ? [RankingIdentityStatus.AUTO_LINKED, RankingIdentityStatus.MANUAL_LINKED]
+        ? [RankingIdentityStatus.AUTO_LINKED, RankingIdentityStatus.MANUAL_LINKED, RankingIdentityStatus.UNRESOLVED]
         : [RankingIdentityStatus.UNRESOLVED];
 
-    const targets = await tx.rankingRow.findMany({
+    const rows = await tx.rankingRow.findMany({
       where: {
         workspaceId: args.workspaceId,
-        identityStatus: { in: statuses },
+        identityStatus: { in: candidateStatuses },
         ...(args.eventId ? { run: { eventId: args.eventId } } : {}),
       },
       select: {
         id: true,
         runId: true,
+        identityStatus: true,
+        candidates: true,
       },
-      take: 500,
+      take: 250, // Process in chunks to avoid timeout
+    });
+
+    const targets = rows.filter((row) => {
+      if (args.mode === 'REJECT_ALL_UNRESOLVED') return true;
+      if (row.identityStatus !== RankingIdentityStatus.UNRESOLVED) return true;
+      
+      // For UNRESOLVED rows in ACCEPT_LINKED mode, they must have at least one suggestion
+      const suggestions = parseIdentitySuggestions(row.candidates);
+      return suggestions.length > 0;
     });
 
     if (targets.length === 0) {
@@ -2602,3 +2613,4 @@ export async function bulkApplyRankingReviewAction(args: {
     };
   });
 }
+
