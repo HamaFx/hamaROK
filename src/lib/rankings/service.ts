@@ -2572,7 +2572,7 @@ export async function archiveStaleRankingRuns(args: {
 export async function bulkApplyRankingReviewAction(args: {
   workspaceId: string;
   changedByLinkId: string;
-  mode: 'ACCEPT_LINKED' | 'REJECT_ALL_UNRESOLVED';
+  mode: 'ACCEPT_LINKED' | 'REJECT_ALL_UNRESOLVED' | 'REJECT_ALL_NON_REJECTED';
   eventId?: string | null;
 }) {
   const candidateStatuses =
@@ -2582,6 +2582,12 @@ export async function bulkApplyRankingReviewAction(args: {
           RankingIdentityStatus.MANUAL_LINKED,
           RankingIdentityStatus.UNRESOLVED,
         ]
+      : args.mode === 'REJECT_ALL_NON_REJECTED'
+        ? [
+            RankingIdentityStatus.UNRESOLVED,
+            RankingIdentityStatus.AUTO_LINKED,
+            RankingIdentityStatus.MANUAL_LINKED,
+          ]
       : [RankingIdentityStatus.UNRESOLVED];
 
   const where: Prisma.RankingRowWhereInput = {
@@ -2623,7 +2629,10 @@ export async function bulkApplyRankingReviewAction(args: {
     if (rows.length === 0) break;
 
     for (const row of rows) {
-      if (args.mode === 'REJECT_ALL_UNRESOLVED') {
+      if (
+        args.mode === 'REJECT_ALL_UNRESOLVED' ||
+        args.mode === 'REJECT_ALL_NON_REJECTED'
+      ) {
         await applyRankingReviewAction({
           workspaceId: args.workspaceId,
           rowId: row.id,

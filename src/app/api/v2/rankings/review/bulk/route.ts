@@ -9,7 +9,7 @@ import { rankingRunCacheTag, workspaceCacheTags } from '@/lib/cache-scopes';
 
 const bulkSchema = z.object({
   workspaceId: z.string().min(1),
-  mode: z.enum(['ACCEPT_LINKED', 'REJECT_ALL_UNRESOLVED']),
+  mode: z.enum(['ACCEPT_LINKED', 'REJECT_ALL_UNRESOLVED', 'REJECT_ALL_NON_REJECTED']),
   eventId: z.string().optional().nullable(),
 });
 

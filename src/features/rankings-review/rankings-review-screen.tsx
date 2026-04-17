@@ -150,6 +150,7 @@ export default function RankingReviewPage() {
   const [busyRow, setBusyRow] = useState<string | null>(null);
   const [searchBusyRow, setSearchBusyRow] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const rankingProfiles = useMemo(() => {
     const rankboardOnly = profiles.filter((profile) => profile.archetype === 'rankboard');
@@ -164,6 +165,7 @@ export default function RankingReviewPage() {
 
     setLoading(true);
     setError(null);
+    setNotice(null);
 
     try {
       const params = new URLSearchParams({
@@ -565,16 +567,9 @@ export default function RankingReviewPage() {
       if (!workspaceReady || !accessToken) return;
 
       if (!group) {
-        // GLOBAL ACTION: Use server-side bulk endpoint for absolute reliability
-        const confirmed = window.confirm(
-          mode === 'accept_linked'
-            ? 'Accept ALL linked and suggested rows across the entire queue? This will finalize all identifiable governors.'
-            : 'Reject all currently UNRESOLVED rows? This will clear the unresolved queue for the current event/workspace.'
-        );
-        if (!confirmed) return;
-
         setBusyRow(`bulk:${mode}`);
         setError(null);
+        setNotice(null);
 
         try {
           const res = await fetch('/api/v2/rankings/review/bulk', {
@@ -585,17 +580,22 @@ export default function RankingReviewPage() {
             },
             body: JSON.stringify({
               workspaceId,
-              mode: mode === 'accept_linked' ? 'ACCEPT_LINKED' : 'REJECT_ALL_UNRESOLVED',
+              mode: mode === 'accept_linked' ? 'ACCEPT_LINKED' : 'REJECT_ALL_NON_REJECTED',
             }),
           });
 
           const payload = await res.json();
           if (!res.ok) throw new Error(payload?.error?.message || 'Bulk action failed.');
-          
+
           if (payload?.data?.count === 0) {
-             alert('No rows found matching the criteria for this bulk action.');
+            setNotice(
+              mode === 'accept_linked'
+                ? 'No linked or suggested rows were found for bulk accept.'
+                : 'No non-rejected rows were found for bulk reject.'
+            );
           } else {
-             alert(`Successfully processed ${payload.data.count} rows.`);
+            const suffix = payload.data.count === 1 ? '' : 's';
+            setNotice(`Processed ${payload.data.count} row${suffix}.`);
           }
 
           await loadRows();
@@ -853,6 +853,11 @@ export default function RankingReviewPage() {
         </CompactControlRow>
 
         {error ? <InlineError message={error} /> : null}
+        {!error && notice ? (
+          <p className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-100">
+            {notice}
+          </p>
+        ) : null}
 
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
           <KpiCard label="Screenshots" value={visibleGroups.length} hint="Grouped by run" tone="info" />
