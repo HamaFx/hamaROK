@@ -401,12 +401,14 @@ def _strip_known_alliance_prefix(value: str) -> str:
                 loose_parts.append(char)
         loose_tag = r'[^A-Za-z0-9]*'.join(loose_parts)
         loose_prefix = re.match(
-            rf'^{loose_tag}[\s._\-:|/\\]+(.+)$',
+            rf'^{loose_tag}(.+)$',
             normalized,
             flags=re.IGNORECASE,
         )
         if loose_prefix and loose_prefix.group(1):
-            return _sanitize_printable(loose_prefix.group(1), 64)
+            remainder = str(loose_prefix.group(1) or '').lstrip(' ._-:|/' + chr(92))
+            if remainder:
+                return _sanitize_printable(remainder, 64)
 
     return normalized
 
