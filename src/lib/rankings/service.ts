@@ -2572,7 +2572,11 @@ export async function archiveStaleRankingRuns(args: {
 export async function bulkApplyRankingReviewAction(args: {
   workspaceId: string;
   changedByLinkId: string;
-  mode: 'ACCEPT_LINKED' | 'REJECT_ALL_UNRESOLVED' | 'REJECT_ALL_NON_REJECTED';
+  mode:
+    | 'ACCEPT_LINKED'
+    | 'REJECT_ALL_UNRESOLVED'
+    | 'REJECT_ALL_NON_REJECTED'
+    | 'REJECT_AND_DELETE_ALL';
   eventId?: string | null;
   runId?: string | null;
 }) {
@@ -2589,6 +2593,13 @@ export async function bulkApplyRankingReviewAction(args: {
             RankingIdentityStatus.AUTO_LINKED,
             RankingIdentityStatus.MANUAL_LINKED,
           ]
+      : args.mode === 'REJECT_AND_DELETE_ALL'
+        ? [
+            RankingIdentityStatus.UNRESOLVED,
+            RankingIdentityStatus.AUTO_LINKED,
+            RankingIdentityStatus.MANUAL_LINKED,
+            RankingIdentityStatus.REJECTED,
+          ]
       : [RankingIdentityStatus.UNRESOLVED];
 
   const runWhere: Prisma.RankingRunWhereInput = {
@@ -2603,6 +2614,7 @@ export async function bulkApplyRankingReviewAction(args: {
   };
 
   const runIds = new Set<string>();
+  const rejectedRowIdsToDelete: string[] = [];
   let count = 0;
   let cursorId: string | null = null;
 
@@ -2650,6 +2662,20 @@ export async function bulkApplyRankingReviewAction(args: {
         continue;
       }
 
+      if (args.mode === 'REJECT_AND_DELETE_ALL') {
+        if (row.identityStatus !== RankingIdentityStatus.REJECTED) {
+          await applyRankingReviewAction({
+            workspaceId: args.workspaceId,
+            rowId: row.id,
+            changedByLinkId: args.changedByLinkId,
+            action: RankingRowReviewAction.REJECT_ROW,
+          });
+        }
+        rejectedRowIdsToDelete.push(row.id);
+        runIds.add(row.runId);
+        continue;
+      }
+
       let governorDbId: string | undefined;
       let governorGameId: string | undefined;
 
@@ -2684,6 +2710,20 @@ export async function bulkApplyRankingReviewAction(args: {
 
     cursorId = rows[rows.length - 1]?.id ?? null;
     if (rows.length < 200) break;
+  }
+
+  if (args.mode === 'REJECT_AND_DELETE_ALL' && rejectedRowIdsToDelete.length > 0) {
+    // Keep delete batches small for predictable transaction latency.
+    for (let i = 0; i < rejectedRowIdsToDelete.length; i += 200) {
+      const batch = rejectedRowIdsToDelete.slice(i, i + 200);
+      const result = await prisma.rankingRow.deleteMany({
+        where: {
+          workspaceId: args.workspaceId,
+          id: { in: batch },
+        },
+      });
+      count += result.count;
+    }
   }
 
   return {

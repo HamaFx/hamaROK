@@ -581,7 +581,7 @@ export default function RankingReviewPage() {
           },
           body: JSON.stringify({
             workspaceId,
-            mode: mode === 'accept_linked' ? 'ACCEPT_LINKED' : 'REJECT_ALL_NON_REJECTED',
+            mode: mode === 'accept_linked' ? 'ACCEPT_LINKED' : 'REJECT_AND_DELETE_ALL',
             runId: group?.runId || undefined,
           }),
         });
@@ -594,18 +594,22 @@ export default function RankingReviewPage() {
           setNotice(
             isGroupedAction
               ? mode === 'reject_all'
-                ? 'All rows in this screenshot are already rejected.'
+                ? 'No rows were available to reject/delete in this screenshot.'
                 : 'No linked or suggested rows were found in this screenshot.'
               : mode === 'accept_linked'
                 ? 'No linked or suggested rows were found for bulk accept.'
-                : 'No non-rejected rows were found for bulk reject.'
+                : 'No rows were available for bulk reject/delete.'
           );
         } else {
           const suffix = processedCount === 1 ? '' : 's';
           setNotice(
             isGroupedAction
-              ? `Processed ${processedCount} row${suffix} in this screenshot.`
-              : `Processed ${processedCount} row${suffix}.`
+              ? mode === 'reject_all'
+                ? `Rejected and deleted ${processedCount} row${suffix} in this screenshot.`
+                : `Processed ${processedCount} row${suffix} in this screenshot.`
+              : mode === 'reject_all'
+                ? `Rejected and deleted ${processedCount} row${suffix}.`
+                : `Processed ${processedCount} row${suffix}.`
           );
         }
 
@@ -826,7 +830,7 @@ export default function RankingReviewPage() {
                       Array.isArray(row.identitySuggestions) &&
                       row.identitySuggestions.length > 0)
                 );
-                const hasRejectableRows = group.rows.some((row) => row.identityStatus !== 'REJECTED');
+                const hasRowsToDelete = group.rows.length > 0;
 
                 return (
                 <article
@@ -879,10 +883,10 @@ export default function RankingReviewPage() {
                           variant="outline"
                           className="h-8 rounded-lg border-rose-500/20 bg-rose-500/5 text-rose-400 hover:bg-rose-500/10 hover:text-rose-300 font-bold text-[11px] uppercase tracking-wider"
                           onClick={() => void runBulkAction('reject_all', group)}
-                          disabled={!!busyRow || !hasRejectableRows}
+                          disabled={!!busyRow || !hasRowsToDelete}
                         >
                           <Trash2 className="mr-1.5 size-3.5" />
-                          {hasRejectableRows ? 'Reject All' : 'All Rejected'}
+                          {hasRowsToDelete ? 'Reject All' : 'No Rows'}
                         </Button>
                       </div>
 
