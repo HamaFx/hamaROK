@@ -35,6 +35,42 @@ function uniqueSuggestions(
   return [...map.values()];
 }
 
+function loosenDisplayName(value: string): string {
+  return String(value || '')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/([A-Za-z])([0-9])/g, '$1 $2')
+    .replace(/([0-9])([A-Za-z])/g, '$1 $2')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function buildGovernorNameSearchNeedles(displayName: string): string[] {
+  const variants = new Set<string>();
+  const direct = normalizeGovernorDisplayName(displayName);
+  if (direct.length >= 2) variants.add(direct);
+
+  const loose = normalizeGovernorDisplayName(loosenDisplayName(displayName));
+  if (loose.length >= 2) variants.add(loose);
+
+  const firstToken = loose.split(/\s+/)[0]?.trim() || '';
+  if (firstToken.length >= 3) variants.add(firstToken);
+
+  const compact = direct.replace(/[^A-Za-z0-9]/g, '');
+  if (compact.length >= 4) {
+    variants.add(compact.slice(0, 4));
+  }
+
+  const needles = new Set<string>();
+  for (const variant of variants) {
+    needles.add(variant);
+    const prefix = variant.slice(0, Math.min(12, variant.length)).trim();
+    if (prefix.length >= 2) needles.add(prefix);
+  }
+
+  return [...needles];
+}
+
 export async function resolveRankingIdentity(
   tx: DbClient,
   args: {
@@ -100,25 +136,39 @@ export async function resolveRankingIdentity(
     };
   }
 
+  const generatedNeedles = buildGovernorNameSearchNeedles(displayName);
+  const fallbackNeedle = (displayName || candidateAliases[0] || '')
+    .replace(/[^A-Za-z0-9]/g, '')
+    .slice(0, 4);
+  const nameSearchNeedles =
+    generatedNeedles.length > 0
+      ? generatedNeedles
+      : fallbackNeedle.length >= 2
+        ? [fallbackNeedle]
+        : [];
+
+  if (nameSearchNeedles.length === 0) {
+    return {
+      status: RankingIdentityStatus.UNRESOLVED,
+      governorId: null,
+      governorGameId: null,
+      reason: 'empty-search-needle',
+      normalizedName,
+      suggestions: aliasCandidates,
+    };
+  }
+
   const nameMatches = await tx.governor.findMany({
     where: {
       workspaceId: args.workspaceId,
-      OR: [
-        {
-          name: {
-            equals: displayName,
-            mode: 'insensitive',
-          },
+      OR: nameSearchNeedles.map((needle) => ({
+        name: {
+          contains: needle,
+          mode: 'insensitive',
         },
-        {
-          name: {
-            contains: displayName.slice(0, Math.min(12, displayName.length)),
-            mode: 'insensitive',
-          },
-        },
-      ],
+      })),
     },
-    take: 15,
+    take: 50,
     select: {
       id: true,
       governorId: true,
