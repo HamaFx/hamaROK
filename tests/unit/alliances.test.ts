@@ -57,6 +57,18 @@ describe('alliance detection helpers', () => {
     expect(split.allianceRaw).toBe('[V57] Legacy of Velmora');
   });
 
+  it('detects V57 aliases with apostrophe/backtick variants', () => {
+    const apostrophe = detectTrackedAlliance({
+      governorNameRaw: "[V'57] Monkey D Luffy",
+    });
+    const backtick = detectTrackedAlliance({
+      governorNameRaw: '[V`57] Monkey D Luffy',
+    });
+
+    expect(apostrophe?.tag).toBe('V57');
+    expect(backtick?.tag).toBe('V57');
+  });
+
   it('normalizes alliance query filters with tracked aliases', () => {
     const filters = resolveAllianceQueryFilters(['god of thunder', '[V57]', 'P57R']);
     expect(filters).toEqual([

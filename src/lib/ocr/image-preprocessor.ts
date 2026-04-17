@@ -19,6 +19,8 @@ export interface PreprocessOptions {
   scale?: number;
   contrast?: number;
   useOpenCv?: boolean;
+  textChannelMode?: 'none' | 'auto-ranking';
+  sharpen?: boolean;
   deskew?: boolean;
   clahe?: boolean;
   adaptiveThreshold?: boolean;
@@ -103,25 +105,138 @@ function scaleCanvas(input: HTMLCanvasElement, scale: number): HTMLCanvasElement
   return out;
 }
 
-function preprocessCanvasOnly(
+interface TextChannelExtractionStats {
+  mode: 'none' | 'auto-ranking';
+  cyanRatio: number;
+  brightRatio: number;
+  usedBlueAwareExtraction: boolean;
+}
+
+function toHueDegrees(r: number, g: number, b: number): number {
+  const rn = r / 255;
+  const gn = g / 255;
+  const bn = b / 255;
+  const max = Math.max(rn, gn, bn);
+  const min = Math.min(rn, gn, bn);
+  const delta = max - min;
+  if (delta === 0) return 0;
+  let hue = 0;
+  if (max === rn) {
+    hue = ((gn - bn) / delta) % 6;
+  } else if (max === gn) {
+    hue = (bn - rn) / delta + 2;
+  } else {
+    hue = (rn - gn) / delta + 4;
+  }
+  const degrees = hue * 60;
+  return degrees < 0 ? degrees + 360 : degrees;
+}
+
+function extractTextChannel(
   sourceCanvas: HTMLCanvasElement,
-  options: Required<
-    Pick<PreprocessOptions, 'invert' | 'threshold' | 'scale' | 'contrast' | 'variantId'>
-  >
-): PreprocessResult {
+  mode: 'none' | 'auto-ranking'
+): { canvas: HTMLCanvasElement; stats: TextChannelExtractionStats } {
   const canvas = document.createElement('canvas');
   canvas.width = sourceCanvas.width;
   canvas.height = sourceCanvas.height;
   const ctx = canvas.getContext('2d');
   if (!ctx) {
-    throw new Error('Could not create 2D context while preprocessing OCR image.');
+    throw new Error('Could not create 2D context while extracting OCR text channel.');
   }
   ctx.drawImage(sourceCanvas, 0, 0);
 
   const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
   const data = imageData.data;
+  const pixels = Math.max(1, data.length / 4);
+
+  let cyanLikeCount = 0;
+  let brightLowSatCount = 0;
   for (let i = 0; i < data.length; i += 4) {
-    const gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
+    const r = data[i];
+    const g = data[i + 1];
+    const b = data[i + 2];
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    const delta = max - min;
+    const saturation = max === 0 ? 0 : delta / max;
+    const hue = toHueDegrees(r, g, b);
+
+    if (hue >= 170 && hue <= 210 && saturation >= 0.2 && b >= g) {
+      cyanLikeCount += 1;
+    }
+    if (min >= 215 && saturation <= 0.2) {
+      brightLowSatCount += 1;
+    }
+  }
+
+  const cyanRatio = cyanLikeCount / pixels;
+  const brightRatio = brightLowSatCount / pixels;
+  const useBlueAwareExtraction = mode === 'auto-ranking' && cyanRatio >= 0.12;
+
+  for (let i = 0; i < data.length; i += 4) {
+    const r = data[i];
+    const g = data[i + 1];
+    const b = data[i + 2];
+
+    let gray = r * 0.299 + g * 0.587 + b * 0.114;
+    if (useBlueAwareExtraction) {
+      const max = Math.max(r, g, b);
+      const min = Math.min(r, g, b);
+      const delta = max - min;
+      const saturation = max === 0 ? 0 : delta / max;
+      const hue = toHueDegrees(r, g, b);
+      const blueDominance = b - (r + g) / 2;
+      const saturationPenalty = saturation * 255;
+
+      gray = min - saturationPenalty * 0.78 - Math.max(0, blueDominance) * 0.35;
+
+      if (hue >= 160 && hue <= 220 && saturation >= 0.38) {
+        gray -= 65;
+      }
+    }
+
+    const value = Math.max(0, Math.min(255, Math.round(gray)));
+    data[i] = value;
+    data[i + 1] = value;
+    data[i + 2] = value;
+  }
+
+  ctx.putImageData(imageData, 0, 0);
+
+  return {
+    canvas,
+    stats: {
+      mode,
+      cyanRatio,
+      brightRatio,
+      usedBlueAwareExtraction: useBlueAwareExtraction,
+    },
+  };
+}
+
+function preprocessCanvasOnly(
+  sourceCanvas: HTMLCanvasElement,
+  options: Required<
+    Pick<
+      PreprocessOptions,
+      'invert' | 'threshold' | 'scale' | 'contrast' | 'variantId' | 'textChannelMode'
+    >
+  >
+): PreprocessResult {
+  const textChannel = extractTextChannel(sourceCanvas, options.textChannelMode);
+  const canvas = document.createElement('canvas');
+  canvas.width = textChannel.canvas.width;
+  canvas.height = textChannel.canvas.height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    throw new Error('Could not create 2D context while preprocessing OCR image.');
+  }
+  ctx.drawImage(textChannel.canvas, 0, 0);
+
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const data = imageData.data;
+  for (let i = 0; i < data.length; i += 4) {
+    const gray = data[i];
     const contrasted = Math.max(0, Math.min(255, (gray - 128) * options.contrast + 128));
     const normalized = options.invert ? 255 - contrasted : contrasted;
     const value = normalized > options.threshold ? 255 : 0;
@@ -138,6 +253,18 @@ function preprocessCanvasOnly(
       usedOpenCv: false,
       deskewAngle: 0,
       steps: [
+        {
+          step: 'extract-text-channel',
+          detail: textChannel.stats.usedBlueAwareExtraction
+            ? 'Applied blue/cyan-aware text channel extraction.'
+            : 'Used standard grayscale channel extraction.',
+          metrics: {
+            mode: textChannel.stats.mode,
+            cyanRatio: Number(textChannel.stats.cyanRatio.toFixed(4)),
+            brightRatio: Number(textChannel.stats.brightRatio.toFixed(4)),
+            usedBlueAwareExtraction: textChannel.stats.usedBlueAwareExtraction,
+          },
+        },
         {
           step: 'canvas-grayscale-threshold',
           detail: 'Canvas fallback pipeline (grayscale + contrast + fixed threshold).',
@@ -163,6 +290,8 @@ async function preprocessWithOpenCv(
       | 'threshold'
       | 'scale'
       | 'contrast'
+      | 'textChannelMode'
+      | 'sharpen'
       | 'deskew'
       | 'clahe'
       | 'adaptiveThreshold'
@@ -185,13 +314,28 @@ async function preprocessWithOpenCv(
     steps: [],
   };
 
-  const src = cv.imread(sourceCanvas) as {
+  const textChannel = extractTextChannel(sourceCanvas, options.textChannelMode);
+  trace.steps.push({
+    step: 'extract-text-channel',
+    detail: textChannel.stats.usedBlueAwareExtraction
+      ? 'Applied blue/cyan-aware text channel extraction.'
+      : 'Used standard grayscale channel extraction.',
+    metrics: {
+      mode: textChannel.stats.mode,
+      cyanRatio: Number(textChannel.stats.cyanRatio.toFixed(4)),
+      brightRatio: Number(textChannel.stats.brightRatio.toFixed(4)),
+      usedBlueAwareExtraction: textChannel.stats.usedBlueAwareExtraction,
+    },
+  });
+
+  const src = cv.imread(textChannel.canvas) as {
     cols: number;
     rows: number;
     delete: () => void;
   };
   const gray = new cv.Mat();
   const enhanced = new cv.Mat();
+  const sharpened = new cv.Mat();
   const denoised = new cv.Mat();
   const binary = new cv.Mat();
   const morph = new cv.Mat();
@@ -216,6 +360,20 @@ async function preprocessWithOpenCv(
       });
     } else {
       (gray as unknown as { copyTo: (dst: unknown) => void }).copyTo(enhanced);
+    }
+
+    if (options.sharpen && typeof cv.filter2D === 'function' && typeof cv.matFromArray === 'function') {
+      const kernel = cv.matFromArray(3, 3, cv.CV_32F, [-1, -1, -1, -1, 9, -1, -1, -1, -1]) as {
+        delete: () => void;
+      };
+      cv.filter2D(enhanced, sharpened, -1, kernel, new cv.Point(-1, -1), 0, cv.BORDER_REPLICATE);
+      kernel.delete();
+      (sharpened as unknown as { copyTo: (dst: unknown) => void }).copyTo(enhanced);
+      trace.steps.push({
+        step: 'sharpen-kernel',
+        detail: 'Applied unsharp kernel before thresholding.',
+        metrics: { kernel: '3x3-unsharp' },
+      });
     }
 
     cv.GaussianBlur(
@@ -333,6 +491,7 @@ async function preprocessWithOpenCv(
     gray.delete();
     enhanced.delete();
     denoised.delete();
+    sharpened.delete();
     binary.delete();
     morph.delete();
     points.delete();
@@ -351,6 +510,8 @@ export async function preprocessForOCR(
     scale: options.scale ?? 2,
     contrast: options.contrast ?? 1.2,
     useOpenCv: options.useOpenCv ?? true,
+    textChannelMode: options.textChannelMode ?? 'none',
+    sharpen: options.sharpen ?? false,
     deskew: options.deskew ?? true,
     clahe: options.clahe ?? true,
     adaptiveThreshold: options.adaptiveThreshold ?? true,

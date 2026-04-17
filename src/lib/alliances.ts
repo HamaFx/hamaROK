@@ -44,7 +44,11 @@ export const TRACKED_ALLIANCES: TrackedAlliance[] = [
     kingdomNumber: PRIMARY_KINGDOM_NUMBER,
     aliases: [
       'V57',
+      "V'57",
+      'V`57',
       '[V57]',
+      "[V'57]",
+      '[V`57]',
       '[V 57]',
       'LEGACY OF VELMORA',
       'LEGACY VELMORA',

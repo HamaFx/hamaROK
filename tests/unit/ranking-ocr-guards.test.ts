@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  analyzeRankingMetricGrouping,
+  evaluateRankingMetricDigitCountPlausibility,
   evaluateRankingMetricUniformity,
   extractRankingMetricDigits,
   isRankingHeaderNameToken,
@@ -23,6 +25,18 @@ describe('ranking OCR guard helpers', () => {
     const numeric = extractRankingMetricDigits('1O8,2S3');
     expect(numeric.hasRawDigit).toBe(true);
     expect(numeric.digits).toBe('108253');
+    expect(numeric.hasSeparatorHint).toBe(true);
+    expect(numeric.separatorGroupingValid).toBe(true);
+  });
+
+  it('tracks comma-like grouping plausibility for metric strings', () => {
+    const valid = analyzeRankingMetricGrouping('54,268,607');
+    expect(valid.hasSeparatorHint).toBe(true);
+    expect(valid.separatorGroupingValid).toBe(true);
+
+    const invalid = analyzeRankingMetricGrouping("54'26 8607");
+    expect(invalid.hasSeparatorHint).toBe(true);
+    expect(invalid.separatorGroupingValid).toBe(false);
   });
 
   it('flags ranking header tokens used as player names', () => {
@@ -49,5 +63,17 @@ describe('ranking OCR guard helpers', () => {
       }
     );
     expect(normal.suspicious).toBe(false);
+  });
+
+  it('flags digit-length outliers for individual power metrics', () => {
+    const plausibility = evaluateRankingMetricDigitCountPlausibility([
+      '54268607',
+      '53712011',
+      '54890765',
+      '526807',
+    ]);
+
+    expect(plausibility.baselineDigits).toBe(8);
+    expect(plausibility.outlierIndices).toEqual([3]);
   });
 });

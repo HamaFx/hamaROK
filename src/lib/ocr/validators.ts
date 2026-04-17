@@ -25,7 +25,7 @@ export function validateGovernorData(data: {
   confidences: Record<string, number>;
 }): ValidationResult[] {
   const results: ValidationResult[] = [];
-  const nameAllowed = /^[A-Za-z0-9 _\-\[\]()#.'":|/\\*+&!?@]{1,30}$/;
+  const nameAllowed = /^[A-Za-z0-9 _\-\[\]()#.'":|/\\*+&!?@,`~^]{1,40}$/;
 
   // Governor ID: 6-12 digits
   const cleanId = data.governorId.replace(/[^0-9]/g, '');
@@ -42,7 +42,7 @@ export function validateGovernorData(data: {
   const nameValue = data.name.trim();
   const nameIsValid =
     nameValue.length >= 1 &&
-    nameValue.length <= 30 &&
+    nameValue.length <= 40 &&
     nameAllowed.test(nameValue);
   results.push({
     field: 'name',
@@ -52,7 +52,7 @@ export function validateGovernorData(data: {
     warning:
       nameValue.length < 1
         ? 'Name is empty'
-        : nameValue.length > 30
+        : nameValue.length > 40
           ? 'Name seems too long'
           : !nameAllowed.test(nameValue)
             ? 'Name contains unsupported characters for English-only OCR mode'
