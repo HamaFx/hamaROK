@@ -738,10 +738,27 @@ export default function RankingReviewPage() {
             {loading ? 'Loading...' : 'Apply'}
           </Button>
 
+          <Button
+            variant="outline"
+            className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1"
+            onClick={() => void runBulkAction('accept_linked')}
+            disabled={loading || Boolean(busyRow)}
+          >
+            {busyRow === 'bulk:accept_linked' ? 'Accepting...' : '✓ Accept Linked'}
+          </Button>
+          <Button
+            variant="destructive"
+            className="rounded-full"
+            onClick={() => void runBulkAction('reject_all')}
+            disabled={loading || Boolean(busyRow)}
+          >
+            {busyRow === 'bulk:reject_all' ? 'Rejecting...' : '✕ Reject All'}
+          </Button>
+
           <CompactControlDrawer
-            triggerLabel="Review Actions"
-            title="Rank Review Actions"
-            description="Metric filters and bulk actions are compacted inside this drawer."
+            triggerLabel="Filters"
+            title="Metric Filters"
+            description="Filter ranking review rows by metric key."
           >
             <Select
               value={metricFilter || ALL_METRIC}
@@ -759,26 +776,10 @@ export default function RankingReviewPage() {
                 ))}
               </SelectContent>
             </Select>
-
-            <Button
-              variant="outline"
-              className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1"
-              onClick={() => void runBulkAction('accept_linked')}
-              disabled={loading || Boolean(busyRow)}
-            >
-              {busyRow === 'bulk:accept_linked' ? 'Accepting...' : 'Accept Linked'}
-            </Button>
-            <Button
-              variant="destructive"
-              className="rounded-full"
-              onClick={() => void runBulkAction('reject_all')}
-              disabled={loading || Boolean(busyRow)}
-            >
-              {busyRow === 'bulk:reject_all' ? 'Rejecting...' : 'Reject All'}
-            </Button>
-            <StatusPill label={`${visibleRows.length} rows`} tone="info" />
+            <StatusPill label={`${visibleRows.length} rows in view`} tone="info" />
           </CompactControlDrawer>
         </CompactControlRow>
+
 
         {error ? <InlineError message={error} /> : null}
         {!error && notice ? (
