@@ -16,7 +16,7 @@ export interface IdentityResolutionResult {
   }>;
 }
 
-type DbClient = Prisma.TransactionClient;
+type DbClient = Pick<Prisma.TransactionClient, 'governorAlias' | 'governor'>;
 
 function uniqueSuggestions(
   rows: Array<{

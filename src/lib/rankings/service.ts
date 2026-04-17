@@ -2629,6 +2629,7 @@ export async function bulkApplyRankingReviewAction(args: {
       id: string;
       runId: string;
       governorId: string | null;
+      governorNameRaw: string;
       identityStatus: RankingIdentityStatus;
       candidates: Prisma.JsonValue | null;
     }> = await prisma.rankingRow.findMany({
@@ -2645,6 +2646,7 @@ export async function bulkApplyRankingReviewAction(args: {
         id: true,
         runId: true,
         governorId: true,
+        governorNameRaw: true,
         identityStatus: true,
         candidates: true,
       },
@@ -2684,21 +2686,38 @@ export async function bulkApplyRankingReviewAction(args: {
 
       let governorDbId: string | undefined;
       let governorGameId: string | undefined;
+      const bestSuggestion = parseIdentitySuggestions(row.candidates)[0] || null;
+
+      const resolveFreshGovernorGameId = async (): Promise<string | null> => {
+        const resolved = await resolveRankingIdentity(prisma, {
+          workspaceId: args.workspaceId,
+          governorNameRaw: row.governorNameRaw,
+        });
+        return resolved.status === RankingIdentityStatus.AUTO_LINKED && resolved.governorGameId
+          ? resolved.governorGameId
+          : null;
+      };
 
       if (row.identityStatus === RankingIdentityStatus.UNRESOLVED) {
-        const bestSuggestion = parseIdentitySuggestions(row.candidates)[0];
-        if (!bestSuggestion) {
+        governorGameId = bestSuggestion?.governorGameId;
+        if (!governorGameId) {
+          governorGameId = (await resolveFreshGovernorGameId()) || undefined;
+        }
+        if (!governorGameId) {
           continue;
         }
-        governorGameId = bestSuggestion.governorGameId;
       } else {
         if (row.governorId) {
           governorDbId = row.governorId;
         } else {
-          const bestSuggestion = parseIdentitySuggestions(row.candidates)[0];
-          if (bestSuggestion) {
-            governorGameId = bestSuggestion.governorGameId;
+          governorGameId = bestSuggestion?.governorGameId;
+          if (!governorGameId) {
+            governorGameId = (await resolveFreshGovernorGameId()) || undefined;
           }
+        }
+
+        if (!governorDbId && !governorGameId) {
+          continue;
         }
       }
 

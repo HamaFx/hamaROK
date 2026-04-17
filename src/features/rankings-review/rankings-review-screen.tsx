@@ -318,6 +318,11 @@ export default function RankingReviewPage() {
     return { unresolved, linked, rejected };
   }, [visibleRows]);
 
+  const hasVisibleLinkTargets = useMemo(
+    () => visibleRows.some((row) => row.identityStatus !== 'REJECTED'),
+    [visibleRows]
+  );
+
   const summaryByType = useMemo(() => {
     const base = new Map<string, number>();
     for (const entry of summaryData?.byType || []) {
@@ -595,9 +600,9 @@ export default function RankingReviewPage() {
             isGroupedAction
               ? mode === 'reject_all'
                 ? 'No rows were available to reject/delete in this screenshot.'
-                : 'No linked or suggested rows were found in this screenshot.'
+                : 'No rows in this screenshot could be linked automatically.'
               : mode === 'accept_linked'
-                ? 'No linked or suggested rows were found for bulk accept.'
+                ? 'No rows could be linked automatically for bulk accept.'
                 : 'No rows were available for bulk reject/delete.'
           );
         } else {
@@ -742,7 +747,7 @@ export default function RankingReviewPage() {
             variant="outline"
             className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1"
             onClick={() => void runBulkAction('accept_linked')}
-            disabled={loading || Boolean(busyRow)}
+            disabled={loading || Boolean(busyRow) || !hasVisibleLinkTargets}
           >
             {busyRow === 'bulk:accept_linked' ? 'Accepting...' : '✓ Accept Linked'}
           </Button>
@@ -824,12 +829,7 @@ export default function RankingReviewPage() {
             <div className="grid gap-4">
               {visibleGroups.map((group) => {
                 const hasAcceptLinkedTargets = group.rows.some(
-                  (row) =>
-                    row.identityStatus === 'AUTO_LINKED' ||
-                    row.identityStatus === 'MANUAL_LINKED' ||
-                    (row.identityStatus === 'UNRESOLVED' &&
-                      Array.isArray(row.identitySuggestions) &&
-                      row.identitySuggestions.length > 0)
+                  (row) => row.identityStatus !== 'REJECTED'
                 );
                 const hasRowsToDelete = group.rows.length > 0;
 
