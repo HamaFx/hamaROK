@@ -52,7 +52,8 @@ import {
 const ALL_STATUS = '__all_status__';
 const ALL_RANKING_TYPE = '__all_ranking_type__';
 const ALL_METRIC = '__all_metric__';
-const DEFAULT_STATUS_FILTER = RANKING_REVIEW_STATUS_OPTIONS.join(',');
+const ALL_STATUSES_FILTER = RANKING_REVIEW_STATUS_OPTIONS.join(',');
+const DEFAULT_STATUS_FILTER = ['UNRESOLVED', 'AUTO_LINKED', 'MANUAL_LINKED'].join(',');
 
 interface GovernorSearchResult {
   id: string;
@@ -327,9 +328,9 @@ export default function RankingReviewPage() {
 
   const statusSelectValue = useMemo(
     () =>
-      statusFilter === DEFAULT_STATUS_FILTER
+      statusFilter === ALL_STATUSES_FILTER
         ? ALL_STATUS
-        : statusFilter || ALL_STATUS,
+        : statusFilter || DEFAULT_STATUS_FILTER,
     [statusFilter]
   );
 
@@ -592,7 +593,9 @@ export default function RankingReviewPage() {
         if (processedCount === 0) {
           setNotice(
             isGroupedAction
-              ? 'No rows in this screenshot matched this bulk action.'
+              ? mode === 'reject_all'
+                ? 'All rows in this screenshot are already rejected.'
+                : 'No linked or suggested rows were found in this screenshot.'
               : mode === 'accept_linked'
                 ? 'No linked or suggested rows were found for bulk accept.'
                 : 'No non-rejected rows were found for bulk reject.'
@@ -679,13 +682,14 @@ export default function RankingReviewPage() {
           <Select
             value={statusSelectValue}
             onValueChange={(value) =>
-              setStatusFilter(value === ALL_STATUS ? DEFAULT_STATUS_FILTER : value)
+              setStatusFilter(value === ALL_STATUS ? ALL_STATUSES_FILTER : value)
             }
           >
             <SelectTrigger className="w-[196px] min-w-[196px] rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1">
               <SelectValue placeholder="Status Filter" />
             </SelectTrigger>
             <SelectContent className="border-[color:var(--stroke-soft)] bg-popover backdrop-blur-xl shadow-2xl text-tier-1">
+              <SelectItem value={DEFAULT_STATUS_FILTER}>Queue (Unresolved + Linked)</SelectItem>
               <SelectItem value="UNRESOLVED">Unresolved</SelectItem>
               <SelectItem value="AUTO_LINKED,MANUAL_LINKED">Linked (Auto + Manual)</SelectItem>
               <SelectItem value="REJECTED">Rejected</SelectItem>
@@ -813,7 +817,18 @@ export default function RankingReviewPage() {
             <EmptyState title="Queue is clear" description="No ranking rows in the selected filters." />
           ) : (
             <div className="grid gap-4">
-              {visibleGroups.map((group) => (
+              {visibleGroups.map((group) => {
+                const hasAcceptLinkedTargets = group.rows.some(
+                  (row) =>
+                    row.identityStatus === 'AUTO_LINKED' ||
+                    row.identityStatus === 'MANUAL_LINKED' ||
+                    (row.identityStatus === 'UNRESOLVED' &&
+                      Array.isArray(row.identitySuggestions) &&
+                      row.identitySuggestions.length > 0)
+                );
+                const hasRejectableRows = group.rows.some((row) => row.identityStatus !== 'REJECTED');
+
+                return (
                 <article
                   key={group.runId}
                   className="rounded-[20px] surface-2 p-3 min-[390px]:rounded-[22px] min-[390px]:p-3.5 sm:rounded-[24px] sm:p-4"
@@ -854,7 +869,7 @@ export default function RankingReviewPage() {
                           variant="outline"
                           className="h-8 rounded-lg border-emerald-500/20 bg-emerald-500/5 text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-300 font-bold text-[11px] uppercase tracking-wider"
                           onClick={() => void runBulkAction('accept_linked', group)}
-                          disabled={!!busyRow}
+                          disabled={!!busyRow || !hasAcceptLinkedTargets}
                         >
                           <Check className="mr-1.5 size-3.5" />
                           Accept Linked
@@ -864,10 +879,10 @@ export default function RankingReviewPage() {
                           variant="outline"
                           className="h-8 rounded-lg border-rose-500/20 bg-rose-500/5 text-rose-400 hover:bg-rose-500/10 hover:text-rose-300 font-bold text-[11px] uppercase tracking-wider"
                           onClick={() => void runBulkAction('reject_all', group)}
-                          disabled={!!busyRow}
+                          disabled={!!busyRow || !hasRejectableRows}
                         >
                           <Trash2 className="mr-1.5 size-3.5" />
-                          Reject All
+                          {hasRejectableRows ? 'Reject All' : 'All Rejected'}
                         </Button>
                       </div>
 
@@ -1019,7 +1034,8 @@ export default function RankingReviewPage() {
                   </div>
 
                 </article>
-              ))}
+                );
+              })}
             </div>
           )}
         </Panel>
