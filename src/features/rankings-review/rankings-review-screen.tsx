@@ -565,130 +565,50 @@ export default function RankingReviewPage() {
   const runBulkAction = useCallback(
     async (mode: 'accept_linked' | 'reject_all', group?: RankingReviewGroup) => {
       if (!workspaceReady || !accessToken) return;
-
-      if (!group) {
-        setBusyRow(`bulk:${mode}`);
-        setError(null);
-        setNotice(null);
-
-        try {
-          const res = await fetch('/api/v2/rankings/review/bulk', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'x-access-token': accessToken,
-            },
-            body: JSON.stringify({
-              workspaceId,
-              mode: mode === 'accept_linked' ? 'ACCEPT_LINKED' : 'REJECT_ALL_NON_REJECTED',
-            }),
-          });
-
-          const payload = await res.json();
-          if (!res.ok) throw new Error(payload?.error?.message || 'Bulk action failed.');
-
-          if (payload?.data?.count === 0) {
-            setNotice(
-              mode === 'accept_linked'
-                ? 'No linked or suggested rows were found for bulk accept.'
-                : 'No non-rejected rows were found for bulk reject.'
-            );
-          } else {
-            const suffix = payload.data.count === 1 ? '' : 's';
-            setNotice(`Processed ${payload.data.count} row${suffix}.`);
-          }
-
-          await loadRows();
-        } catch (err) {
-          setError(err instanceof Error ? err.message : 'Bulk action failed.');
-        } finally {
-          setBusyRow(null);
-        }
-        return;
-      }
-
-      // GROUP ACTION: Keep parallel client-side logic for scoped triage
-      const baseRows = group.rows;
-      const targets =
-        mode === 'accept_linked'
-          ? baseRows.filter(
-              (row) =>
-                row.identityStatus === 'AUTO_LINKED' ||
-                row.identityStatus === 'MANUAL_LINKED' ||
-                (row.identityStatus === 'UNRESOLVED' &&
-                  Array.isArray(row.identitySuggestions) &&
-                  row.identitySuggestions.length > 0)
-            )
-          : baseRows.filter((row) => row.identityStatus !== 'REJECTED');
-
-      if (targets.length === 0) {
-        alert('No rows in this screenshot match the criteria for this action.');
-        return;
-      }
-
-      const busyKey = `bulk:${group.runId}:${mode}`;
+      const isGroupedAction = Boolean(group);
+      const busyKey = isGroupedAction ? `bulk:${group?.runId}:${mode}` : `bulk:${mode}`;
       setBusyRow(busyKey);
       setError(null);
+      setNotice(null);
 
       try {
-        const results = await Promise.all(
-          targets.map(async (row) => {
-            try {
-              const action = mode === 'accept_linked' ? 'CORRECT_ROW' : 'REJECT_ROW';
-              const body: Record<string, unknown> = {
-                workspaceId,
-                action,
-              };
+        const res = await fetch('/api/v2/rankings/review/bulk', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-access-token': accessToken,
+          },
+          body: JSON.stringify({
+            workspaceId,
+            mode: mode === 'accept_linked' ? 'ACCEPT_LINKED' : 'REJECT_ALL_NON_REJECTED',
+            runId: group?.runId || undefined,
+          }),
+        });
 
-              if (mode === 'accept_linked') {
-                body.corrected = {
-                  sourceRank: row.sourceRank,
-                  governorNameRaw: row.governorNameRaw,
-                  metricRaw: row.metricRaw,
-                  metricValue: row.metricValue,
-                };
+        const payload = await res.json();
+        if (!res.ok) throw new Error(payload?.error?.message || 'Bulk action failed.');
 
-                if (row.governorId) {
-                  body.governorDbId = row.governorId;
-                } else if (row.governor?.id) {
-                  body.governorDbId = row.governor.id;
-                } else {
-                  const bestSuggestion = row.identitySuggestions?.[0];
-                  if (bestSuggestion) {
-                    body.governorGameId = bestSuggestion.governorGameId;
-                  }
-                }
-
-                const bestSuggestion = row.identitySuggestions?.[0];
-                if (!body.governorDbId && !body.governorGameId && bestSuggestion) {
-                  body.governorGameId = bestSuggestion.governorGameId;
-                }
-              }
-
-              const res = await fetch(`/api/v2/rankings/review/${row.id}`, {
-                method: 'PATCH',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'x-access-token': accessToken,
-                },
-                body: JSON.stringify(body),
-              });
-              return res.ok;
-            } catch {
-              return false;
-            }
-          })
-        );
-
-        const succeeded = results.filter(Boolean).length;
-        const failed = results.length - succeeded;
+        const processedCount = Number(payload?.data?.count || 0);
+        if (processedCount === 0) {
+          setNotice(
+            isGroupedAction
+              ? 'No rows in this screenshot matched this bulk action.'
+              : mode === 'accept_linked'
+                ? 'No linked or suggested rows were found for bulk accept.'
+                : 'No non-rejected rows were found for bulk reject.'
+          );
+        } else {
+          const suffix = processedCount === 1 ? '' : 's';
+          setNotice(
+            isGroupedAction
+              ? `Processed ${processedCount} row${suffix} in this screenshot.`
+              : `Processed ${processedCount} row${suffix}.`
+          );
+        }
 
         await loadRows();
-        if (failed > 0) {
-          setError(`Group action finished: ${succeeded} succeeded, ${failed} failed.`);
-        }
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Group action failed.');
+        setError(err instanceof Error ? err.message : 'Bulk action failed.');
       } finally {
         setBusyRow(null);
       }

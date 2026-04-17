@@ -2574,6 +2574,7 @@ export async function bulkApplyRankingReviewAction(args: {
   changedByLinkId: string;
   mode: 'ACCEPT_LINKED' | 'REJECT_ALL_UNRESOLVED' | 'REJECT_ALL_NON_REJECTED';
   eventId?: string | null;
+  runId?: string | null;
 }) {
   const candidateStatuses =
     args.mode === 'ACCEPT_LINKED'
@@ -2590,10 +2591,15 @@ export async function bulkApplyRankingReviewAction(args: {
           ]
       : [RankingIdentityStatus.UNRESOLVED];
 
+  const runWhere: Prisma.RankingRunWhereInput = {
+    ...(args.eventId ? { eventId: args.eventId } : {}),
+    ...(args.runId ? { id: args.runId } : {}),
+  };
+
   const where: Prisma.RankingRowWhereInput = {
     workspaceId: args.workspaceId,
     identityStatus: { in: candidateStatuses },
-    ...(args.eventId ? { run: { eventId: args.eventId } } : {}),
+    ...(Object.keys(runWhere).length > 0 ? { run: runWhere } : {}),
   };
 
   const runIds = new Set<string>();

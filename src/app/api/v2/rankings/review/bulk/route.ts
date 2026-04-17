@@ -11,6 +11,7 @@ const bulkSchema = z.object({
   workspaceId: z.string().min(1),
   mode: z.enum(['ACCEPT_LINKED', 'REJECT_ALL_UNRESOLVED', 'REJECT_ALL_NON_REJECTED']),
   eventId: z.string().optional().nullable(),
+  runId: z.string().optional().nullable(),
 });
 
 export async function POST(request: NextRequest) {
@@ -31,6 +32,7 @@ export async function POST(request: NextRequest) {
       changedByLinkId: auth.link.id,
       mode: body.mode,
       eventId: body.eventId,
+      runId: body.runId,
     });
 
     const tags = [
