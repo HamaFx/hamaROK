@@ -98,7 +98,7 @@ body {
   max-width: 100vw;
   overflow-x: hidden;
   font-family: var(--font-body);
-  background: var(--background);
+  background: radial-gradient(circle at 50% 30%, #080a14 0%, #020308 100%);
   color: var(--foreground);
   font-size: 14px;
   line-height: 1.57;
@@ -106,7 +106,33 @@ body {
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  position: relative;
 }
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background-image: url("/images/bg-pattern.jpg");
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  opacity: 0.04;
+  mix-blend-mode: screen;
+  pointer-events: none;
+  filter: blur(1px) contrast(1.1);
+}
+
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background: radial-gradient(circle at 50% 30%, transparent 20%, #020308 120%);
+  pointer-events: none;
+}
+
 
 @media (min-width: 768px) {
   body {
