@@ -9,6 +9,12 @@ export type ReviewAction = 'LINK_TO_GOVERNOR' | 'CREATE_ALIAS' | 'CORRECT_ROW' |
 export interface ReviewRow {
   id: string;
   runId: string;
+  governorId?: string | null;
+  governor?: {
+    id: string;
+    governorId: string;
+    name: string;
+  } | null;
   sourceRank: number | null;
   governorNameRaw: string;
   allianceRaw?: string | null;

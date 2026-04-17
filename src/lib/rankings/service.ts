@@ -1643,12 +1643,25 @@ export async function applyRankingReviewAction(args: {
         governorId = explicitGovernor.id;
         identityStatus = RankingIdentityStatus.MANUAL_LINKED;
       } else {
-        const resolved = await resolveRankingIdentity(tx, {
-          workspaceId: args.workspaceId,
-          governorNameRaw,
-        });
-        governorId = resolved.governorId;
-        identityStatus = resolved.status;
+        const editedNameRaw = args.corrected?.governorNameRaw;
+        const editedName =
+          typeof editedNameRaw === 'string' ? normalizeGovernorDisplayName(editedNameRaw) : '';
+        const shouldPreserveExistingLink =
+          Boolean(row.governorId) &&
+          row.identityStatus !== RankingIdentityStatus.UNRESOLVED &&
+          (!editedName || normalizeGovernorAlias(editedName) === row.governorNameNormalized);
+
+        if (shouldPreserveExistingLink) {
+          governorId = row.governorId;
+          identityStatus = row.identityStatus;
+        } else {
+          const resolved = await resolveRankingIdentity(tx, {
+            workspaceId: args.workspaceId,
+            governorNameRaw,
+          });
+          governorId = resolved.governorId;
+          identityStatus = resolved.status;
+        }
       }
     }
 
@@ -2562,55 +2575,104 @@ export async function bulkApplyRankingReviewAction(args: {
   mode: 'ACCEPT_LINKED' | 'REJECT_ALL_UNRESOLVED';
   eventId?: string | null;
 }) {
-  return prisma.$transaction(async (tx) => {
-    const candidateStatuses =
-      args.mode === 'ACCEPT_LINKED'
-        ? [RankingIdentityStatus.AUTO_LINKED, RankingIdentityStatus.MANUAL_LINKED, RankingIdentityStatus.UNRESOLVED]
-        : [RankingIdentityStatus.UNRESOLVED];
+  const candidateStatuses =
+    args.mode === 'ACCEPT_LINKED'
+      ? [
+          RankingIdentityStatus.AUTO_LINKED,
+          RankingIdentityStatus.MANUAL_LINKED,
+          RankingIdentityStatus.UNRESOLVED,
+        ]
+      : [RankingIdentityStatus.UNRESOLVED];
 
-    const rows = await tx.rankingRow.findMany({
-      where: {
-        workspaceId: args.workspaceId,
-        identityStatus: { in: candidateStatuses },
-        ...(args.eventId ? { run: { eventId: args.eventId } } : {}),
-      },
+  const where: Prisma.RankingRowWhereInput = {
+    workspaceId: args.workspaceId,
+    identityStatus: { in: candidateStatuses },
+    ...(args.eventId ? { run: { eventId: args.eventId } } : {}),
+  };
+
+  const runIds = new Set<string>();
+  let count = 0;
+  let cursorId: string | null = null;
+
+  while (true) {
+    const rows: Array<{
+      id: string;
+      runId: string;
+      governorId: string | null;
+      identityStatus: RankingIdentityStatus;
+      candidates: Prisma.JsonValue | null;
+    }> = await prisma.rankingRow.findMany({
+      where,
+      orderBy: [{ id: 'asc' }],
+      ...(cursorId
+        ? {
+            cursor: { id: cursorId },
+            skip: 1,
+          }
+        : {}),
+      take: 200,
       select: {
         id: true,
         runId: true,
+        governorId: true,
         identityStatus: true,
         candidates: true,
       },
-      take: 250, // Process in chunks to avoid timeout
     });
 
-    const targets = rows.filter((row) => {
-      if (args.mode === 'REJECT_ALL_UNRESOLVED') return true;
-      if (row.identityStatus !== RankingIdentityStatus.UNRESOLVED) return true;
-      
-      // For UNRESOLVED rows in ACCEPT_LINKED mode, they must have at least one suggestion
-      const suggestions = parseIdentitySuggestions(row.candidates);
-      return suggestions.length > 0;
-    });
+    if (rows.length === 0) break;
 
-    if (targets.length === 0) {
-      return { count: 0, runIds: [] as string[] };
-    }
+    for (const row of rows) {
+      if (args.mode === 'REJECT_ALL_UNRESOLVED') {
+        await applyRankingReviewAction({
+          workspaceId: args.workspaceId,
+          rowId: row.id,
+          changedByLinkId: args.changedByLinkId,
+          action: RankingRowReviewAction.REJECT_ROW,
+        });
+        runIds.add(row.runId);
+        count += 1;
+        continue;
+      }
 
-    const runIds = new Set<string>();
-    for (const target of targets) {
+      let governorDbId: string | undefined;
+      let governorGameId: string | undefined;
+
+      if (row.identityStatus === RankingIdentityStatus.UNRESOLVED) {
+        const bestSuggestion = parseIdentitySuggestions(row.candidates)[0];
+        if (!bestSuggestion) {
+          continue;
+        }
+        governorGameId = bestSuggestion.governorGameId;
+      } else {
+        if (row.governorId) {
+          governorDbId = row.governorId;
+        } else {
+          const bestSuggestion = parseIdentitySuggestions(row.candidates)[0];
+          if (bestSuggestion) {
+            governorGameId = bestSuggestion.governorGameId;
+          }
+        }
+      }
+
       await applyRankingReviewAction({
         workspaceId: args.workspaceId,
-        rowId: target.id,
+        rowId: row.id,
         changedByLinkId: args.changedByLinkId,
-        action: args.mode === 'ACCEPT_LINKED' ? RankingRowReviewAction.CORRECT_ROW : RankingRowReviewAction.REJECT_ROW,
+        action: RankingRowReviewAction.CORRECT_ROW,
+        governorDbId,
+        governorGameId,
       });
-      runIds.add(target.runId);
+      runIds.add(row.runId);
+      count += 1;
     }
 
-    return {
-      count: targets.length,
-      runIds: [...runIds],
-    };
-  });
-}
+    cursorId = rows[rows.length - 1]?.id ?? null;
+    if (rows.length < 200) break;
+  }
 
+  return {
+    count,
+    runIds: [...runIds],
+  };
+}

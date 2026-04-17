@@ -614,7 +614,10 @@ export default function RankingReviewPage() {
           ? baseRows.filter(
               (row) =>
                 row.identityStatus === 'AUTO_LINKED' ||
-                row.identityStatus === 'MANUAL_LINKED'
+                row.identityStatus === 'MANUAL_LINKED' ||
+                (row.identityStatus === 'UNRESOLVED' &&
+                  Array.isArray(row.identitySuggestions) &&
+                  row.identitySuggestions.length > 0)
             )
           : baseRows.filter((row) => row.identityStatus !== 'REJECTED');
 
@@ -644,8 +647,20 @@ export default function RankingReviewPage() {
                   metricRaw: row.metricRaw,
                   metricValue: row.metricValue,
                 };
+
+                if (row.governorId) {
+                  body.governorDbId = row.governorId;
+                } else if (row.governor?.id) {
+                  body.governorDbId = row.governor.id;
+                } else {
+                  const bestSuggestion = row.identitySuggestions?.[0];
+                  if (bestSuggestion) {
+                    body.governorGameId = bestSuggestion.governorGameId;
+                  }
+                }
+
                 const bestSuggestion = row.identitySuggestions?.[0];
-                if (row.identityStatus === 'AUTO_LINKED' && bestSuggestion) {
+                if (!body.governorDbId && !body.governorGameId && bestSuggestion) {
                   body.governorGameId = bestSuggestion.governorGameId;
                 }
               }
