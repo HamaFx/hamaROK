@@ -873,6 +873,9 @@ export async function createRankingRunWithRows(input: CreateRankingRunInput) {
             metricKey,
             captureFingerprint,
             dedupeHash,
+            rows: {
+              some: {},
+            },
             status: {
               in: [RankingRunStatus.RAW, RankingRunStatus.REVIEW, RankingRunStatus.MERGED],
             },
@@ -939,6 +942,9 @@ export async function createRankingRunWithRows(input: CreateRankingRunInput) {
             eventId: input.eventId || null,
             rankingType,
             metricKey,
+            rows: {
+              some: {},
+            },
             status: {
               in: [RankingRunStatus.RAW, RankingRunStatus.REVIEW, RankingRunStatus.MERGED],
             },
