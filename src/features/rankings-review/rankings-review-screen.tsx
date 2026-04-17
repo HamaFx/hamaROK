@@ -564,10 +564,51 @@ export default function RankingReviewPage() {
     async (mode: 'accept_linked' | 'reject_all', group?: RankingReviewGroup) => {
       if (!workspaceReady || !accessToken) return;
 
-      // Global actions (no group) should target all loaded rows to ignore visibility filters
-      // Group actions should target only that specific group's rows
-      const baseRows = group ? group.rows : groups.flatMap((g) => g.rows);
-      
+      if (!group) {
+        // GLOBAL ACTION: Use server-side bulk endpoint for absolute reliability
+        const confirmed = window.confirm(
+          mode === 'accept_linked'
+            ? 'Accept ALL linked and suggested rows across the entire queue? This will finalize all identifiable governors.'
+            : 'Reject all currently UNRESOLVED rows? This will clear the unresolved queue for the current event/workspace.'
+        );
+        if (!confirmed) return;
+
+        setBusyRow(`bulk:${mode}`);
+        setError(null);
+
+        try {
+          const res = await fetch('/api/v2/rankings/review/bulk', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-access-token': accessToken,
+            },
+            body: JSON.stringify({
+              workspaceId,
+              mode: mode === 'accept_linked' ? 'ACCEPT_LINKED' : 'REJECT_ALL_UNRESOLVED',
+            }),
+          });
+
+          const payload = await res.json();
+          if (!res.ok) throw new Error(payload?.error?.message || 'Bulk action failed.');
+          
+          if (payload?.data?.count === 0) {
+             alert('No rows found matching the criteria for this bulk action.');
+          } else {
+             alert(`Successfully processed ${payload.data.count} rows.`);
+          }
+
+          await loadRows();
+        } catch (err) {
+          setError(err instanceof Error ? err.message : 'Bulk action failed.');
+        } finally {
+          setBusyRow(null);
+        }
+        return;
+      }
+
+      // GROUP ACTION: Keep parallel client-side logic for scoped triage
+      const baseRows = group.rows;
       const targets =
         mode === 'accept_linked'
           ? baseRows.filter(
@@ -577,68 +618,69 @@ export default function RankingReviewPage() {
             )
           : baseRows.filter((row) => row.identityStatus !== 'REJECTED');
 
-      if (targets.length === 0) return;
-      const confirmed = window.confirm(
-        mode === 'accept_linked'
-          ? `Accept ${targets.length} linked row${targets.length === 1 ? '' : 's'} ${group ? 'in this screenshot' : ''} now?`
-          : `Reject ${targets.length} visibility-independent row${targets.length === 1 ? '' : 's'} now?`
-      );
-      if (!confirmed) return;
+      if (targets.length === 0) {
+        alert('No rows in this screenshot match the criteria for this action.');
+        return;
+      }
 
-      const busyKey = group ? `bulk:${group.runId}:${mode}` : `bulk:${mode}`;
+      const busyKey = `bulk:${group.runId}:${mode}`;
       setBusyRow(busyKey);
       setError(null);
 
-      // We use a simple parallel execution for now
-      const results = await Promise.all(
-        targets.map(async (row) => {
-          try {
-            const action = mode === 'accept_linked' ? 'CORRECT_ROW' : 'REJECT_ROW';
-            const body: Record<string, unknown> = {
-              workspaceId,
-              action,
-            };
-
-            if (mode === 'accept_linked') {
-              body.corrected = {
-                sourceRank: row.sourceRank,
-                governorNameRaw: row.governorNameRaw,
-                metricRaw: row.metricRaw,
-                metricValue: row.metricValue,
+      try {
+        const results = await Promise.all(
+          targets.map(async (row) => {
+            try {
+              const action = mode === 'accept_linked' ? 'CORRECT_ROW' : 'REJECT_ROW';
+              const body: Record<string, unknown> = {
+                workspaceId,
+                action,
               };
-              // If it's an auto-link suggestion, we must provide the ID to finalize it
-              const bestSuggestion = row.identitySuggestions?.[0];
-              if (row.identityStatus === 'AUTO_LINKED' && bestSuggestion) {
-                body.governorGameId = bestSuggestion.governorGameId;
+
+              if (mode === 'accept_linked') {
+                body.corrected = {
+                  sourceRank: row.sourceRank,
+                  governorNameRaw: row.governorNameRaw,
+                  metricRaw: row.metricRaw,
+                  metricValue: row.metricValue,
+                };
+                const bestSuggestion = row.identitySuggestions?.[0];
+                if (row.identityStatus === 'AUTO_LINKED' && bestSuggestion) {
+                  body.governorGameId = bestSuggestion.governorGameId;
+                }
               }
+
+              const res = await fetch(`/api/v2/rankings/review/${row.id}`, {
+                method: 'PATCH',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'x-access-token': accessToken,
+                },
+                body: JSON.stringify(body),
+              });
+              return res.ok;
+            } catch {
+              return false;
             }
+          })
+        );
 
-            const res = await fetch(`/api/v2/rankings/review/${row.id}`, {
-              method: 'PATCH',
-              headers: {
-                'Content-Type': 'application/json',
-                'x-access-token': accessToken,
-              },
-              body: JSON.stringify(body),
-            });
-            return res.ok;
-          } catch {
-            return false;
-          }
-        })
-      );
+        const succeeded = results.filter(Boolean).length;
+        const failed = results.length - succeeded;
 
-      const succeeded = results.filter(Boolean).length;
-      const failed = results.length - succeeded;
-
-      await loadRows();
-      if (failed > 0) {
-        setError(`Bulk action finished: ${succeeded} succeeded, ${failed} failed.`);
+        await loadRows();
+        if (failed > 0) {
+          setError(`Group action finished: ${succeeded} succeeded, ${failed} failed.`);
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Group action failed.');
+      } finally {
+        setBusyRow(null);
       }
-      setBusyRow(null);
     },
-    [workspaceReady, accessToken, workspaceId, groups, loadRows]
+    [workspaceReady, accessToken, workspaceId, loadRows]
   );
+
 
 
 

@@ -2555,3 +2555,50 @@ export async function archiveStaleRankingRuns(args: {
     archivedRows,
   };
 }
+
+export async function bulkApplyRankingReviewAction(args: {
+  workspaceId: string;
+  changedByLinkId: string;
+  mode: 'ACCEPT_LINKED' | 'REJECT_ALL_UNRESOLVED';
+  eventId?: string | null;
+}) {
+  return prisma.$transaction(async (tx) => {
+    const statuses =
+      args.mode === 'ACCEPT_LINKED'
+        ? [RankingIdentityStatus.AUTO_LINKED, RankingIdentityStatus.MANUAL_LINKED]
+        : [RankingIdentityStatus.UNRESOLVED];
+
+    const targets = await tx.rankingRow.findMany({
+      where: {
+        workspaceId: args.workspaceId,
+        identityStatus: { in: statuses },
+        ...(args.eventId ? { run: { eventId: args.eventId } } : {}),
+      },
+      select: {
+        id: true,
+        runId: true,
+      },
+      take: 500,
+    });
+
+    if (targets.length === 0) {
+      return { count: 0, runIds: [] as string[] };
+    }
+
+    const runIds = new Set<string>();
+    for (const target of targets) {
+      await applyRankingReviewAction({
+        workspaceId: args.workspaceId,
+        rowId: target.id,
+        changedByLinkId: args.changedByLinkId,
+        action: args.mode === 'ACCEPT_LINKED' ? RankingRowReviewAction.CORRECT_ROW : RankingRowReviewAction.REJECT_ROW,
+      });
+      runIds.add(target.runId);
+    }
+
+    return {
+      count: targets.length,
+      runIds: [...runIds],
+    };
+  });
+}
