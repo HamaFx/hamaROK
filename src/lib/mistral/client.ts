@@ -154,11 +154,13 @@ interface RequestOptions {
   maxRetries?: number;
 }
 
+const MISTRAL_METADATA_VALUE_MAX = 512;
+
 function sanitizeMetadataValue(value: unknown): string | null {
   if (value == null) return null;
   if (typeof value === 'string') {
     const trimmed = value.trim();
-    return trimmed ? trimmed.slice(0, 4000) : null;
+    return trimmed ? trimmed.slice(0, MISTRAL_METADATA_VALUE_MAX) : null;
   }
   if (typeof value === 'number' || typeof value === 'boolean') {
     return String(value);
@@ -166,7 +168,7 @@ function sanitizeMetadataValue(value: unknown): string | null {
   try {
     const serialized = JSON.stringify(value);
     if (!serialized) return null;
-    return serialized.slice(0, 4000);
+    return serialized.slice(0, MISTRAL_METADATA_VALUE_MAX);
   } catch {
     return '[unserializable]';
   }

@@ -264,4 +264,48 @@ describe('mistral client parsers', () => {
     expect((body.completion_args as Record<string, unknown>).parallel_tool_calls).toBeUndefined();
     expect((body.completion_args as Record<string, unknown>).response_format).toBeTruthy();
   });
+
+  it('normalizes conversation metadata values to strings and 512-char max', async () => {
+    process.env.MISTRAL_API_KEY = 'test-key';
+    process.env.MISTRAL_BASE_URL = 'https://api.mistral.ai';
+
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          object: 'conversation.response',
+          conversation_id: 'conv_meta',
+          outputs: [],
+          usage: {},
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      )
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await startMistralConversation({
+      inputs: 'meta check',
+      metadata: {
+        callsite: 'assistant_planner',
+        boolFlag: true,
+        longValue: 'x'.repeat(1024),
+        nested: {
+          a: 1,
+          b: 'two',
+        },
+      },
+      store: false,
+    });
+
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    const body = JSON.parse(String(init.body || '{}')) as Record<string, unknown>;
+    const metadata = (body.metadata || {}) as Record<string, unknown>;
+
+    expect(typeof metadata.callsite).toBe('string');
+    expect(typeof metadata.boolFlag).toBe('string');
+    expect(metadata.boolFlag).toBe('true');
+    expect(typeof metadata.longValue).toBe('string');
+    expect(String(metadata.longValue).length).toBe(512);
+    expect(typeof metadata.nested).toBe('string');
+    expect(String(metadata.nested)).toContain('"a":1');
+  });
 });
