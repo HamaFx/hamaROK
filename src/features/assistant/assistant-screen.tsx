@@ -1,18 +1,25 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Activity,
   AlertTriangle,
   Bot,
   Check,
   FileImage,
+  LayoutDashboard,
   Menu,
   PanelRight,
   Plus,
   RefreshCcw,
   Send,
+  Settings,
   Sparkles,
+  Trophy,
+  Upload,
   User,
+  Users,
   Workflow,
   X,
 } from 'lucide-react';
@@ -31,6 +38,15 @@ import {
   type MessageRow,
   useAssistantController,
 } from './use-assistant-controller';
+
+const NAV_LINKS = [
+  { label: 'Dashboard', href: '/', icon: LayoutDashboard },
+  { label: 'Governors', href: '/governors', icon: Users },
+  { label: 'Activity', href: '/activity', icon: Activity },
+  { label: 'Rankings', href: '/rankings', icon: Trophy },
+  { label: 'Upload', href: '/upload', icon: Upload },
+  { label: 'Settings', href: '/settings', icon: Settings },
+];
 
 type ContextTab = 'plans' | 'pending' | 'logs';
 
@@ -586,6 +602,11 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
         {/* Template Header (Hard Black & Blurred) */}
         <header className="flex h-14 shrink-0 items-center justify-between border-b border-white/10 bg-black/95 px-4 backdrop-blur z-20 shadow-xl">
           <div className="flex items-center gap-3">
+             <Link href="/" className="mr-1">
+                <Button variant="ghost" size="icon" className="size-9 text-muted-foreground hover:bg-white/10 hover:text-foreground transition-colors">
+                   <LayoutDashboard className="size-5" />
+                </Button>
+             </Link>
              <Button
                 variant="ghost"
                 size="icon"
@@ -626,6 +647,20 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
           
           {/* Conversation History Sidebar (Desktop) */}
           <aside className="hidden lg:flex w-[280px] flex-col border-r border-white/10 bg-white/[0.02]">
+             <div className="p-3 space-y-1 border-b border-white/10 bg-white/[0.01]">
+                <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-muted-foreground/40 px-2 mb-2">Navigation</p>
+                {NAV_LINKS.map(link => {
+                   const Icon = link.icon;
+                   return (
+                      <Link key={link.href} href={link.href}>
+                         <Button variant="ghost" size="sm" className="w-full justify-start gap-2.5 text-muted-foreground hover:bg-white/5 hover:text-foreground h-9 rounded-lg transition-all">
+                            <Icon className="size-4 opacity-70" />
+                            <span className="text-xs font-medium tracking-tight">{link.label}</span>
+                         </Button>
+                      </Link>
+                   );
+                })}
+             </div>
              <div className="p-4 border-b border-white/10 bg-white/[0.02] shadow-inner">
                 <Button 
                    className="w-full justify-start gap-2 shadow-xl font-bold uppercase tracking-wider text-[10px] py-4 rounded-xl" 
@@ -639,7 +674,7 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
                    <Plus className="size-3.5" /> New Chat
                 </Button>
              </div>
-             <div className="flex-1 overflow-y-auto p-3 space-y-1">
+             <div className="flex-1 overflow-y-auto p-3 space-y-1 pr-1 custom-scrollbar">
                 <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-muted-foreground/40 px-2 mb-2">History</p>
                 {controller.conversations.map(row => (
                    <button
@@ -871,6 +906,21 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
                     </Button>
                  </div>
                  <div className="flex-1 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
+                    <div className="space-y-1 mb-8">
+                      <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-muted-foreground/40 px-2 mb-3">Navigation</p>
+                      {NAV_LINKS.map(link => {
+                        const Icon = link.icon;
+                        return (
+                            <Link key={link.href} href={link.href}>
+                              <button className="w-full flex items-center justify-start gap-4 text-muted-foreground hover:bg-white/10 hover:text-foreground h-12 px-4 rounded-2xl transition-all group">
+                                  <Icon className="size-5 opacity-60 group-hover:opacity-100 group-hover:text-primary transition-all" />
+                                  <span className="text-sm font-semibold tracking-tight">{link.label}</span>
+                              </button>
+                            </Link>
+                        );
+                      })}
+                    </div>
+
                     <Button 
                        className="w-full justify-start gap-2 mb-6 font-bold uppercase tracking-widest text-[10px] rounded-xl h-12 shadow-lg" 
                        onClick={async () => {
@@ -919,7 +969,7 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
                        <X className="size-5" />
                     </Button>
                  </div>
-                 <div className="flex-1 overflow-y-auto p-6 bg-black">
+                 <div className="flex-1 overflow-y-auto p-6 bg-black pr-1 custom-scrollbar">
                     {contextTabs}
                  </div>
               </div>
