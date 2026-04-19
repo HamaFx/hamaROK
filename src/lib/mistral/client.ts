@@ -82,6 +82,59 @@ function toDataUrl(args: MistralImageInput): string {
   return `data:${mimeType};base64,${payload}`;
 }
 
+function normalizeConversationInputs(
+  inputs: string | Array<Record<string, unknown>> | undefined
+): Array<Record<string, unknown>> | undefined {
+  if (typeof inputs === 'undefined') return undefined;
+
+  if (typeof inputs === 'string') {
+    return [
+      {
+        type: 'message.input',
+        role: 'user',
+        content: inputs,
+      },
+    ];
+  }
+
+  const rows = Array.isArray(inputs) ? inputs : [];
+  if (rows.length === 0) {
+    return [
+      {
+        type: 'message.input',
+        role: 'user',
+        content: '(empty)',
+      },
+    ];
+  }
+
+  const looksLikeConversationEntries = rows.every((row) => {
+    const type = typeof row?.type === 'string' ? row.type : '';
+    return (
+      type === 'message.input' ||
+      type === 'message.output' ||
+      type === 'function.call' ||
+      type === 'function.result' ||
+      type === 'tool.execution' ||
+      type === 'agent.handoff'
+    );
+  });
+
+  if (looksLikeConversationEntries) {
+    return rows;
+  }
+
+  // Back-compat: wrap legacy multimodal chunks ({ type: 'text'|'image_url', ... })
+  // into a single message.input entry expected by /v1/conversations.
+  return [
+    {
+      type: 'message.input',
+      role: 'user',
+      content: rows,
+    },
+  ];
+}
+
 async function parseJsonSafe(response: Response): Promise<unknown> {
   const text = await response.text();
   if (!text) return null;
@@ -282,9 +335,10 @@ export async function startMistralConversation(args: {
   completionArgs?: Record<string, unknown>;
   store?: boolean;
 }): Promise<MistralConversationResponse> {
+  const normalizedInputs = normalizeConversationInputs(args.inputs);
   const body: Record<string, unknown> = {
     model: args.model || 'mistral-large-latest',
-    inputs: args.inputs,
+    inputs: normalizedInputs,
     store: args.store ?? true,
     stream: false,
   };
@@ -316,11 +370,12 @@ export async function appendMistralConversation(args: {
   completionArgs?: Record<string, unknown>;
   store?: boolean;
 }): Promise<MistralConversationResponse> {
+  const normalizedInputs = normalizeConversationInputs(args.inputs);
   return requestJson<MistralConversationResponse>({
     method: 'POST',
     path: `/v1/conversations/${encodeURIComponent(args.conversationId)}`,
     body: {
-      inputs: args.inputs,
+      inputs: normalizedInputs,
       tool_confirmations: args.toolConfirmations || undefined,
       completion_args: args.completionArgs || undefined,
       store: args.store ?? true,

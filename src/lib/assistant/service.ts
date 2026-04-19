@@ -72,6 +72,7 @@ const OCR_MODEL_DEFAULT = 'mistral-ocr-latest';
 const ASSISTANT_MODEL_DEFAULT = 'mistral-large-latest';
 const MAX_READ_ACTIONS_PER_TURN = 20;
 const MAX_READ_ROWS = 60;
+const MAX_READ_TOOL_LOOPS = 4;
 const MAX_EVIDENCE_IMAGES = 6;
 const ATTACHMENT_EXTRACTION_CONCURRENCY = 2;
 
@@ -861,6 +862,7 @@ function pickConversationAssistantText(response: MistralConversationResponse): s
 function parseActionsFromFunctionCalls(response: MistralConversationResponse) {
   const calls = extractFunctionCalls(response.outputs);
   const writeActions: AssistantActionInput[] = [];
+  const readCalls: Array<{ toolCallId: string; action: AssistantReadActionInput }> = [];
   const readActions: AssistantReadActionInput[] = [];
   const pendingToolCallIds: string[] = [];
   const droppedCalls: Array<{ name: string; reason: string }> = [];
@@ -868,6 +870,10 @@ function parseActionsFromFunctionCalls(response: MistralConversationResponse) {
   for (const call of calls) {
     const readAction = tryParseReadActionFromCall(call.name, call.arguments);
     if (readAction) {
+      readCalls.push({
+        toolCallId: call.toolCallId,
+        action: readAction,
+      });
       readActions.push(readAction);
       continue;
     }
@@ -889,6 +895,7 @@ function parseActionsFromFunctionCalls(response: MistralConversationResponse) {
 
   return {
     writeActions,
+    readCalls,
     readActions,
     pendingToolCallIds,
     droppedCalls,
@@ -1046,6 +1053,7 @@ function preflightWriteActions(
 }
 
 type AssistantReadExecution = {
+  toolCallId?: string;
   actionType: AssistantReadActionInput['type'];
   request: AssistantReadActionInput;
   summary: string;
@@ -1744,16 +1752,17 @@ async function executeReadAction(args: {
 
 async function executeReadActions(args: {
   workspaceId: string;
-  actions: AssistantReadActionInput[];
+  calls: Array<{ toolCallId: string; action: AssistantReadActionInput }>;
 }): Promise<AssistantReadExecution[]> {
   const executions: AssistantReadExecution[] = [];
-  const uniqueActions = normalizeReadActions(args.actions).slice(0, MAX_READ_ACTIONS_PER_TURN);
+  const readCalls = args.calls.slice(0, MAX_READ_ACTIONS_PER_TURN);
 
-  for (const action of uniqueActions) {
+  for (const call of readCalls) {
     const execution = await executeReadAction({
       workspaceId: args.workspaceId,
-      action,
+      action: call.action,
     });
+    execution.toolCallId = call.toolCallId;
     executions.push(execution);
   }
 
@@ -2593,7 +2602,7 @@ export async function postAssistantMessage(args: {
         'Do not execute actions directly; they require explicit plan confirmation.',
       ].join(' '),
       inputs: conversationInputs,
-      tools: mistralActionTools(),
+      tools: mistralReadTools(),
       store: true,
     });
     mistralConversationId = initialResponse.conversation_id;
@@ -2602,23 +2611,55 @@ export async function postAssistantMessage(args: {
 
   let planningResponse = initialResponse;
   let functionCallPlan = parseActionsFromFunctionCalls(planningResponse);
-  const readExecutions = await executeReadActions({
-    workspaceId: args.workspaceId,
-    actions: functionCallPlan.readActions,
-  });
+  const readExecutions: AssistantReadExecution[] = [];
+  const resolvedToolCallIds = new Set<string>();
 
-  if (readExecutions.length > 0 && mistralConversationId) {
-    planningResponse = await appendMistralConversation({
-      conversationId: mistralConversationId,
-      inputs: [
-        {
-          type: 'text',
-          text: buildReadResultsPrompt(readExecutions),
-        },
-      ],
-      store: true,
-    });
-    functionCallPlan = parseActionsFromFunctionCalls(planningResponse);
+  if (mistralConversationId) {
+    for (let loopIndex = 0; loopIndex < MAX_READ_TOOL_LOOPS; loopIndex += 1) {
+      const pendingReadCalls = functionCallPlan.readCalls.filter(
+        (call) => call.toolCallId && !resolvedToolCallIds.has(call.toolCallId)
+      );
+      if (pendingReadCalls.length === 0) {
+        break;
+      }
+
+      const executed = await executeReadActions({
+        workspaceId: args.workspaceId,
+        calls: pendingReadCalls,
+      });
+      readExecutions.push(...executed);
+
+      const functionResults = executed
+        .filter((entry) => typeof entry.toolCallId === 'string' && entry.toolCallId.length > 0)
+        .map((entry) => {
+          const toolCallId = String(entry.toolCallId);
+          resolvedToolCallIds.add(toolCallId);
+          return {
+            type: 'function.result',
+            tool_call_id: toolCallId,
+            result: safeJsonText(
+              {
+                actionType: entry.actionType,
+                summary: entry.summary,
+                error: entry.error || null,
+                result: entry.result,
+              },
+              16_000
+            ),
+          };
+        });
+
+      if (functionResults.length === 0) {
+        break;
+      }
+
+      planningResponse = await appendMistralConversation({
+        conversationId: mistralConversationId,
+        inputs: functionResults,
+        store: true,
+      });
+      functionCallPlan = parseActionsFromFunctionCalls(planningResponse);
+    }
   }
 
   let assistantText =

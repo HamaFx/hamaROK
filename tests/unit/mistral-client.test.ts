@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  appendMistralConversation,
   extractConversationTextOutputs,
   extractFunctionCalls,
   extractPendingToolCalls,
   runMistralOcr,
+  startMistralConversation,
 } from '@/lib/mistral/client';
 
 describe('mistral client parsers', () => {
@@ -130,5 +132,79 @@ describe('mistral client parsers', () => {
     });
 
     expect(fetchMock).toHaveBeenCalled();
+  });
+
+  it('normalizes string inputs to message.input entries for conversations', async () => {
+    process.env.MISTRAL_API_KEY = 'test-key';
+    process.env.MISTRAL_BASE_URL = 'https://api.mistral.ai';
+
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          object: 'conversation.response',
+          conversation_id: 'conv_test',
+          outputs: [],
+          usage: {},
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      )
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await startMistralConversation({
+      inputs: 'hello world',
+      store: false,
+    });
+
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    const body = JSON.parse(String(init.body || '{}')) as Record<string, unknown>;
+    const inputs = body.inputs as Array<Record<string, unknown>>;
+    expect(Array.isArray(inputs)).toBe(true);
+    expect(inputs[0]).toMatchObject({
+      type: 'message.input',
+      role: 'user',
+      content: 'hello world',
+    });
+  });
+
+  it('normalizes legacy chunk arrays to message.input entries when appending', async () => {
+    process.env.MISTRAL_API_KEY = 'test-key';
+    process.env.MISTRAL_BASE_URL = 'https://api.mistral.ai';
+
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          object: 'conversation.response',
+          conversation_id: 'conv_test',
+          outputs: [],
+          usage: {},
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      )
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await appendMistralConversation({
+      conversationId: 'conv_test',
+      inputs: [
+        { type: 'text', text: 'hello' },
+        { type: 'image_url', image_url: 'data:image/png;base64,ZmFrZQ==' },
+      ],
+      store: false,
+    });
+
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    const body = JSON.parse(String(init.body || '{}')) as Record<string, unknown>;
+    const inputs = body.inputs as Array<Record<string, unknown>>;
+    expect(Array.isArray(inputs)).toBe(true);
+    expect(inputs[0]).toMatchObject({
+      type: 'message.input',
+      role: 'user',
+    });
+    expect(Array.isArray(inputs[0]?.content)).toBe(true);
+    expect((inputs[0]?.content as Array<Record<string, unknown>>)[0]).toMatchObject({
+      type: 'text',
+      text: 'hello',
+    });
   });
 });
