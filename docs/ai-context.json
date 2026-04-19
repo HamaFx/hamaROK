@@ -1,0 +1,85 @@
+{
+  "project": {
+    "name": "hamaROK",
+    "updatedAt": "2026-04-19",
+    "productionUrl": "https://hamarok.vercel.app"
+  },
+  "runtime": {
+    "frontendAndApi": "Vercel Next.js App Router",
+    "database": "Postgres via Prisma",
+    "artifactStorage": "Vercel Blob",
+    "ocrWorkerControl": "AWS SQS + Lambda + EC2"
+  },
+  "defaults": {
+    "ocrEngine": "mistral",
+    "ocrModel": "mistral-ocr-latest",
+    "assistantModel": "mistral-large-latest",
+    "similarityAutoThreshold": 0.93
+  },
+  "keyFiles": {
+    "agentRules": "AGENTS.md",
+    "env": "src/lib/env.ts",
+    "health": "src/app/api/healthz/route.ts",
+    "assistantService": "src/lib/assistant/service.ts",
+    "workspaceActions": "src/lib/domain/workspace-actions.ts",
+    "similarityResolver": "src/lib/governor-similarity.ts",
+    "rankingsService": "src/lib/rankings/service.ts",
+    "ingestionService": "src/lib/ingestion-service.ts",
+    "mistralClient": "src/lib/mistral/client.ts",
+    "mistralExtraction": "src/lib/ocr/mistral-extraction.ts",
+    "schema": "prisma/schema.prisma"
+  },
+  "assistant": {
+    "writeActions": [
+      "register_player",
+      "update_player",
+      "delete_player",
+      "create_event",
+      "delete_event",
+      "record_profile_stats"
+    ],
+    "batchAutoConfirmSafeActions": [
+      "register_player",
+      "update_player",
+      "record_profile_stats"
+    ]
+  },
+  "criticalEndpoints": {
+    "health": "/api/healthz",
+    "assistant": [
+      "/api/v2/assistant/conversations",
+      "/api/v2/assistant/conversations/:id/messages",
+      "/api/v2/assistant/plans/:id/confirm",
+      "/api/v2/assistant/plans/:id/deny",
+      "/api/v2/assistant/pending-identities/:id/resolve",
+      "/api/v2/assistant/batches",
+      "/api/v2/assistant/batches/:id",
+      "/api/v2/assistant/batches/:id/step"
+    ],
+    "ingestionInternal": [
+      "/api/v2/internal/ingestion-tasks/:taskId/start",
+      "/api/v2/internal/ingestion-tasks/:taskId/extract",
+      "/api/v2/internal/ingestion-tasks/:taskId/complete",
+      "/api/v2/internal/ingestion-tasks/:taskId/fail"
+    ]
+  },
+  "commands": {
+    "dev": "npm run dev",
+    "lint": "npm run lint",
+    "typecheck": "npm run typecheck",
+    "test": "npm run test",
+    "build": "npm run build",
+    "systemCheck": "scripts/final-system-check.sh"
+  },
+  "documentation": [
+    "docs/01-agent-quickstart.md",
+    "docs/02-system-architecture.md",
+    "docs/03-workflow-catalog.md",
+    "docs/04-api-catalog.md",
+    "docs/05-service-ownership.md",
+    "docs/06-data-model.md",
+    "docs/07-deployment-ops.md",
+    "docs/08-testing-runbook.md",
+    "docs/09-change-playbook.md"
+  ]
+}
