@@ -789,7 +789,7 @@ export default function UploadPage() {
         } else {
           setSubmitMessage({
             type: 'success',
-            text: `Queued ${imageFiles.length} screenshot(s). OCR processing now runs in the EC2 worker queue.`,
+            text: `Queued ${imageFiles.length} screenshot(s). Mistral extraction now runs in the EC2 worker queue.`,
           });
         }
       } catch (error) {
@@ -986,7 +986,7 @@ export default function UploadPage() {
     <div className="space-y-4 sm:space-y-5 lg:space-y-6">
       <PageHero
         title="Upload"
-        subtitle="Upload weekly screenshots. OCR runs in the background and fills the review queues."
+        subtitle="Upload weekly screenshots. Mistral extraction runs in the background and fills the review queues."
       />
 
       <SessionGate ready={workspaceReady} loading={sessionLoading} error={sessionError} onRetry={() => void refreshSession()}>

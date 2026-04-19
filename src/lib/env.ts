@@ -30,6 +30,7 @@ const envSchema = z
     MISTRAL_API_KEY: z.string().optional(),
     MISTRAL_BASE_URL: z.string().url().optional(),
     OCR_ENGINE: z.enum(['mistral', 'legacy']).optional(),
+    ALLOW_LEGACY_OCR: booleanString,
     GOOGLE_VISION_API_KEY: z.string().optional(),
     GOOGLE_APPLICATION_CREDENTIALS: z.string().optional(),
     GOOGLE_VISION_SERVICE_ACCOUNT_JSON: z.string().optional(),
@@ -171,8 +172,20 @@ export function getUploadMode(): 'queue_first' | 'client_legacy' {
   return getEnv().UPLOAD_MODE ?? 'queue_first';
 }
 
-export function getOcrEngine(): 'mistral' | 'legacy' {
+export function getRequestedOcrEngine(): 'mistral' | 'legacy' {
   return getEnv().OCR_ENGINE ?? 'mistral';
+}
+
+export function isLegacyOcrAllowed(): boolean {
+  return getEnv().ALLOW_LEGACY_OCR ?? false;
+}
+
+export function getOcrEngine(): 'mistral' | 'legacy' {
+  const requested = getRequestedOcrEngine();
+  if (requested !== 'legacy') {
+    return requested;
+  }
+  return isLegacyOcrAllowed() ? 'legacy' : 'mistral';
 }
 
 export function isMistralOcrEnabled(): boolean {

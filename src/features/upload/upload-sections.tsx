@@ -111,10 +111,10 @@ export function UploadWorkerPanel({
         <div className="rounded-[22px] border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] p-3.5">
           <div className="mb-2 flex flex-wrap items-center gap-2">
             <ShieldCheck className="size-4" />
-            <strong className="text-sm text-tier-1">AWS OCR Worker</strong>
+            <strong className="text-sm text-tier-1">AWS Mistral Worker</strong>
             <StatusPill label={workerLabel} tone={workerTone} />
           </div>
-          <p className="text-sm text-tier-3">Queue-driven auto-start. Use Start Worker to warm up before uploads.</p>
+          <p className="text-sm text-tier-3">Queue-driven Mistral extraction. Use Start Worker to warm up before uploads.</p>
           <FilterBar className="mt-3">
             <Button
               onClick={onStartWorker}
@@ -185,7 +185,7 @@ export function UploadDropZonePanel({
         <p className="font-heading text-lg text-tier-1">
           {isDragging ? 'Release to queue uploads' : 'Drop screenshots here'}
         </p>
-        <p className="mt-2 text-sm text-tier-3">PNG, JPG, WEBP • Queue-first processing (no browser OCR freeze)</p>
+        <p className="mt-2 text-sm text-tier-3">PNG, JPG, WEBP • Queue-first Mistral processing (no browser OCR freeze)</p>
         <input
           ref={fileInputRef}
           type="file"
@@ -268,7 +268,7 @@ export function UploadProcessingPanel({
       title="Processing Finished"
       subtitle={
         scanJobState.status === 'REVIEW'
-          ? 'OCR processing is complete. Continue in the review queues.'
+          ? 'Mistral extraction is complete. Continue in the review queues.'
           : 'Some rows failed. Review completed rows and retry failed screenshots.'
       }
       actions={

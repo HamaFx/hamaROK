@@ -9,6 +9,11 @@ SERVICE_SECRET="${SERVICE_SECRET:-${APP_SIGNING_SECRET:-}}"
 MISTRAL_KEY="${MISTRAL_API_KEY:-}"
 MISTRAL_URL="${MISTRAL_BASE_URL:-https://api.mistral.ai}"
 OCR_ENGINE_RAW="${OCR_ENGINE:-mistral}"
+ALLOW_LEGACY_OCR_RAW="${ALLOW_LEGACY_OCR:-false}"
+case "${ALLOW_LEGACY_OCR_RAW,,}" in
+  true|1|yes|on) ALLOW_LEGACY_OCR="true" ;;
+  *) ALLOW_LEGACY_OCR="false" ;;
+esac
 case "${OCR_ENGINE_RAW,,}" in
   mistral|legacy) OCR_ENGINE="${OCR_ENGINE_RAW,,}" ;;
   *)
@@ -29,6 +34,12 @@ fi
 
 if [[ "$OCR_ENGINE" == "mistral" && -z "${MISTRAL_KEY}" ]]; then
   echo "MISTRAL_API_KEY is required when OCR_ENGINE=mistral." >&2
+  exit 1
+fi
+
+if [[ "$OCR_ENGINE" == "legacy" && "$ALLOW_LEGACY_OCR" != "true" ]]; then
+  echo "Refusing OCR_ENGINE=legacy unless ALLOW_LEGACY_OCR=true is explicitly set." >&2
+  echo "This keeps legacy OCR as emergency-only rollback." >&2
   exit 1
 fi
 

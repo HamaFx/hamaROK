@@ -3,7 +3,9 @@ import {
   getAppSigningSecret,
   getEnv,
   getOcrEngine,
+  getRequestedOcrEngine,
   getUploadMode,
+  isLegacyOcrAllowed,
   validateRuntimeEnv,
 } from '@/lib/env';
 import { getWeeklySchemaCapability } from '@/lib/weekly-schema-guard';
@@ -31,6 +33,8 @@ export async function GET() {
   let env: ReturnType<typeof getEnv> | null = null;
   let uploadMode: 'queue_first' | 'client_legacy' | null = null;
   let ocrEngine: 'mistral' | 'legacy' | null = null;
+  let requestedOcrEngine: 'mistral' | 'legacy' | null = null;
+  let legacyOcrAllowed: boolean | null = null;
   let embeddingInstalled: boolean | null = null;
   let embeddingConfigValid: boolean | null = null;
   let embeddingInvalidWorkspaceCount = 0;
@@ -39,6 +43,8 @@ export async function GET() {
     env = validateRuntimeEnv();
     getAppSigningSecret();
     uploadMode = getUploadMode();
+    requestedOcrEngine = getRequestedOcrEngine();
+    legacyOcrAllowed = isLegacyOcrAllowed();
     ocrEngine = getOcrEngine();
     checks.push({ name: 'env', ok: true });
   } catch (error) {
@@ -165,6 +171,9 @@ export async function GET() {
   if (env && (env.OCR_ENGINE ?? 'mistral') === 'mistral' && !env.MISTRAL_API_KEY) {
     warnings.push('MISTRAL_API_KEY is not configured while OCR_ENGINE=mistral.');
   }
+  if (requestedOcrEngine === 'legacy' && !legacyOcrAllowed) {
+    warnings.push('OCR_ENGINE=legacy requested but blocked because ALLOW_LEGACY_OCR is not enabled.');
+  }
   if (embeddingConfigValid === false) {
     warnings.push(
       `Embedding configuration invalid for ${embeddingInvalidWorkspaceCount} workspace(s): dimension must stay at 1024.`
@@ -191,6 +200,8 @@ export async function GET() {
         },
         ocr: {
           engine: ocrEngine || (env?.OCR_ENGINE ?? 'mistral'),
+          requestedEngine: requestedOcrEngine || (env?.OCR_ENGINE ?? 'mistral'),
+          legacyAllowed: legacyOcrAllowed,
           mistralConfigured: Boolean(env?.MISTRAL_API_KEY),
           mistralBaseUrl: env?.MISTRAL_BASE_URL || 'https://api.mistral.ai',
         },
