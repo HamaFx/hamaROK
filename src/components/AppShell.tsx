@@ -35,6 +35,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import InstallAppBanner from '@/components/app/install-app-banner';
 
 
 function BrandLockup() {
@@ -288,6 +289,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
         {children}
       </main>
 
+      {pathname !== '/assistant' ? <InstallAppBanner /> : null}
       {pathname !== '/assistant' ? <MobileMoreNav /> : null}
     </div>
   );
