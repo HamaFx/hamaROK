@@ -10,6 +10,7 @@ import {
   MessageSquare,
   PanelRight,
   Plus,
+  Play,
   Send,
   User,
   Workflow,
@@ -113,6 +114,23 @@ function getReadExecutions(meta: MessageRow['meta']): Array<Record<string, unkno
   const reads = (meta as Record<string, unknown>).readExecutions;
   if (!Array.isArray(reads)) return [];
   return reads.filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === 'object');
+}
+
+function batchFlagReasonLabel(reason: string): string {
+  switch (reason) {
+    case 'non_safe_actions':
+      return 'Contains non-safe actions';
+    case 'pending_identity':
+      return 'Needs identity resolution';
+    case 'action_failed':
+      return 'Auto-confirm action failed';
+    case 'no_high_confidence_identity':
+      return 'No >=93% identity match';
+    case 'unexpected_error':
+      return 'Unexpected processing error';
+    default:
+      return reason;
+  }
 }
 
 function StatusChip({ label, value }: { label: string; value: string | number }) {
@@ -595,6 +613,80 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
           <div className="rounded-2xl border border-emerald-300/20 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-100">
             {controller.notice}
           </div>
+        ) : null}
+
+        {(controller.batchRun || controller.batchScanJobId || controller.handoffContext) ? (
+          <Panel
+            title="AI Batch Runner"
+            subtitle="Process scan-job screenshots one-by-one with safe auto-confirm."
+            actions={
+              <div className="flex flex-wrap gap-2">
+                <Input
+                  value={controller.batchScanJobId}
+                  onChange={(event) => controller.setBatchScanJobId(event.target.value)}
+                  placeholder="Scan Job ID"
+                  className="h-9 w-[250px]"
+                />
+                <Button
+                  className="rounded-full bg-[color:var(--primary)] text-primary-foreground hover:opacity-90"
+                  onClick={() => void controller.startBatchRun()}
+                  disabled={controller.startingBatch}
+                >
+                  <Play data-icon="inline-start" />
+                  {controller.startingBatch ? 'Starting...' : 'Start Batch'}
+                </Button>
+                <Button
+                  variant="outline"
+                  className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)]"
+                  onClick={() => void controller.runBatchStep()}
+                  disabled={controller.steppingBatch || !controller.batchRun}
+                >
+                  <Workflow data-icon="inline-start" />
+                  {controller.steppingBatch ? 'Running Step...' : 'Run Next Step'}
+                </Button>
+              </div>
+            }
+          >
+            {controller.batchRun ? (
+              <div className="space-y-3">
+                <div className="grid gap-2 sm:grid-cols-5">
+                  <StatusChip label="Status" value={controller.batchRun.status} />
+                  <StatusChip label="Processed" value={`${controller.batchRun.processedCount}/${controller.batchRun.totalArtifacts}`} />
+                  <StatusChip label="Remaining" value={controller.batchRun.remainingCount} />
+                  <StatusChip label="Auto Confirmed" value={controller.batchRun.autoConfirmedCount} />
+                  <StatusChip label="Flagged" value={controller.batchRun.pendingManualCount} />
+                </div>
+                <p className="text-xs text-tier-3">
+                  Scan job: <span className="text-tier-1">{controller.batchRun.scanJobId}</span>
+                  {controller.batchRun.nextArtifact ? (
+                    <>
+                      {' '}• Next: <span className="text-tier-1">{controller.batchRun.nextArtifact.fileName}</span>
+                    </>
+                  ) : null}
+                </p>
+                {controller.batchRun.flagged.length > 0 ? (
+                  <div className="space-y-2 rounded-xl border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] p-3">
+                    <p className="text-sm font-medium text-tier-1">Flagged Items</p>
+                    {controller.batchRun.flagged.slice(-8).reverse().map((row, index) => (
+                      <div
+                        key={`${row.artifactId}-${index}`}
+                        className="rounded-lg border border-[color:var(--stroke-soft)] bg-[color:var(--surface-4)] px-2.5 py-2 text-xs"
+                      >
+                        <p className="font-medium text-tier-1">{row.fileName}</p>
+                        <p className="text-amber-100">{batchFlagReasonLabel(row.reason)}</p>
+                        {row.planId ? <p className="text-tier-3">Plan: {row.planId}</p> : null}
+                        {row.details ? <p className="text-tier-3">{row.details}</p> : null}
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <p className="text-sm text-tier-3">
+                Start a batch with a scan job ID to process upload artifacts sequentially.
+              </p>
+            )}
+          </Panel>
         ) : null}
 
         {pendingPlan ? (

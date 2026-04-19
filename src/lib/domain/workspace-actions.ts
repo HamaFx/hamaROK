@@ -8,6 +8,7 @@ import {
 } from '@prisma/client';
 import { ApiHttpError } from '@/lib/api-response';
 import { normalizeGovernorAlias } from '@/lib/rankings/normalize';
+import { resolveGovernorBySimilarityTx } from '@/lib/governor-similarity';
 import { ensureWeeklyEventForWorkspace } from '@/lib/weekly-events';
 import {
   METRIC_KEY_KILL_POINTS,
@@ -70,6 +71,7 @@ export interface ResolvedGovernorForStats {
   governorDbId: string;
   governorGameId: string;
   governorName: string;
+  score?: number;
 }
 
 function assertString(value: string, label: string): string {
@@ -471,76 +473,43 @@ export async function resolveGovernorForStatsTx(
     };
   }
 
-  const aliasHits = await tx.governorAlias.findMany({
-    where: {
-      workspaceId,
-      aliasNormalized: normalizedName,
-    },
-    include: {
-      governor: {
-        select: {
-          id: true,
-          governorId: true,
-          name: true,
-        },
-      },
-    },
-    take: 20,
+  const similarity = await resolveGovernorBySimilarityTx(tx, {
+    workspaceId,
+    governorNameRaw: governorName,
+    suggestionLimit: 6,
   });
 
-  const directNameHits = await tx.governor.findMany({
-    where: {
-      workspaceId,
-      name: {
-        equals: governorName,
-        mode: 'insensitive',
-      },
-    },
-    select: {
-      id: true,
-      governorId: true,
-      name: true,
-    },
-    take: 20,
-  });
+  const candidates = similarity.candidates.map((candidate) => ({
+    governorDbId: candidate.governorDbId,
+    governorGameId: candidate.governorGameId,
+    governorName: candidate.governorName,
+    score: candidate.score,
+  }));
 
-  const merged = new Map<string, ResolvedGovernorForStats>();
-  for (const row of aliasHits) {
-    merged.set(row.governor.id, {
-      governorDbId: row.governor.id,
-      governorGameId: row.governor.governorId,
-      governorName: row.governor.name,
-    });
-  }
-  for (const row of directNameHits) {
-    merged.set(row.id, {
-      governorDbId: row.id,
-      governorGameId: row.governorId,
-      governorName: row.name,
-    });
-  }
-
-  const candidates = [...merged.values()];
-
-  if (candidates.length === 0) {
+  if (similarity.status === 'resolved') {
     return {
-      status: 'missing',
-      reason: 'No registered governor matched the provided name.',
-      candidates,
+      status: 'resolved',
+      governor: {
+        governorDbId: similarity.governor.governorDbId,
+        governorGameId: similarity.governor.governorGameId,
+        governorName: similarity.governor.governorName,
+        score: similarity.governor.score,
+      },
     };
   }
 
-  if (candidates.length > 1) {
+  if (similarity.status === 'ambiguous') {
     return {
       status: 'ambiguous',
-      reason: 'Multiple governors matched the provided name.',
+      reason: similarity.reason,
       candidates,
     };
   }
 
   return {
-    status: 'resolved',
-    governor: candidates[0],
+    status: 'missing',
+    reason: similarity.reason,
+    candidates,
   };
 }
 

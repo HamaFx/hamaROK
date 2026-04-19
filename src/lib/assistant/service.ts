@@ -41,10 +41,10 @@ import {
   updateGovernorTx,
   writeProfileStatsTx,
 } from '@/lib/domain/workspace-actions';
-import { normalizeGovernorAlias } from '@/lib/rankings/normalize';
 import { buildWorkspaceAnalytics } from '@/lib/analytics';
 import { compareWorkspaceEvents } from '@/lib/compare-service';
 import { getWeeklyActivityReport } from '@/lib/activity/service';
+import { resolveGovernorBySimilarityTx } from '@/lib/governor-similarity';
 import {
   getRankingRunById,
   listRankingReviewRows,
@@ -75,6 +75,32 @@ const MAX_READ_ROWS = 60;
 const MAX_READ_TOOL_LOOPS = 4;
 const MAX_EVIDENCE_IMAGES = 6;
 const ATTACHMENT_EXTRACTION_CONCURRENCY = 2;
+const ASSISTANT_BATCH_SAFE_ACTIONS = new Set([
+  'register_player',
+  'update_player',
+  'record_profile_stats',
+]);
+const ASSISTANT_BATCH_DEFAULT_PROMPT =
+  'Analyze this screenshot. Register missing players and prepare updates for existing players. Keep write actions precise and limited to evidence.';
+const ASSISTANT_ALLOWED_IMAGE_MIME_TYPES = new Set([
+  'image/png',
+  'image/jpeg',
+  'image/webp',
+]);
+
+export function evaluateAssistantBatchAutoConfirm(actions: Array<{ type?: unknown }>) {
+  const actionTypes = actions
+    .map((action) => String(action?.type || '').trim())
+    .filter(Boolean);
+  const unsafeActionTypes = actionTypes.filter(
+    (actionType) => !ASSISTANT_BATCH_SAFE_ACTIONS.has(actionType)
+  );
+  return {
+    actionTypes,
+    unsafeActionTypes,
+    safe: unsafeActionTypes.length === 0,
+  };
+}
 
 function sanitizePrintable(value: unknown, max = 3000): string {
   return String(value ?? '')
@@ -804,6 +830,691 @@ export async function cleanupAssistantWorkspace(input: CleanupAssistantWorkspace
   });
 
   return result;
+}
+
+type AssistantBatchStatus = 'RUNNING' | 'COMPLETED';
+
+interface AssistantBatchFlag {
+  artifactId: string;
+  fileName: string;
+  reason:
+    | 'non_safe_actions'
+    | 'pending_identity'
+    | 'action_failed'
+    | 'no_high_confidence_identity'
+    | 'unexpected_error';
+  planId?: string | null;
+  actionTypes?: string[];
+  details?: string | null;
+  createdAt: string;
+}
+
+interface AssistantBatchState {
+  version: 1;
+  scanJobId: string;
+  status: AssistantBatchStatus;
+  totalArtifacts: number;
+  processedArtifactIds: string[];
+  flagged: AssistantBatchFlag[];
+  autoConfirmedCount: number;
+  pendingManualCount: number;
+  lastProcessedArtifactId: string | null;
+  lastProcessedFileName: string | null;
+  createdAt: string;
+  updatedAt: string;
+  prompt: string;
+}
+
+type BatchArtifactRow = {
+  artifactId: string;
+  fileName: string;
+  artifactUrl: string;
+  mimeType: string;
+  bytes: number;
+};
+
+function parseAssistantBatchState(value: unknown): AssistantBatchState | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const row = value as Record<string, unknown>;
+  if (Number(row.version) !== 1) return null;
+  const scanJobId = String(row.scanJobId || '').trim();
+  if (!scanJobId) return null;
+
+  const processedArtifactIds = Array.isArray(row.processedArtifactIds)
+    ? row.processedArtifactIds
+        .map((entry) => String(entry || '').trim())
+        .filter(Boolean)
+    : [];
+
+  const flagged = Array.isArray(row.flagged)
+    ? row.flagged
+        .filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === 'object')
+        .map((entry) => ({
+          artifactId: String(entry.artifactId || '').trim(),
+          fileName: String(entry.fileName || '').trim() || 'artifact',
+          reason: String(entry.reason || '').trim() as AssistantBatchFlag['reason'],
+          planId: entry.planId == null ? null : String(entry.planId || '').trim() || null,
+          actionTypes: Array.isArray(entry.actionTypes)
+            ? entry.actionTypes.map((value) => String(value || '').trim()).filter(Boolean)
+            : [],
+          details: entry.details == null ? null : sanitizePrintable(entry.details, 280),
+          createdAt: String(entry.createdAt || '').trim() || new Date().toISOString(),
+        }))
+        .filter((entry) => entry.artifactId && entry.reason)
+    : [];
+
+  return {
+    version: 1,
+    scanJobId,
+    status: row.status === 'COMPLETED' ? 'COMPLETED' : 'RUNNING',
+    totalArtifacts: Math.max(0, Number(row.totalArtifacts || 0)),
+    processedArtifactIds,
+    flagged,
+    autoConfirmedCount: Math.max(0, Number(row.autoConfirmedCount || 0)),
+    pendingManualCount: Math.max(0, Number(row.pendingManualCount || 0)),
+    lastProcessedArtifactId:
+      row.lastProcessedArtifactId == null
+        ? null
+        : String(row.lastProcessedArtifactId || '').trim() || null,
+    lastProcessedFileName:
+      row.lastProcessedFileName == null
+        ? null
+        : String(row.lastProcessedFileName || '').trim() || null,
+    createdAt: String(row.createdAt || '').trim() || new Date().toISOString(),
+    updatedAt: String(row.updatedAt || '').trim() || new Date().toISOString(),
+    prompt: sanitizePrintable(row.prompt || ASSISTANT_BATCH_DEFAULT_PROMPT, 2000) || ASSISTANT_BATCH_DEFAULT_PROMPT,
+  };
+}
+
+function normalizeMimeType(value: unknown): string {
+  const mimeType = String(value || '').toLowerCase().trim();
+  if (ASSISTANT_ALLOWED_IMAGE_MIME_TYPES.has(mimeType)) {
+    return mimeType;
+  }
+  return 'image/png';
+}
+
+async function listBatchArtifactsForScanJob(args: {
+  workspaceId: string;
+  scanJobId: string;
+}): Promise<BatchArtifactRow[]> {
+  const tasks = await prisma.ingestionTask.findMany({
+    where: {
+      workspaceId: args.workspaceId,
+      scanJobId: args.scanJobId,
+      status: IngestionTaskStatus.COMPLETED,
+    },
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+    select: {
+      artifactId: true,
+      metadata: true,
+      artifact: {
+        select: {
+          id: true,
+          url: true,
+          bytes: true,
+          metadata: true,
+        },
+      },
+    },
+  });
+
+  const seen = new Set<string>();
+  const rows: BatchArtifactRow[] = [];
+  for (const task of tasks) {
+    const artifactId = String(task.artifactId || '').trim();
+    if (!artifactId || seen.has(artifactId)) continue;
+    if (!task.artifact?.url) continue;
+    seen.add(artifactId);
+
+    const artifactMeta =
+      task.artifact.metadata &&
+      typeof task.artifact.metadata === 'object' &&
+      !Array.isArray(task.artifact.metadata)
+        ? (task.artifact.metadata as Record<string, unknown>)
+        : {};
+    const taskMeta =
+      task.metadata && typeof task.metadata === 'object' && !Array.isArray(task.metadata)
+        ? (task.metadata as Record<string, unknown>)
+        : {};
+    const mergedMeta = {
+      ...artifactMeta,
+      ...taskMeta,
+    };
+
+    rows.push({
+      artifactId,
+      fileName:
+        sanitizePrintable(mergedMeta.fileName || '', 180) || `artifact-${artifactId.slice(-8)}`,
+      artifactUrl: task.artifact.url,
+      mimeType: normalizeMimeType(mergedMeta.mimeType),
+      bytes: Number(task.artifact.bytes || 0),
+    });
+  }
+
+  return rows;
+}
+
+async function isScanJobTerminal(args: {
+  workspaceId: string;
+  scanJobId: string;
+}): Promise<boolean> {
+  const row = await prisma.scanJob.findFirst({
+    where: {
+      id: args.scanJobId,
+      workspaceId: args.workspaceId,
+    },
+    select: {
+      status: true,
+    },
+  });
+  if (!row) {
+    throw new ApiHttpError('NOT_FOUND', 'Scan job not found in this workspace.', 404);
+  }
+  return (
+    row.status === ScanJobStatus.REVIEW ||
+    row.status === ScanJobStatus.FAILED ||
+    row.status === ScanJobStatus.COMPLETED
+  );
+}
+
+async function hydrateBatchArtifactAttachment(args: {
+  workspaceId: string;
+  artifact: BatchArtifactRow;
+}): Promise<AssistantAttachmentInput> {
+  const response = await fetch(args.artifact.artifactUrl, { cache: 'no-store' });
+  if (!response.ok) {
+    throw new ApiHttpError(
+      'INTERNAL_ERROR',
+      `Failed to download artifact image (${response.status}).`,
+      500
+    );
+  }
+  const contentType = normalizeMimeType(
+    response.headers.get('content-type') || args.artifact.mimeType
+  );
+  if (!ASSISTANT_ALLOWED_IMAGE_MIME_TYPES.has(contentType)) {
+    throw new ApiHttpError('VALIDATION_ERROR', 'Batch artifact is not a supported image type.', 400);
+  }
+  const bytes = Buffer.from(await response.arrayBuffer());
+  return {
+    artifactId: args.artifact.artifactId,
+    url: args.artifact.artifactUrl,
+    fileName: args.artifact.fileName,
+    mimeType: contentType,
+    sizeBytes: args.artifact.bytes || bytes.byteLength,
+    base64: bytes.toString('base64'),
+  };
+}
+
+function serializeAssistantBatch(args: {
+  batchId: string;
+  workspaceId: string;
+  conversationId: string;
+  batch: AssistantBatchState;
+  artifacts: BatchArtifactRow[];
+}) {
+  const artifactSet = new Set(args.artifacts.map((row) => row.artifactId));
+  const processed = args.batch.processedArtifactIds.filter((id) => artifactSet.has(id));
+  const processedSet = new Set(processed);
+  const nextArtifact = args.artifacts.find((row) => !processedSet.has(row.artifactId)) || null;
+  const totalArtifacts = args.artifacts.length;
+  const processedCount = processed.length;
+  const pendingManualCount = Math.max(
+    args.batch.pendingManualCount,
+    args.batch.flagged.length
+  );
+
+  return {
+    id: args.batchId,
+    workspaceId: args.workspaceId,
+    conversationId: args.conversationId,
+    scanJobId: args.batch.scanJobId,
+    status: args.batch.status,
+    totalArtifacts,
+    processedCount,
+    remainingCount: Math.max(0, totalArtifacts - processedCount),
+    autoConfirmedCount: args.batch.autoConfirmedCount,
+    pendingManualCount,
+    lastProcessedArtifactId: args.batch.lastProcessedArtifactId,
+    lastProcessedFileName: args.batch.lastProcessedFileName,
+    nextArtifact: nextArtifact
+      ? {
+          artifactId: nextArtifact.artifactId,
+          fileName: nextArtifact.fileName,
+        }
+      : null,
+    flagged: args.batch.flagged,
+    createdAt: args.batch.createdAt,
+    updatedAt: args.batch.updatedAt,
+  };
+}
+
+export async function createAssistantBatchRun(args: {
+  workspaceId: string;
+  scanJobId: string;
+  conversationId?: string | null;
+  accessLink: AccessLink;
+}) {
+  if (args.accessLink.workspaceId !== args.workspaceId) {
+    throw new ApiHttpError('FORBIDDEN', 'Access link is not valid for this workspace.', 403);
+  }
+  requireRole(args.accessLink, WorkspaceRole.EDITOR);
+
+  const scanJob = await prisma.scanJob.findFirst({
+    where: {
+      id: args.scanJobId,
+      workspaceId: args.workspaceId,
+    },
+    select: { id: true },
+  });
+  if (!scanJob) {
+    throw new ApiHttpError('NOT_FOUND', 'Scan job not found in this workspace.', 404);
+  }
+
+  const conversationId = String(args.conversationId || '').trim();
+  let conversation:
+    | {
+        id: string;
+        workspaceId: string;
+        metadata: Prisma.JsonValue | null;
+      }
+    | null = null;
+
+  if (conversationId) {
+    const row = await assertConversationAccess({
+      workspaceId: args.workspaceId,
+      conversationId,
+      accessLink: args.accessLink,
+    });
+    conversation = {
+      id: row.id,
+      workspaceId: row.workspaceId,
+      metadata: row.metadata,
+    };
+  } else {
+    const created = await createAssistantConversation({
+      workspaceId: args.workspaceId,
+      accessLink: args.accessLink,
+      title: `Batch ${new Date().toISOString().slice(0, 19).replace('T', ' ')}`,
+    });
+    const row = await prisma.assistantConversation.findUnique({
+      where: { id: created.id },
+      select: {
+        id: true,
+        workspaceId: true,
+        metadata: true,
+      },
+    });
+    if (!row) {
+      throw new ApiHttpError('INTERNAL_ERROR', 'Failed to initialize batch conversation.', 500);
+    }
+    conversation = row;
+  }
+
+  const artifacts = await listBatchArtifactsForScanJob({
+    workspaceId: args.workspaceId,
+    scanJobId: args.scanJobId,
+  });
+
+  const nowIso = new Date().toISOString();
+  const existingState = parseAssistantBatchState(
+    asJsonObject(conversation.metadata).batchRun
+  );
+
+  const batch: AssistantBatchState = {
+    version: 1,
+    scanJobId: args.scanJobId,
+    status:
+      existingState?.scanJobId === args.scanJobId &&
+      existingState.status === 'COMPLETED' &&
+      existingState.processedArtifactIds.length >= artifacts.length &&
+      artifacts.length > 0
+        ? 'COMPLETED'
+        : 'RUNNING',
+    totalArtifacts: artifacts.length,
+    processedArtifactIds:
+      existingState?.scanJobId === args.scanJobId
+        ? existingState.processedArtifactIds
+        : [],
+    flagged: existingState?.scanJobId === args.scanJobId ? existingState.flagged : [],
+    autoConfirmedCount:
+      existingState?.scanJobId === args.scanJobId
+        ? existingState.autoConfirmedCount
+        : 0,
+    pendingManualCount:
+      existingState?.scanJobId === args.scanJobId
+        ? existingState.pendingManualCount
+        : 0,
+    lastProcessedArtifactId:
+      existingState?.scanJobId === args.scanJobId
+        ? existingState.lastProcessedArtifactId
+        : null,
+    lastProcessedFileName:
+      existingState?.scanJobId === args.scanJobId
+        ? existingState.lastProcessedFileName
+        : null,
+    createdAt:
+      existingState?.scanJobId === args.scanJobId
+        ? existingState.createdAt
+        : nowIso,
+    updatedAt: nowIso,
+    prompt:
+      existingState?.scanJobId === args.scanJobId
+        ? existingState.prompt
+        : ASSISTANT_BATCH_DEFAULT_PROMPT,
+  };
+
+  const nextMetadata = {
+    ...asJsonObject(conversation.metadata),
+    batchRun: batch,
+  } as unknown as Prisma.InputJsonValue;
+
+  await prisma.assistantConversation.update({
+    where: { id: conversation.id },
+    data: {
+      metadata: nextMetadata,
+      updatedAt: new Date(),
+    },
+  });
+
+  return serializeAssistantBatch({
+    batchId: conversation.id,
+    workspaceId: args.workspaceId,
+    conversationId: conversation.id,
+    batch,
+    artifacts,
+  });
+}
+
+export async function getAssistantBatchRun(args: {
+  workspaceId: string;
+  batchId: string;
+  accessLink: AccessLink;
+}) {
+  const conversation = await assertConversationAccess({
+    workspaceId: args.workspaceId,
+    conversationId: args.batchId,
+    accessLink: args.accessLink,
+  });
+  const metadata = asJsonObject(conversation.metadata);
+  const batch = parseAssistantBatchState(metadata.batchRun);
+  if (!batch) {
+    throw new ApiHttpError('NOT_FOUND', 'Assistant batch run not found.', 404);
+  }
+
+  const artifacts = await listBatchArtifactsForScanJob({
+    workspaceId: args.workspaceId,
+    scanJobId: batch.scanJobId,
+  });
+
+  return serializeAssistantBatch({
+    batchId: conversation.id,
+    workspaceId: args.workspaceId,
+    conversationId: conversation.id,
+    batch,
+    artifacts,
+  });
+}
+
+export async function runAssistantBatchStep(args: {
+  workspaceId: string;
+  batchId: string;
+  accessLink: AccessLink;
+}) {
+  if (args.accessLink.workspaceId !== args.workspaceId) {
+    throw new ApiHttpError('FORBIDDEN', 'Access link is not valid for this workspace.', 403);
+  }
+  requireRole(args.accessLink, WorkspaceRole.EDITOR);
+
+  const conversation = await assertConversationAccess({
+    workspaceId: args.workspaceId,
+    conversationId: args.batchId,
+    accessLink: args.accessLink,
+  });
+  const metadata = asJsonObject(conversation.metadata);
+  const batch = parseAssistantBatchState(metadata.batchRun);
+  if (!batch) {
+    throw new ApiHttpError('NOT_FOUND', 'Assistant batch run not found.', 404);
+  }
+
+  const artifacts = await listBatchArtifactsForScanJob({
+    workspaceId: args.workspaceId,
+    scanJobId: batch.scanJobId,
+  });
+  const artifactSet = new Set(artifacts.map((row) => row.artifactId));
+  const processedArtifactIds = batch.processedArtifactIds.filter((id) =>
+    artifactSet.has(id)
+  );
+  const processedSet = new Set(processedArtifactIds);
+  const nextArtifact = artifacts.find((row) => !processedSet.has(row.artifactId)) || null;
+
+  if (!nextArtifact) {
+    const scanJobTerminal = await isScanJobTerminal({
+      workspaceId: args.workspaceId,
+      scanJobId: batch.scanJobId,
+    });
+    const completedBatch: AssistantBatchState = {
+      ...batch,
+      status: scanJobTerminal ? 'COMPLETED' : 'RUNNING',
+      totalArtifacts: artifacts.length,
+      processedArtifactIds,
+      updatedAt: new Date().toISOString(),
+    };
+    await prisma.assistantConversation.update({
+      where: { id: conversation.id },
+      data: {
+        metadata: {
+          ...metadata,
+          batchRun: completedBatch,
+        } as unknown as Prisma.InputJsonValue,
+        updatedAt: new Date(),
+      },
+    });
+
+    return {
+      batch: serializeAssistantBatch({
+        batchId: conversation.id,
+        workspaceId: args.workspaceId,
+        conversationId: conversation.id,
+        batch: completedBatch,
+        artifacts,
+      }),
+      step: null,
+    };
+  }
+
+  let step:
+    | {
+        artifactId: string;
+        fileName: string;
+        planId: string | null;
+        actionTypes: string[];
+        autoConfirmed: boolean;
+        flaggedReason: AssistantBatchFlag['reason'] | null;
+      }
+    | null = null;
+
+  const nextProcessed = [...processedArtifactIds, nextArtifact.artifactId];
+  const nextFlagged = [...batch.flagged];
+  let autoConfirmedCount = batch.autoConfirmedCount;
+  let pendingManualCount = batch.pendingManualCount;
+
+  try {
+    const attachment = await hydrateBatchArtifactAttachment({
+      workspaceId: args.workspaceId,
+      artifact: nextArtifact,
+    });
+
+    const messageResult = await postAssistantMessage({
+      workspaceId: args.workspaceId,
+      conversationId: conversation.id,
+      accessLink: args.accessLink,
+      text: batch.prompt || ASSISTANT_BATCH_DEFAULT_PROMPT,
+      attachments: [attachment],
+    });
+
+    const plan = messageResult.plan;
+    const safety = evaluateAssistantBatchAutoConfirm(
+      (plan?.actions || []).map((action) => ({
+        type:
+          action.request && typeof action.request === 'object'
+            ? (action.request as Record<string, unknown>).type
+            : null,
+      }))
+    );
+    const actionTypes = safety.actionTypes;
+    const hasUnsafeActions = !safety.safe;
+
+    let autoConfirmed = false;
+    let flaggedReason: AssistantBatchFlag['reason'] | null = null;
+    let flaggedDetail: string | null = null;
+
+    if (plan && hasUnsafeActions) {
+      flaggedReason = 'non_safe_actions';
+      pendingManualCount += 1;
+    } else if (plan && actionTypes.length > 0) {
+      const confirmed = await confirmAssistantPlan({
+        workspaceId: args.workspaceId,
+        planId: plan.id,
+        accessLink: args.accessLink,
+      });
+      if (confirmed.plan.status === AssistantPlanStatus.EXECUTED) {
+        autoConfirmed = true;
+        autoConfirmedCount += 1;
+      } else if ((confirmed.pendingIdentityCount || 0) > 0) {
+        const skippedReason = confirmed.actions
+          .filter((entry) => entry.status === AssistantActionStatus.SKIPPED)
+          .map((entry) =>
+            entry.result && typeof entry.result === 'object'
+              ? sanitizePrintable((entry.result as Record<string, unknown>).reason || '', 240)
+              : ''
+          )
+          .find(Boolean);
+        const noHighConfidence = skippedReason
+          ? skippedReason.toLowerCase().includes('high-confidence')
+          : false;
+        flaggedReason = noHighConfidence
+          ? 'no_high_confidence_identity'
+          : 'pending_identity';
+        flaggedDetail =
+          skippedReason ||
+          'At least one action requires identity resolution before completion.';
+        pendingManualCount += 1;
+      } else {
+        const failedActions = confirmed.actions.filter(
+          (entry) => entry.status === AssistantActionStatus.FAILED
+        );
+        if (failedActions.length > 0) {
+          const noHighConfidence = failedActions.some((entry) =>
+            String(entry.error || '')
+              .toLowerCase()
+              .includes('high confidence')
+          );
+          flaggedReason = noHighConfidence
+            ? 'no_high_confidence_identity'
+            : 'action_failed';
+          flaggedDetail =
+            failedActions[0]?.error || 'At least one action failed in auto-confirm.';
+          pendingManualCount += 1;
+        }
+      }
+    }
+
+    if (flaggedReason) {
+      nextFlagged.push({
+        artifactId: nextArtifact.artifactId,
+        fileName: nextArtifact.fileName,
+        reason: flaggedReason,
+        planId: plan?.id || null,
+        actionTypes,
+        details: flaggedDetail,
+        createdAt: new Date().toISOString(),
+      });
+    }
+
+    step = {
+      artifactId: nextArtifact.artifactId,
+      fileName: nextArtifact.fileName,
+      planId: plan?.id || null,
+      actionTypes,
+      autoConfirmed,
+      flaggedReason,
+    };
+  } catch (error) {
+    const details =
+      error instanceof Error ? sanitizePrintable(error.message, 260) : 'Unexpected batch step error.';
+    nextFlagged.push({
+      artifactId: nextArtifact.artifactId,
+      fileName: nextArtifact.fileName,
+      reason: 'unexpected_error',
+      planId: null,
+      actionTypes: [],
+      details,
+      createdAt: new Date().toISOString(),
+    });
+    pendingManualCount += 1;
+    step = {
+      artifactId: nextArtifact.artifactId,
+      fileName: nextArtifact.fileName,
+      planId: null,
+      actionTypes: [],
+      autoConfirmed: false,
+      flaggedReason: 'unexpected_error',
+    };
+  }
+
+  const scanJobTerminal = await isScanJobTerminal({
+    workspaceId: args.workspaceId,
+    scanJobId: batch.scanJobId,
+  });
+  const nextStatus: AssistantBatchStatus =
+    nextProcessed.length >= artifacts.length && artifacts.length > 0 && scanJobTerminal
+      ? 'COMPLETED'
+      : 'RUNNING';
+
+  const nextBatch: AssistantBatchState = {
+    ...batch,
+    status: nextStatus,
+    totalArtifacts: artifacts.length,
+    processedArtifactIds: nextProcessed,
+    flagged: nextFlagged,
+    autoConfirmedCount,
+    pendingManualCount,
+    lastProcessedArtifactId: nextArtifact.artifactId,
+    lastProcessedFileName: nextArtifact.fileName,
+    updatedAt: new Date().toISOString(),
+  };
+
+  const refreshedConversation = await prisma.assistantConversation.findUnique({
+    where: { id: conversation.id },
+    select: {
+      metadata: true,
+    },
+  });
+  const mergedMetadata = {
+    ...asJsonObject(refreshedConversation?.metadata),
+    batchRun: nextBatch,
+  } as unknown as Prisma.InputJsonValue;
+
+  await prisma.assistantConversation.update({
+    where: { id: conversation.id },
+    data: {
+      metadata: mergedMetadata,
+      updatedAt: new Date(),
+    },
+  });
+
+  return {
+    batch: serializeAssistantBatch({
+      batchId: conversation.id,
+      workspaceId: args.workspaceId,
+      conversationId: conversation.id,
+      batch: nextBatch,
+      artifacts,
+    }),
+    step,
+  };
 }
 
 async function assertConversationAccess(args: {
@@ -2137,70 +2848,48 @@ async function resolveGovernorForMutationTx(
     );
   }
 
-  const normalizedAlias = normalizeGovernorAlias(governorName);
-  const aliasHits = normalizedAlias
-    ? await tx.governorAlias.findMany({
-        where: {
-          workspaceId,
-          aliasNormalized: normalizedAlias,
-        },
-        include: {
-          governor: {
-            select: {
-              id: true,
-              governorId: true,
-              name: true,
-            },
-          },
-        },
-        take: 25,
-      })
-    : [];
-
-  const directHits = await tx.governor.findMany({
-    where: {
-      workspaceId,
-      name: {
-        equals: governorName,
-        mode: 'insensitive',
-      },
-    },
-    select: {
-      id: true,
-      governorId: true,
-      name: true,
-    },
-    take: 25,
+  const similarity = await resolveGovernorBySimilarityTx(tx, {
+    workspaceId,
+    governorNameRaw: governorName,
+    suggestionLimit: 8,
   });
 
-  const merged = new Map<string, { id: string; governorId: string; name: string }>();
-  for (const hit of aliasHits) {
-    merged.set(hit.governor.id, {
-      id: hit.governor.id,
-      governorId: hit.governor.governorId,
-      name: hit.governor.name,
-    });
-  }
-  for (const hit of directHits) {
-    merged.set(hit.id, hit);
+  if (similarity.status === 'resolved') {
+    return {
+      id: similarity.governor.governorDbId,
+      governorId: similarity.governor.governorGameId,
+      name: similarity.governor.governorName,
+    };
   }
 
-  const candidates = [...merged.values()];
-  if (candidates.length === 0) {
-    throw new ApiHttpError('NOT_FOUND', 'Governor name did not match a registered player.', 404);
-  }
-  if (candidates.length > 1) {
+  const candidates = similarity.candidates.map((candidate) => ({
+    governorDbId: candidate.governorDbId,
+    governorGameId: candidate.governorGameId,
+    governorName: candidate.governorName,
+    score: candidate.score,
+  }));
+
+  if (similarity.status === 'ambiguous') {
     throw new ApiHttpError(
       'CONFLICT',
-      'Multiple governors matched this name. Provide governorId or governorDbId.',
+      'Multiple high-confidence governors matched this name. Provide governorId or governorDbId.',
       409,
       {
+        threshold: similarity.autoThreshold,
         candidates,
       }
     );
   }
 
-  return candidates[0];
+  throw new ApiHttpError(
+    'NOT_FOUND',
+    'Governor name did not match any registered player with high confidence.',
+    404,
+    {
+      threshold: similarity.autoThreshold,
+      candidates,
+    }
+  );
 }
 
 async function resolveEventForActionTx(

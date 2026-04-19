@@ -146,10 +146,12 @@ export function UploadDropZonePanel({
   scanJobState,
   entryCount,
   fileInputRef,
+  folderInputRef,
   onDragOver,
   onDragLeave,
   onDrop,
   onFileChange,
+  onFolderChange,
 }: {
   isDragging: boolean;
   isUploading: boolean;
@@ -157,10 +159,12 @@ export function UploadDropZonePanel({
   scanJobState: ScanJobResponse | null;
   entryCount: number;
   fileInputRef: RefObject<HTMLInputElement | null>;
+  folderInputRef: RefObject<HTMLInputElement | null>;
   onDragOver: DragEventHandler<HTMLDivElement>;
   onDragLeave: DragEventHandler<HTMLDivElement>;
   onDrop: DragEventHandler<HTMLDivElement>;
   onFileChange: ChangeEventHandler<HTMLInputElement>;
+  onFolderChange: ChangeEventHandler<HTMLInputElement>;
 }) {
   return (
     <Panel title="Drop Screenshots">
@@ -190,6 +194,37 @@ export function UploadDropZonePanel({
           className="hidden"
           onChange={onFileChange}
         />
+        <input
+          ref={folderInputRef}
+          type="file"
+          accept="image/png,image/jpeg,image/webp"
+          multiple
+          className="hidden"
+          {...({
+            webkitdirectory: 'true',
+            directory: 'true',
+          } as unknown as Record<string, string>)}
+          onChange={onFolderChange}
+        />
+      </div>
+
+      <div className="mt-3 flex flex-wrap gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1"
+          onClick={() => fileInputRef.current?.click()}
+        >
+          Select Files
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1"
+          onClick={() => folderInputRef.current?.click()}
+        >
+          Select Folder
+        </Button>
       </div>
 
       {isUploading ? (
@@ -214,7 +249,7 @@ export function UploadProcessingPanel({
   completedRankingRows,
   onOpenReview,
   onOpenRankingReview,
-  onOpenAssistant,
+  onRunBatch,
 }: {
   scanJobState: ScanJobResponse | null;
   entries: UploadQueueEntry[];
@@ -222,7 +257,7 @@ export function UploadProcessingPanel({
   completedRankingRows: number;
   onOpenReview: () => void;
   onOpenRankingReview: () => void;
-  onOpenAssistant: () => void;
+  onRunBatch: () => void;
 }) {
   if (!scanJobState || (scanJobState.status !== 'REVIEW' && scanJobState.status !== 'FAILED')) {
     return null;
@@ -241,9 +276,9 @@ export function UploadProcessingPanel({
           <Button
             variant="outline"
             className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1"
-            onClick={onOpenAssistant}
+            onClick={onRunBatch}
           >
-            Ask Assistant
+            Run AI Batch
           </Button>
           <Button
             variant="outline"

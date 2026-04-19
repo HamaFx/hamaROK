@@ -26,6 +26,20 @@ import { createAssistantHandoff } from '@/features/assistant/handoff';
 
 const UPLOAD_CONCURRENCY = 4;
 const MAX_RETRIES = 3;
+const LARGE_BATCH_THRESHOLD = 60;
+const LARGE_BATCH_INTERFILE_DELAY_MS = 140;
+
+class UploadRequestError extends Error {
+  retryable: boolean;
+  status: number | null;
+
+  constructor(message: string, options?: { retryable?: boolean; status?: number | null }) {
+    super(message);
+    this.name = 'UploadRequestError';
+    this.retryable = Boolean(options?.retryable);
+    this.status = options?.status ?? null;
+  }
+}
 
 function delay(ms: number) {
   return new Promise((resolve) => {
@@ -76,6 +90,7 @@ export default function UploadPage() {
   const [retryingBulk, setRetryingBulk] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
   const completionNotifiedRef = useRef<string | null>(null);
   const localFilesRef = useRef<Record<string, File>>({});
   const entriesRef = useRef<UploadQueueEntry[]>([]);
@@ -436,7 +451,13 @@ export default function UploadPage() {
 
     const payload = await res.json();
     if (!res.ok || !payload?.url) {
-      throw new Error(payload?.error?.message || `Failed to upload ${file.name}.`);
+      throw new UploadRequestError(
+        payload?.error?.message || `Failed to upload ${file.name}.`,
+        {
+          retryable: res.status === 429 || res.status >= 500,
+          status: res.status,
+        }
+      );
     }
 
     return payload.url as string;
@@ -471,7 +492,13 @@ export default function UploadPage() {
 
       const payload = await res.json();
       if (!res.ok) {
-        throw new Error(payload?.error?.message || `Failed to enqueue ${args.fileName}.`);
+        throw new UploadRequestError(
+          payload?.error?.message || `Failed to enqueue ${args.fileName}.`,
+          {
+            retryable: res.status === 429 || res.status >= 500,
+            status: res.status,
+          }
+        );
       }
 
       return payload?.data as {
@@ -486,6 +513,28 @@ export default function UploadPage() {
     [accessToken, workspaceId]
   );
 
+  const isRetryableUploadError = useCallback((error: unknown): boolean => {
+    if (error instanceof UploadRequestError) {
+      return error.retryable;
+    }
+    if (error instanceof TypeError) {
+      return true;
+    }
+    if (error instanceof Error) {
+      const message = error.message.toLowerCase();
+      return (
+        message.includes('network') ||
+        message.includes('timeout') ||
+        message.includes('fetch') ||
+        message.includes('429') ||
+        message.includes('503') ||
+        message.includes('502') ||
+        message.includes('500')
+      );
+    }
+    return false;
+  }, []);
+
   const runWithRetries = useCallback(async <T,>(fn: (attempt: number) => Promise<T>) => {
     let lastError: unknown = null;
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt += 1) {
@@ -493,12 +542,16 @@ export default function UploadPage() {
         return await fn(attempt);
       } catch (error) {
         lastError = error;
+        const retryable = isRetryableUploadError(error);
+        if (!retryable) {
+          break;
+        }
         if (attempt >= MAX_RETRIES) break;
         await delay(250 * 2 ** (attempt - 1));
       }
     }
     throw lastError instanceof Error ? lastError : new Error('Operation failed after retries.');
-  }, []);
+  }, [isRetryableUploadError]);
 
   const finalizeUploadBatch = useCallback(
     async (args: { scanJobId: string; expectedTotal: number; rowIds?: string[] }) => {
@@ -650,7 +703,7 @@ export default function UploadPage() {
   }, []);
 
   const handleFiles = useCallback(
-    async (files: File[]) => {
+    async (files: File[], options?: { fromFolder?: boolean }) => {
       const imageFiles = files.filter((f) => f.type.startsWith('image/'));
       if (imageFiles.length === 0) return;
 
@@ -695,6 +748,10 @@ export default function UploadPage() {
 
         setEntries(newRows);
 
+        const largeBatchMode = Boolean(options?.fromFolder) || imageFiles.length >= LARGE_BATCH_THRESHOLD;
+        const uploadConcurrency = largeBatchMode ? 1 : UPLOAD_CONCURRENCY;
+        const interFileDelayMs = largeBatchMode ? LARGE_BATCH_INTERFILE_DELAY_MS : 0;
+
         const jobs = newRows.map((row, index) => async () => {
           const file = imageFiles[index];
           await processQueueEntry({
@@ -706,9 +763,12 @@ export default function UploadPage() {
             idempotencyKey: row.idempotencyKey || `task-${job.id}-${row.id}`,
             file,
           });
+          if (interFileDelayMs > 0) {
+            await delay(interFileDelayMs);
+          }
         });
 
-        await runConcurrent(jobs, UPLOAD_CONCURRENCY);
+        await runConcurrent(jobs, uploadConcurrency);
         await delay(50);
 
         const finalizeResult = await finalizeUploadBatch({
@@ -909,11 +969,13 @@ export default function UploadPage() {
       title: 'Upload Completion Handoff',
       summary: `Scan job ${scanJobId || ''} finished. Profile rows: ${completedProfileRows}, ranking rows: ${completedRankingRows}.`,
       suggestedPrompt:
-        'Review these uploaded screenshots. Register any new players and prepare stat updates for existing players. If identities are ambiguous, ask for resolution.',
+        'Start batch mode for this scan job and process screenshots one-by-one. Auto-confirm only safe player/stats actions. Keep non-safe or ambiguous items flagged for manual review.',
       artifacts: contextArtifacts,
       meta: {
         scanJobId,
         status: scanJobState?.status || null,
+        batchMode: 'manual_one_by_one',
+        autoConfirmSafeOnly: true,
       },
     });
 
@@ -960,12 +1022,18 @@ export default function UploadPage() {
           scanJobState={scanJobState}
           entryCount={entries.length}
           fileInputRef={fileInputRef}
+          folderInputRef={folderInputRef}
           onDragOver={onDragOver}
           onDragLeave={onDragLeave}
           onDrop={onDrop}
           onFileChange={(event) => {
             const files = Array.from(event.target.files || []);
-            void handleFiles(files);
+            void handleFiles(files, { fromFolder: false });
+            event.target.value = '';
+          }}
+          onFolderChange={(event) => {
+            const files = Array.from(event.target.files || []);
+            void handleFiles(files, { fromFolder: true });
             event.target.value = '';
           }}
         />
@@ -975,7 +1043,7 @@ export default function UploadPage() {
           entries={entries}
           completedProfileRows={completedProfileRows}
           completedRankingRows={completedRankingRows}
-          onOpenAssistant={openAssistantFromUpload}
+          onRunBatch={openAssistantFromUpload}
           onOpenReview={() => router.push('/review')}
           onOpenRankingReview={() => router.push('/rankings/review')}
         />

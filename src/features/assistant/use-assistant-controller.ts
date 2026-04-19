@@ -80,6 +80,43 @@ export type PendingResolutionDraft = {
   note: string;
 };
 
+export type AssistantBatchFlagRow = {
+  artifactId: string;
+  fileName: string;
+  reason:
+    | 'non_safe_actions'
+    | 'pending_identity'
+    | 'action_failed'
+    | 'no_high_confidence_identity'
+    | 'unexpected_error';
+  planId?: string | null;
+  actionTypes?: string[];
+  details?: string | null;
+  createdAt: string;
+};
+
+export type AssistantBatchRow = {
+  id: string;
+  workspaceId: string;
+  conversationId: string;
+  scanJobId: string;
+  status: 'RUNNING' | 'COMPLETED';
+  totalArtifacts: number;
+  processedCount: number;
+  remainingCount: number;
+  autoConfirmedCount: number;
+  pendingManualCount: number;
+  lastProcessedArtifactId: string | null;
+  lastProcessedFileName: string | null;
+  nextArtifact?: {
+    artifactId: string;
+    fileName: string;
+  } | null;
+  flagged: AssistantBatchFlagRow[];
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type ArtifactDraftRef = {
   artifactId: string;
   url?: string;
@@ -128,6 +165,10 @@ export function useAssistantController(args: {
   const [notice, setNotice] = useState<string | null>(null);
   const [resolveDrafts, setResolveDrafts] = useState<Record<string, PendingResolutionDraft>>({});
   const [handoffContext, setHandoffContext] = useState<AssistantHandoffPayload | null>(null);
+  const [batchRun, setBatchRun] = useState<AssistantBatchRow | null>(null);
+  const [batchScanJobId, setBatchScanJobId] = useState<string>('');
+  const [startingBatch, setStartingBatch] = useState(false);
+  const [steppingBatch, setSteppingBatch] = useState(false);
 
   const authHeaders = useMemo(
     () => ({
@@ -269,8 +310,42 @@ export function useAssistantController(args: {
       });
     }
     setArtifactRefs(refs);
+    const handoffScanJobId =
+      payload.meta && typeof payload.meta === 'object'
+        ? String((payload.meta as Record<string, unknown>).scanJobId || '').trim()
+        : '';
+    setBatchScanJobId(handoffScanJobId);
+    setBatchRun(null);
     setNotice(`${payload.title}: Draft prepared. Review and send when ready.`);
   }, [args.workspaceReady, args.handoffToken, args.workspaceId]);
+
+  useEffect(() => {
+    if (!args.workspaceReady || !args.workspaceId || !selectedConversationId) return;
+
+    let cancelled = false;
+    const loadBatchForConversation = async () => {
+      try {
+        const row = await apiJson<AssistantBatchRow>(
+          `/api/v2/assistant/batches/${selectedConversationId}?workspaceId=${encodeURIComponent(
+            args.workspaceId
+          )}`
+        );
+        if (!cancelled) {
+          setBatchRun(row);
+          setBatchScanJobId(row.scanJobId || batchScanJobId);
+        }
+      } catch {
+        if (!cancelled) {
+          setBatchRun(null);
+        }
+      }
+    };
+
+    void loadBatchForConversation();
+    return () => {
+      cancelled = true;
+    };
+  }, [args.workspaceReady, args.workspaceId, selectedConversationId, apiJson, batchScanJobId]);
 
   const submitMessage = useCallback(async () => {
     if (!args.workspaceReady || !args.workspaceId) {
@@ -423,6 +498,127 @@ export function useAssistantController(args: {
     }
   }, [apiJson, args.workspaceId, resolveDrafts, selectedConversationId, loadHistory, loadConversations]);
 
+  const startBatchRun = useCallback(
+    async (scanJobId?: string) => {
+      if (!args.workspaceId || !args.workspaceReady) {
+        setError('Workspace session is not ready.');
+        return;
+      }
+      const resolvedScanJobId = String(scanJobId || batchScanJobId || '').trim();
+      if (!resolvedScanJobId) {
+        setError('Scan job ID is required to start AI batch mode.');
+        return;
+      }
+
+      setStartingBatch(true);
+      setError(null);
+      setNotice(null);
+
+      try {
+        const row = await apiJson<AssistantBatchRow>('/api/v2/assistant/batches', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            workspaceId: args.workspaceId,
+            scanJobId: resolvedScanJobId,
+            conversationId: selectedConversationId || null,
+          }),
+        });
+        setBatchRun(row);
+        setBatchScanJobId(row.scanJobId);
+        setSelectedConversationId(row.conversationId);
+        await loadConversations();
+        await loadHistory(row.conversationId);
+        setNotice('AI batch run is ready. Use Run Next Step to process one screenshot.');
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : 'Failed to start AI batch run.');
+      } finally {
+        setStartingBatch(false);
+      }
+    },
+    [
+      apiJson,
+      args.workspaceId,
+      args.workspaceReady,
+      batchScanJobId,
+      selectedConversationId,
+      loadConversations,
+      loadHistory,
+    ]
+  );
+
+  const runBatchStep = useCallback(async () => {
+    if (!args.workspaceId) return;
+    if (!batchRun?.id) {
+      setError('No active AI batch run to step.');
+      return;
+    }
+
+    setSteppingBatch(true);
+    setError(null);
+    setNotice(null);
+
+    try {
+      const result = await apiJson<{
+        batch: AssistantBatchRow;
+        step: {
+          artifactId: string;
+          fileName: string;
+          planId: string | null;
+          actionTypes: string[];
+          autoConfirmed: boolean;
+          flaggedReason:
+            | 'non_safe_actions'
+            | 'pending_identity'
+            | 'action_failed'
+            | 'no_high_confidence_identity'
+            | 'unexpected_error'
+            | null;
+        } | null;
+      }>(`/api/v2/assistant/batches/${batchRun.id}/step`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          workspaceId: args.workspaceId,
+        }),
+      });
+
+      setBatchRun(result.batch);
+      if (result.step) {
+        if (result.step.autoConfirmed) {
+          setNotice(`Processed ${result.step.fileName} and auto-confirmed safe actions.`);
+        } else if (result.step.flaggedReason) {
+          setNotice(
+            `Processed ${result.step.fileName}. Flagged for manual review (${result.step.flaggedReason}).`
+          );
+        } else {
+          setNotice(`Processed ${result.step.fileName}.`);
+        }
+      } else {
+        setNotice('AI batch run is complete.');
+      }
+      if (selectedConversationId) {
+        await loadHistory(selectedConversationId);
+      }
+      await loadConversations();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Failed to run AI batch step.');
+    } finally {
+      setSteppingBatch(false);
+    }
+  }, [
+    apiJson,
+    args.workspaceId,
+    batchRun?.id,
+    selectedConversationId,
+    loadHistory,
+    loadConversations,
+  ]);
+
   const latestPendingPlan = useMemo(() => {
     const plans = history?.plans || [];
     return plans
@@ -453,12 +649,19 @@ export function useAssistantController(args: {
     resolveDrafts,
     setResolveDrafts,
     handoffContext,
+    batchRun,
+    batchScanJobId,
+    setBatchScanJobId,
+    startingBatch,
+    steppingBatch,
     latestPendingPlan,
     createConversation,
     submitMessage,
     confirmPlan,
     denyPlan,
     resolvePendingIdentity,
+    startBatchRun,
+    runBatchStep,
     refreshConversation: loadConversations,
     reloadHistory: loadHistory,
   };

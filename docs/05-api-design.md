@@ -30,6 +30,19 @@ As of April 18, 2026, the following v2 API surfaces are active for assistant-dri
     - `file` (0..N screenshot images)
   - Server stores image artifacts, sends base64 image content to Mistral, and creates a proposed plan.
 
+### Assistant Batch Runner
+
+- `POST /api/v2/assistant/batches`
+  - Body: `{ workspaceId, scanJobId, conversationId? }`
+  - Creates or starts a manual one-by-one assistant batch run for a scan job.
+
+- `GET /api/v2/assistant/batches/:id?workspaceId=...`
+  - Returns batch progress, next artifact pointer, and flagged items.
+
+- `POST /api/v2/assistant/batches/:id/step`
+  - Body: `{ workspaceId }`
+  - Processes exactly one next artifact; auto-confirms only safe actions.
+
 ### Assistant Plan Control
 
 - `POST /api/v2/assistant/plans/:id/confirm`
