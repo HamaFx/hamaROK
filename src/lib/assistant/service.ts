@@ -114,6 +114,9 @@ const ASSISTANT_ALLOWED_IMAGE_MIME_TYPES = new Set([
   'image/png',
   'image/jpeg',
   'image/webp',
+  'image/heic',
+  'image/heif',
+  'image/avif',
 ]);
 const ASSISTANT_SYSTEM_GUARDRAILS_TEXT = [
   'You are the assistant for a Rise of Kingdoms workspace.',
@@ -1111,7 +1114,13 @@ function parseAssistantBatchState(value: unknown): AssistantBatchState | null {
 }
 
 function normalizeMimeType(value: unknown): string {
-  const mimeType = String(value || '').toLowerCase().trim();
+  const mimeType = String(value || '')
+    .toLowerCase()
+    .split(';', 1)[0]
+    .trim();
+  if (mimeType === 'image/jpg') {
+    return 'image/jpeg';
+  }
   if (ASSISTANT_ALLOWED_IMAGE_MIME_TYPES.has(mimeType)) {
     return mimeType;
   }
@@ -2620,6 +2629,19 @@ function toLeaderboardAnalysisRows(readExecutions: AssistantReadExecution[]): As
       const alliance = stringifyAnalysisCell(
         row.allianceRaw || row.alliance || row.linkedAlliance || row.allianceTag
       );
+      const power = stringifyAnalysisCell(
+        row.power ||
+          row.currentPower ||
+          row.deltaPower ||
+          (String(row.metricKey || '').trim() === 'power' ? row.metricValue || row.metricRaw : null)
+      );
+      const kp = stringifyAnalysisCell(
+        row.killPoints ||
+          row.kp ||
+          row.currentKillPoints ||
+          row.deltaKillPoints ||
+          (String(row.metricKey || '').trim() === 'kill_points' ? row.metricValue || row.metricRaw : null)
+      );
       const metric = stringifyAnalysisCell(
         row.metricValue ||
           row.metricRaw ||
@@ -2637,6 +2659,8 @@ function toLeaderboardAnalysisRows(readExecutions: AssistantReadExecution[]): As
         Player: player,
         'Governor ID': governorId,
         Alliance: alliance,
+        KP: kp,
+        Power: power,
         Metric: metric,
         Confidence: confidence,
       });
@@ -2660,6 +2684,8 @@ function toActionAnalysisRows(plannedActions: AssistantActionInput[]): Assistant
       request.governorId || request.newGovernorId || request.governorDbId
     );
     const eventValue = stringifyAnalysisCell(request.eventId || request.eventName || '-');
+    const powerValue = stringifyAnalysisCell(request.power || '-');
+    const kpValue = stringifyAnalysisCell(request.killPoints || request.kp || '-');
     let fields = '-';
 
     if (actionType === 'register_player') {
@@ -2690,6 +2716,8 @@ function toActionAnalysisRows(plannedActions: AssistantActionInput[]): Assistant
       Action: actionType,
       Player: player,
       'Governor ID': governorId,
+      KP: kpValue,
+      Power: powerValue,
       Fields: fields || '-',
       Event: eventValue,
       Status: 'pending_confirmation',
@@ -2708,7 +2736,7 @@ function buildAssistantAnalysisTables(args: {
       key: 'leaderboard_analysis',
       title: 'Leaderboard Analysis',
       source: 'leaderboard',
-      columns: ['Rank', 'Player', 'Governor ID', 'Alliance', 'Metric', 'Confidence'],
+      columns: ['Rank', 'Player', 'Governor ID', 'Alliance', 'KP', 'Power', 'Metric', 'Confidence'],
       rows: leaderboardRows,
     });
   }
@@ -2719,7 +2747,7 @@ function buildAssistantAnalysisTables(args: {
       key: 'write_plan_actions',
       title: 'Proposed Register/Update Actions',
       source: 'actions',
-      columns: ['Action', 'Player', 'Governor ID', 'Fields', 'Event', 'Status'],
+      columns: ['Action', 'Player', 'Governor ID', 'KP', 'Power', 'Fields', 'Event', 'Status'],
       rows: actionRows,
     });
   }
@@ -5387,6 +5415,7 @@ export async function postAssistantMessage(args: {
           droppedActions,
           clarificationHints,
           suggestions,
+          analysisTables,
           analyzerMode,
           contextDiagnostics: contextPack.diagnostics,
           instructionProfile: {

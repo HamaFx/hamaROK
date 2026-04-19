@@ -91,6 +91,51 @@ export type ConversationHistory = {
   pendingIdentities: PendingIdentityRow[];
 };
 
+type PostAssistantMessageResponse = {
+  conversation?: {
+    id: string;
+    workspaceId: string;
+    title: string | null;
+    status: 'ACTIVE' | 'ARCHIVED';
+    model: string | null;
+    createdAt: string;
+    updatedAt: string;
+  } | null;
+  userMessage?: {
+    id: string;
+    role: 'USER';
+    content: string;
+    attachments?: Array<{
+      artifactId?: string | null;
+      url?: string;
+      fileName?: string;
+      mimeType?: string;
+      sizeBytes?: number;
+    }>;
+    createdAt: string;
+  } | null;
+  assistantMessage?: {
+    id: string;
+    role: 'ASSISTANT';
+    content: string;
+    model?: string | null;
+    meta?: Record<string, unknown> | null;
+    createdAt: string;
+  } | null;
+  plan?: {
+    id: string;
+    summary: string;
+    status: 'PENDING' | 'CONFIRMED' | 'EXECUTED' | 'DENIED' | 'FAILED';
+    actions: Array<{
+      id: string;
+      actionType: string;
+      actionIndex: number;
+      status: 'PENDING' | 'EXECUTED' | 'FAILED' | 'SKIPPED';
+      request: Record<string, unknown>;
+    }>;
+  } | null;
+};
+
 export type PendingResolutionDraft = {
   governorDbId: string;
   eventId: string;
@@ -458,6 +503,20 @@ export function useAssistantController(args: {
     };
   }, [args.workspaceReady, args.workspaceId, selectedConversationId, apiJson, batchScanJobId]);
 
+  const syncHistoryAfterTransientFailure = useCallback(
+    async (conversationId: string) => {
+      const delaysMs = [1200, 2200, 3500, 5000, 8000];
+      for (const delayMs of delaysMs) {
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, delayMs);
+        });
+        await loadHistory(conversationId, { background: true });
+      }
+      await loadConversations();
+    },
+    [loadHistory, loadConversations]
+  );
+
   const submitMessage = useCallback(async () => {
     if (sendingGuardRef.current) return;
     if (!args.workspaceReady || !args.workspaceId) {
@@ -480,40 +539,59 @@ export function useAssistantController(args: {
     try {
       conversationId = selectedConversationId || (await createConversation());
       const idempotencyKey = createAssistantMessageIdempotencyKey();
+      const optimisticCreatedAt = new Date().toISOString();
       optimisticMessageId = `temp-user-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       setHistory((prev) => {
-        if (!prev || prev.conversation?.id !== conversationId) return prev;
+        const optimisticMessage: MessageRow = {
+          id: optimisticMessageId!,
+          role: 'USER',
+          content: trimmedText || '[image message]',
+          attachments: [
+            ...messageFiles.map((file) => ({
+              fileName: file.name,
+              mimeType: file.type || 'image/png',
+              sizeBytes: file.size,
+            })),
+            ...artifactRefs.map((ref) => ({
+              artifactId: ref.artifactId,
+              url: ref.url,
+              fileName: ref.fileName,
+              mimeType: ref.mimeType,
+              sizeBytes: ref.sizeBytes,
+            })),
+          ],
+          model: null,
+          meta: {
+            optimistic: true,
+            syncState: 'sending',
+          },
+          createdAt: optimisticCreatedAt,
+        };
+
+        if (!prev || prev.conversation?.id !== conversationId) {
+          return {
+            conversation: {
+              id: conversationId,
+              workspaceId: args.workspaceId,
+              title: null,
+              status: 'ACTIVE',
+              model: null,
+              threadConfig: null,
+              createdAt: optimisticCreatedAt,
+              updatedAt: optimisticCreatedAt,
+            },
+            messages: [optimisticMessage],
+            plans: [],
+            pendingIdentities: [],
+          };
+        }
+
         return {
           ...prev,
-          messages: [
-            ...prev.messages,
-            {
-              id: optimisticMessageId!,
-              role: 'USER',
-              content: trimmedText || '[image message]',
-              attachments: [
-                ...messageFiles.map((file) => ({
-                  fileName: file.name,
-                  mimeType: file.type || 'image/png',
-                  sizeBytes: file.size,
-                })),
-                ...artifactRefs.map((ref) => ({
-                  artifactId: ref.artifactId,
-                  url: ref.url,
-                  fileName: ref.fileName,
-                  mimeType: ref.mimeType,
-                  sizeBytes: ref.sizeBytes,
-                })),
-              ],
-              model: null,
-              meta: {
-                optimistic: true,
-              },
-              createdAt: new Date().toISOString(),
-            },
-          ],
+          messages: [...prev.messages, optimisticMessage],
         };
       });
+
       const formData = new FormData();
       formData.set('workspaceId', args.workspaceId);
       formData.set('text', trimmedText);
@@ -528,7 +606,7 @@ export function useAssistantController(args: {
         formData.append('artifactId', ref.artifactId);
       }
 
-      await apiJson<unknown>(
+      const response = await apiJson<PostAssistantMessageResponse>(
         `/api/v2/assistant/conversations/${conversationId}/messages`,
         {
           method: 'POST',
@@ -540,29 +618,123 @@ export function useAssistantController(args: {
         }
       );
 
+      setHistory((prev) => {
+        if (!prev || prev.conversation?.id !== conversationId) return prev;
+        const nextMessages = prev.messages.filter((message) => message.id !== optimisticMessageId);
+        if (response.userMessage && !nextMessages.some((message) => message.id === response.userMessage?.id)) {
+          nextMessages.push({
+            id: response.userMessage.id,
+            role: response.userMessage.role,
+            content: response.userMessage.content,
+            attachments: response.userMessage.attachments || [],
+            model: null,
+            meta: null,
+            createdAt: response.userMessage.createdAt,
+          });
+        }
+        if (
+          response.assistantMessage &&
+          !nextMessages.some((message) => message.id === response.assistantMessage?.id)
+        ) {
+          nextMessages.push({
+            id: response.assistantMessage.id,
+            role: response.assistantMessage.role,
+            content: response.assistantMessage.content,
+            attachments: [],
+            model: response.assistantMessage.model || null,
+            meta: response.assistantMessage.meta || null,
+            createdAt: response.assistantMessage.createdAt,
+          });
+        }
+        nextMessages.sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
+
+        const nextPlans = [...(prev.plans || [])];
+        if (response.plan && !nextPlans.some((plan) => plan.id === response.plan?.id)) {
+          const createdAt = response.assistantMessage?.createdAt || new Date().toISOString();
+          nextPlans.push({
+            id: response.plan.id,
+            summary: response.plan.summary,
+            status: response.plan.status,
+            actionsJson: null,
+            actions: response.plan.actions.map((action) => ({
+              id: action.id,
+              actionType: action.actionType,
+              actionIndex: action.actionIndex,
+              status: action.status,
+              request: action.request,
+              result: null,
+              error: null,
+            })),
+            createdAt,
+            updatedAt: createdAt,
+          });
+        }
+
+        return {
+          ...prev,
+          conversation: response.conversation
+            ? {
+                ...prev.conversation,
+                title: response.conversation.title,
+                model: response.conversation.model,
+                status: response.conversation.status,
+                updatedAt: response.conversation.updatedAt,
+              }
+            : prev.conversation,
+          messages: nextMessages,
+          plans: nextPlans.sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt)),
+        };
+      });
+
       setMessageText('');
       setMessageFiles([]);
       setArtifactRefs([]);
       setHandoffContext(null);
       setComposerAnalyzerMode('inherit');
-      await Promise.all([
-        loadConversations(),
-        loadHistory(conversationId, { background: true }),
-      ]);
+      await Promise.all([loadConversations(), loadHistory(conversationId, { background: true })]);
       setNotice('Message processed. Review the latest plan below before confirming.');
     } catch (cause) {
+      const errorMessage = cause instanceof Error ? cause.message : 'Failed to send assistant message.';
+      const transientFailure =
+        /timed out|timeout|network|fetch|abort|temporary|temporarily|503|504/i.test(errorMessage);
       if (optimisticMessageId) {
-        setHistory((prev) => {
-          if (!prev) return prev;
-          return {
-            ...prev,
-            messages: prev.messages.filter((message) => message.id !== optimisticMessageId),
-          };
-        });
+        if (transientFailure) {
+          setHistory((prev) => {
+            if (!prev) return prev;
+            return {
+              ...prev,
+              messages: prev.messages.map((message) =>
+                message.id === optimisticMessageId
+                  ? {
+                      ...message,
+                      meta: {
+                        ...(message.meta || {}),
+                        optimistic: true,
+                        syncState: 'processing',
+                      },
+                    }
+                  : message
+              ),
+            };
+          });
+        } else {
+          setHistory((prev) => {
+            if (!prev) return prev;
+            return {
+              ...prev,
+              messages: prev.messages.filter((message) => message.id !== optimisticMessageId),
+            };
+          });
+        }
       }
-      setError(cause instanceof Error ? cause.message : 'Failed to send assistant message.');
+      setError(errorMessage);
       if (conversationId) {
-        void loadHistory(conversationId, { background: true });
+        if (transientFailure) {
+          setNotice('Message may still be processing on the server. Syncing this conversation automatically.');
+          void syncHistoryAfterTransientFailure(conversationId);
+        } else {
+          void loadHistory(conversationId, { background: true });
+        }
       }
     } finally {
       setSendingMessage(false);
@@ -580,6 +752,7 @@ export function useAssistantController(args: {
     apiJson,
     loadConversations,
     loadHistory,
+    syncHistoryAfterTransientFailure,
   ]);
 
   const confirmPlan = useCallback(async (planId: string) => {

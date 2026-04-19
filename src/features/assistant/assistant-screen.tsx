@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Activity,
@@ -232,6 +233,10 @@ function MessageBubble({ message }: { message: MessageRow }) {
                 <div className="mt-2 flex flex-wrap gap-2">
                   {message.attachments.map((attachment, index) => {
                     const label = attachment.fileName || `attachment-${index + 1}`;
+                    const isImage =
+                      String(attachment.mimeType || '')
+                        .toLowerCase()
+                        .startsWith('image/') || String(attachment.url || '').startsWith('data:image/');
                     if (!attachment.url) {
                       return (
                         <div
@@ -249,9 +254,20 @@ function MessageBubble({ message }: { message: MessageRow }) {
                         href={attachment.url}
                         target="_blank"
                         rel="noreferrer"
-                        className="flex items-center gap-2 rounded-lg border bg-black/40 px-3 py-2 text-xs font-medium hover:bg-muted transition-colors shadow-sm"
+                        className="flex items-center gap-2 rounded-lg border bg-black/40 px-2 py-2 text-xs font-medium hover:bg-muted transition-colors shadow-sm"
                       >
-                        <FileImage className="size-4 text-muted-foreground" />
+                        {isImage ? (
+                          <Image
+                            src={attachment.url}
+                            alt={label}
+                            width={40}
+                            height={40}
+                            unoptimized
+                            className="size-10 rounded-md border border-white/10 object-cover"
+                          />
+                        ) : (
+                          <FileImage className="size-4 text-muted-foreground" />
+                        )}
                         <span className="truncate max-w-[150px] font-mono text-primary">{label}</span>
                       </a>
                     );
@@ -1037,6 +1053,7 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
                                <div key={i} className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/40 px-3 py-1.5 text-xs font-bold text-muted-foreground shadow-inner group">
                                   <FileImage className="size-3.5" />
                                   <span className="truncate max-w-[120px] font-mono tracking-tighter opacity-80">{f.name}</span>
+                                  <span className="text-xs font-mono opacity-50">{Math.max(1, Math.round(f.size / 1024))}KB</span>
                                   <button onClick={() => controller.setMessageFiles(prev => prev.filter((_, idx) => idx !== i))} className="ml-1 hover:text-rose-500 transition-colors">
                                      <X className="size-3" />
                                   </button>
@@ -1146,12 +1163,29 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/png,image/jpeg,image/webp"
+          accept="image/png,image/jpeg,image/jpg,image/webp,image/heic,image/heif,image/avif"
           multiple
           className="hidden"
           onChange={(event) => {
             const files = Array.from(event.target.files || []);
-            controller.setMessageFiles(files);
+            controller.setMessageFiles((prev) => {
+              const next = [...prev];
+              for (const file of files) {
+                if (
+                  next.some(
+                    (existing) =>
+                      existing.name === file.name &&
+                      existing.size === file.size &&
+                      existing.lastModified === file.lastModified
+                  )
+                ) {
+                  continue;
+                }
+                next.push(file);
+              }
+              return next;
+            });
+            event.currentTarget.value = '';
           }}
         />
 

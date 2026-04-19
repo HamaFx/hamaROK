@@ -15,7 +15,41 @@ import {
 export const runtime = 'nodejs';
 export const maxDuration = 300;
 
-const ALLOWED_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
+const ALLOWED_IMAGE_TYPES = new Set([
+  'image/png',
+  'image/jpeg',
+  'image/webp',
+  'image/heic',
+  'image/heif',
+  'image/avif',
+]);
+
+function isFileLike(value: FormDataEntryValue): value is File {
+  if (typeof value === 'string') return false;
+  const candidate = value as Partial<File>;
+  return (
+    typeof candidate.arrayBuffer === 'function' &&
+    typeof candidate.size === 'number' &&
+    typeof candidate.type === 'string'
+  );
+}
+
+function normalizeImageMimeType(raw: string, fileName?: string | null): string {
+  const normalized = String(raw || '')
+    .trim()
+    .toLowerCase();
+  const normalizedBase = normalized.split(';', 1)[0].trim();
+  if (normalizedBase === 'image/jpg') return 'image/jpeg';
+  if (ALLOWED_IMAGE_TYPES.has(normalizedBase)) return normalizedBase;
+  const lowerName = String(fileName || '').toLowerCase();
+  if (lowerName.endsWith('.png')) return 'image/png';
+  if (lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg')) return 'image/jpeg';
+  if (lowerName.endsWith('.webp')) return 'image/webp';
+  if (lowerName.endsWith('.heic')) return 'image/heic';
+  if (lowerName.endsWith('.heif')) return 'image/heif';
+  if (lowerName.endsWith('.avif')) return 'image/avif';
+  return normalizedBase || 'image/png';
+}
 
 async function storeAssistantImage(args: {
   workspaceId: string;
@@ -23,9 +57,9 @@ async function storeAssistantImage(args: {
   accessLinkId: string;
   file: File;
 }): Promise<AssistantAttachmentInput> {
-  const mimeType = args.file.type || 'image/png';
+  const mimeType = normalizeImageMimeType(args.file.type, args.file.name);
   if (!ALLOWED_IMAGE_TYPES.has(mimeType)) {
-    throw new Error('Only PNG, JPEG, and WEBP images are supported for assistant messages.');
+    throw new Error('Only PNG, JPEG, WEBP, HEIC, HEIF, and AVIF images are supported for assistant messages.');
   }
 
   const bytes = Buffer.from(await args.file.arrayBuffer());
@@ -109,11 +143,14 @@ async function hydrateAssistantArtifactAttachment(args: {
   const metadata = artifact.metadata && typeof artifact.metadata === 'object'
     ? (artifact.metadata as Record<string, unknown>)
     : {};
-  const mimeType = String(
+  const mimeType = normalizeImageMimeType(
+    String(
     metadata.mimeType ||
       response.headers.get('content-type') ||
       'image/png'
-  ).toLowerCase();
+    ),
+    String(metadata.fileName || '')
+  );
 
   if (!ALLOWED_IMAGE_TYPES.has(mimeType)) {
     throw new Error(`Artifact ${args.artifactId} is not a supported assistant image type.`);
@@ -187,8 +224,9 @@ export async function POST(
     const text = String(formData.get('text') || '').trim();
 
     const files: File[] = [];
-    for (const value of formData.values()) {
-      if (value instanceof File && value.size > 0) {
+    for (const [key, value] of formData.entries()) {
+      if (key !== 'file') continue;
+      if (isFileLike(value) && value.size > 0) {
         files.push(value);
       }
     }
