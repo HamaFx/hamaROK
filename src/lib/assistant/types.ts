@@ -1,5 +1,10 @@
 import { EventType, type AssistantActionType as PrismaAssistantActionType } from '@prisma/client';
 import { z } from 'zod';
+import {
+  type AssistantAnalyzerMode,
+  type AssistantConfig,
+  type ThreadAssistantConfig,
+} from '@/lib/assistant/config';
 
 export const ASSISTANT_ACTION_TYPES = [
   'register_player',
@@ -316,6 +321,21 @@ export const assistantPlanOutputSchema = z.object({
 });
 
 export type AssistantPlanOutput = z.infer<typeof assistantPlanOutputSchema>;
+
+export type { AssistantAnalyzerMode, AssistantConfig, ThreadAssistantConfig };
+
+export interface SuggestionCard {
+  key: string;
+  title: string;
+  detail: string;
+  priority: 'high' | 'medium' | 'low';
+}
+
+export interface ExtractionStrategyResult {
+  mode: AssistantAnalyzerMode;
+  usedFallback: boolean;
+  diagnostics: Array<Record<string, unknown>>;
+}
 
 export function mapActionTypeToPrisma(type: AssistantActionType): PrismaAssistantActionType {
   switch (type) {

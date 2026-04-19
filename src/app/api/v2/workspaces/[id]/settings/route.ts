@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { WorkspaceRole } from '@prisma/client';
+import { Prisma, WorkspaceRole } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { ok, fail, handleApiError, readJson } from '@/lib/api-response';
@@ -13,6 +13,11 @@ import {
   DEFAULT_WEEK_RESET_UTC_OFFSET,
   normalizeWeekResetUtcOffset,
 } from '@/lib/weekly-events';
+import {
+  assistantConfigSchema,
+  parseAssistantConfigFromJson,
+  serializeAssistantConfig,
+} from '@/lib/assistant/config';
 
 const fallbackProviderSchema = z
   .string()
@@ -34,6 +39,7 @@ const settingsSchema = z.object({
   ocrModel: z.string().min(1).max(120).optional(),
   assistantEnabled: z.boolean().optional(),
   assistantModel: z.string().min(1).max(120).optional(),
+  assistantConfig: assistantConfigSchema.optional(),
   assistantLogRetentionDays: z.number().int().min(1).max(3650).optional(),
   fallbackOcrEnabled: z.boolean().optional(),
   fallbackOcrDailyLimit: z.number().int().min(1).max(5000).optional(),
@@ -77,6 +83,7 @@ export async function GET(
 
     return ok({
       ...settings,
+      assistantConfig: serializeAssistantConfig(parseAssistantConfigFromJson(settings.assistantConfig)),
       discordWebhook: settings.discordWebhook || null,
       updatedAt: settings.updatedAt.toISOString(),
     });
@@ -104,6 +111,9 @@ export async function POST(
     const requestedProvider = body.fallbackOcrProvider ?? undefined;
     const requestedModel = body.fallbackOcrModel?.trim() || undefined;
     const defaultProvider = 'google_vision' as const;
+    const assistantConfigJson = body.assistantConfig
+      ? serializeAssistantConfig(parseAssistantConfigFromJson(body.assistantConfig))
+      : undefined;
 
     const settings = await prisma.workspaceSettings.upsert({
       where: { workspaceId },
@@ -119,6 +129,9 @@ export async function POST(
         ocrModel: body.ocrModel?.trim() || 'mistral-ocr-latest',
         assistantEnabled: body.assistantEnabled ?? true,
         assistantModel: body.assistantModel?.trim() || 'mistral-large-latest',
+        assistantConfig:
+          (assistantConfigJson || serializeAssistantConfig(parseAssistantConfigFromJson(null))) as
+            Prisma.InputJsonValue,
         assistantLogRetentionDays: body.assistantLogRetentionDays ?? 180,
         fallbackOcrEnabled: body.fallbackOcrEnabled ?? true,
         fallbackOcrDailyLimit: body.fallbackOcrDailyLimit ?? 50,
@@ -141,6 +154,7 @@ export async function POST(
         ocrModel: body.ocrModel?.trim() || undefined,
         assistantEnabled: body.assistantEnabled ?? undefined,
         assistantModel: body.assistantModel?.trim() || undefined,
+        assistantConfig: assistantConfigJson as Prisma.InputJsonValue | undefined,
         assistantLogRetentionDays: body.assistantLogRetentionDays ?? undefined,
         fallbackOcrEnabled: body.fallbackOcrEnabled ?? undefined,
         fallbackOcrDailyLimit: body.fallbackOcrDailyLimit ?? undefined,
@@ -157,6 +171,7 @@ export async function POST(
 
     return ok({
       ...settings,
+      assistantConfig: serializeAssistantConfig(parseAssistantConfigFromJson(settings.assistantConfig)),
       discordWebhook: settings.discordWebhook || null,
       updatedAt: settings.updatedAt.toISOString(),
     });

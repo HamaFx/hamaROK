@@ -37,6 +37,68 @@ export interface MistralOcrResponse {
   };
 }
 
+export type MistralJsonResponseFormat =
+  | { type: 'json_object' }
+  | {
+      type: 'json_schema';
+      json_schema: {
+        name?: string;
+        strict?: boolean;
+        schema: Record<string, unknown>;
+      };
+    };
+
+export interface MistralFileResponse {
+  id: string;
+  filename?: string;
+  bytes?: number;
+  purpose?: string;
+  object?: string;
+  created_at?: number;
+  [key: string]: unknown;
+}
+
+export type MistralBatchEndpoint =
+  | '/v1/chat/completions'
+  | '/v1/embeddings'
+  | '/v1/fim/completions'
+  | '/v1/moderations'
+  | '/v1/chat/moderations'
+  | '/v1/ocr'
+  | '/v1/classifications'
+  | '/v1/chat/classifications'
+  | '/v1/conversations'
+  | '/v1/audio/transcriptions';
+
+export type MistralBatchStatus =
+  | 'QUEUED'
+  | 'RUNNING'
+  | 'SUCCESS'
+  | 'FAILED'
+  | 'TIMEOUT_EXCEEDED'
+  | 'CANCELLATION_REQUESTED'
+  | 'CANCELLED';
+
+export interface MistralBatchJobResponse {
+  id: string;
+  status: MistralBatchStatus;
+  endpoint: string;
+  model?: string | null;
+  total_requests?: number;
+  completed_requests?: number;
+  succeeded_requests?: number;
+  failed_requests?: number;
+  output_file?: string | null;
+  error_file?: string | null;
+  outputs?: Array<Record<string, unknown>> | null;
+  errors?: Array<Record<string, unknown>>;
+  metadata?: Record<string, unknown> | null;
+  created_at?: number;
+  started_at?: number | null;
+  completed_at?: number | null;
+  [key: string]: unknown;
+}
+
 export interface MistralToolCallConfirmation {
   tool_call_id: string;
   confirmation: 'allow' | 'deny';
@@ -72,6 +134,8 @@ interface RequestOptions {
   method: 'GET' | 'POST';
   path: string;
   body?: unknown;
+  headers?: Record<string, string>;
+  contentType?: string | null;
   timeoutMs?: number;
   maxRetries?: number;
 }
@@ -225,13 +289,27 @@ async function requestJson<T>(options: RequestOptions): Promise<T> {
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
+      const hasFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
+      const headers: Record<string, string> = {
+        Authorization: `Bearer ${apiKey}`,
+        ...(options.headers || {}),
+      };
+
+      if (!hasFormData && options.contentType !== null) {
+        headers['Content-Type'] = options.contentType || 'application/json';
+      }
+
+      const body =
+        options.body == null
+          ? undefined
+          : hasFormData || typeof options.body === 'string'
+            ? (options.body as BodyInit)
+            : JSON.stringify(options.body);
+
       const response = await fetch(`${baseUrl}${options.path}`, {
         method: options.method,
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: options.body == null ? undefined : JSON.stringify(options.body),
+        headers,
+        body,
         signal: controller.signal,
       });
 
@@ -307,6 +385,12 @@ export async function runMistralOcr(args: {
   model?: string;
   includeImageBase64?: boolean;
   tableFormat?: 'markdown' | 'html';
+  documentAnnotationFormat?: MistralJsonResponseFormat;
+  documentAnnotationPrompt?: string;
+  confidenceScoresGranularity?: 'word' | 'page';
+  pages?: number[];
+  extractHeader?: boolean;
+  extractFooter?: boolean;
 }): Promise<MistralOcrResponse> {
   const model = (args.model || 'mistral-ocr-latest').trim();
   return requestJson<MistralOcrResponse>({
@@ -322,6 +406,12 @@ export async function runMistralOcr(args: {
       },
       include_image_base64: args.includeImageBase64 ?? false,
       table_format: args.tableFormat,
+      document_annotation_format: args.documentAnnotationFormat,
+      document_annotation_prompt: args.documentAnnotationPrompt,
+      confidence_scores_granularity: args.confidenceScoresGranularity,
+      pages: args.pages,
+      extract_header: args.extractHeader,
+      extract_footer: args.extractFooter,
     },
   });
 }
@@ -332,6 +422,7 @@ export async function startMistralConversation(args: {
   inputs: string | Array<Record<string, unknown>>;
   tools?: MistralTool[];
   metadata?: Record<string, unknown>;
+  guardrails?: Array<Record<string, unknown>>;
   completionArgs?: Record<string, unknown>;
   store?: boolean;
 }): Promise<MistralConversationResponse> {
@@ -352,6 +443,9 @@ export async function startMistralConversation(args: {
   if (args.metadata && Object.keys(args.metadata).length > 0) {
     body.metadata = args.metadata;
   }
+  if (Array.isArray(args.guardrails) && args.guardrails.length > 0) {
+    body.guardrails = args.guardrails;
+  }
   if (args.completionArgs) {
     body.completion_args = args.completionArgs;
   }
@@ -367,6 +461,7 @@ export async function appendMistralConversation(args: {
   conversationId: string;
   inputs?: string | Array<Record<string, unknown>>;
   toolConfirmations?: MistralToolCallConfirmation[];
+  guardrails?: Array<Record<string, unknown>>;
   completionArgs?: Record<string, unknown>;
   store?: boolean;
 }): Promise<MistralConversationResponse> {
@@ -377,6 +472,7 @@ export async function appendMistralConversation(args: {
     body: {
       inputs: normalizedInputs,
       tool_confirmations: args.toolConfirmations || undefined,
+      guardrails: args.guardrails || undefined,
       completion_args: args.completionArgs || undefined,
       store: args.store ?? true,
       stream: false,
@@ -459,6 +555,7 @@ export async function runMistralStructuredOutput<T>(args: {
   schemaName: string;
   schema: Record<string, unknown>;
   model?: string;
+  guardrails?: Array<Record<string, unknown>>;
   store?: boolean;
 }): Promise<{ response: MistralConversationResponse; parsed: T }> {
   const responseFormat = {
@@ -494,6 +591,7 @@ export async function runMistralStructuredOutput<T>(args: {
       model: args.model || 'mistral-large-latest',
       instructions: args.instructions,
       inputs: args.input,
+      guardrails: args.guardrails,
       completionArgs: responseFormat,
       store: args.store ?? false,
     });
@@ -517,6 +615,7 @@ export async function runMistralStructuredOutput<T>(args: {
       model: args.model || 'mistral-large-latest',
       instructions: fallbackInstructions,
       inputs: args.input,
+      guardrails: args.guardrails,
       completionArgs: {
         response_format: {
           type: 'json_object',
@@ -529,6 +628,138 @@ export async function runMistralStructuredOutput<T>(args: {
       response: fallbackResponse,
       parsed: parseStructuredResponse(fallbackResponse),
     };
+  }
+}
+
+export async function runMistralVisionStructuredExtraction<T>(args: {
+  image: MistralImageInput;
+  instructions: string;
+  schemaName: string;
+  schema: Record<string, unknown>;
+  model?: string;
+  prompt?: string;
+  guardrails?: Array<Record<string, unknown>>;
+  store?: boolean;
+}): Promise<{ response: MistralConversationResponse; parsed: T }> {
+  const chunks: Array<Record<string, unknown>> = [];
+  const prompt = String(args.prompt || '').trim();
+  if (prompt) {
+    chunks.push({
+      type: 'text',
+      text: prompt.slice(0, 8000),
+    });
+  }
+  chunks.push({
+    type: 'image_url',
+    image_url: toDataUrl(args.image),
+  });
+
+  return runMistralStructuredOutput<T>({
+    instructions: args.instructions,
+    input: chunks,
+    schemaName: args.schemaName,
+    schema: args.schema,
+    model: args.model,
+    guardrails: args.guardrails,
+    store: args.store,
+  });
+}
+
+export async function uploadMistralFile(args: {
+  fileName: string;
+  content: Uint8Array | string;
+  purpose?: 'batch' | 'ocr' | 'fine-tune';
+  contentType?: string;
+}): Promise<MistralFileResponse> {
+  const fileName = String(args.fileName || '').trim() || `upload-${Date.now()}.jsonl`;
+  const form = new FormData();
+  const contentPart: BlobPart =
+    typeof args.content === 'string'
+      ? args.content
+      : (() => {
+          const bytes = new Uint8Array(args.content.byteLength);
+          bytes.set(args.content);
+          return bytes;
+        })();
+  const blob = new Blob([contentPart], {
+    type: args.contentType || 'application/octet-stream',
+  });
+  form.append('file', blob, fileName);
+  if (args.purpose) {
+    form.append('purpose', args.purpose);
+  }
+
+  return requestJson<MistralFileResponse>({
+    method: 'POST',
+    path: '/v1/files',
+    body: form,
+    contentType: null,
+  });
+}
+
+export async function createMistralBatchJob(args: {
+  endpoint: MistralBatchEndpoint;
+  model: string;
+  requests?: Array<Record<string, unknown>>;
+  inputFiles?: string[];
+  metadata?: Record<string, unknown>;
+  timeoutHours?: number;
+}): Promise<MistralBatchJobResponse> {
+  return requestJson<MistralBatchJobResponse>({
+    method: 'POST',
+    path: '/v1/batch/jobs',
+    body: {
+      endpoint: args.endpoint,
+      model: args.model,
+      requests: args.requests,
+      input_files: args.inputFiles,
+      metadata: args.metadata,
+      timeout_hours: args.timeoutHours ?? 24,
+    },
+  });
+}
+
+export async function getMistralBatchJob(
+  jobId: string,
+  inline = false
+): Promise<MistralBatchJobResponse> {
+  const query = inline ? '?inline=true' : '';
+  return requestJson<MistralBatchJobResponse>({
+    method: 'GET',
+    path: `/v1/batch/jobs/${encodeURIComponent(jobId)}${query}`,
+  });
+}
+
+export async function pollMistralBatchJobUntilTerminal(args: {
+  jobId: string;
+  inline?: boolean;
+  pollIntervalMs?: number;
+  timeoutMs?: number;
+}): Promise<MistralBatchJobResponse> {
+  const pollIntervalMs = Math.max(1000, Number(args.pollIntervalMs || 5000));
+  const timeoutMs = Math.max(5000, Number(args.timeoutMs || 600000));
+  const startedAt = Date.now();
+
+  while (true) {
+    const batch = await getMistralBatchJob(args.jobId, args.inline ?? false);
+    if (
+      batch.status === 'SUCCESS' ||
+      batch.status === 'FAILED' ||
+      batch.status === 'TIMEOUT_EXCEEDED' ||
+      batch.status === 'CANCELLED'
+    ) {
+      return batch;
+    }
+
+    if (Date.now() - startedAt > timeoutMs) {
+      throw new MistralApiError(
+        `Timed out waiting for batch job ${args.jobId}.`,
+        504,
+        'BATCH_TIMEOUT'
+      );
+    }
+
+    await sleep(pollIntervalMs);
   }
 }
 

@@ -7,6 +7,7 @@ import { prisma } from '@/lib/prisma';
 import {
   listAssistantConversationMessages,
   postAssistantMessage,
+  type AssistantAnalyzerMode,
   type AssistantAttachmentInput,
 } from '@/lib/assistant/service';
 
@@ -191,6 +192,15 @@ export async function POST(
       .getAll('artifactId')
       .map((value) => String(value || '').trim())
       .filter(Boolean);
+    const analyzerModeRaw = String(formData.get('analyzerMode') || '')
+      .trim()
+      .toLowerCase();
+    const analyzerMode: AssistantAnalyzerMode | null =
+      analyzerModeRaw === 'hybrid' ||
+      analyzerModeRaw === 'ocr_pipeline' ||
+      analyzerModeRaw === 'vision_model'
+        ? analyzerModeRaw
+        : null;
 
     if (!text && files.length === 0 && artifactIds.length === 0) {
       return fail('VALIDATION_ERROR', 'text or image attachment is required.', 400);
@@ -226,6 +236,7 @@ export async function POST(
       accessLink: auth.link,
       text,
       attachments,
+      analyzerMode,
     });
 
     return ok(result, null, 201);

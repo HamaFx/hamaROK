@@ -21,13 +21,17 @@ import { ApiHttpError } from '@/lib/api-response';
 import { prisma } from '@/lib/prisma';
 import {
   appendMistralConversation,
+  createMistralBatchJob,
   extractConversationTextOutputs,
   extractFunctionCalls,
+  pollMistralBatchJobUntilTerminal,
   runMistralOcr,
   runMistralStructuredOutput,
+  runMistralVisionStructuredExtraction,
   startMistralConversation,
   type MistralTool,
   type MistralConversationResponse,
+  type MistralJsonResponseFormat,
 } from '@/lib/mistral/client';
 import { runMistralIngestionExtraction } from '@/lib/ocr/mistral-extraction';
 import {
@@ -61,6 +65,18 @@ import {
   type AssistantPlanOutput,
   type RecordProfileStatsActionInput,
 } from '@/lib/assistant/types';
+import {
+  assistantAnalyzerModeSchema,
+  buildAssistantInstructionText,
+  normalizeThreadAssistantConfig,
+  parseAssistantConfigFromJson,
+  resolveAssistantAnalyzerMode,
+  serializeThreadAssistantConfig,
+  type AssistantAnalyzerMode,
+  type AssistantConfig,
+} from '@/lib/assistant/config';
+
+export type { AssistantAnalyzerMode } from '@/lib/assistant/config';
 
 const roleRank: Record<WorkspaceRole, number> = {
   VIEWER: 1,
@@ -70,11 +86,14 @@ const roleRank: Record<WorkspaceRole, number> = {
 
 const OCR_MODEL_DEFAULT = 'mistral-ocr-latest';
 const ASSISTANT_MODEL_DEFAULT = 'mistral-large-latest';
-const MAX_READ_ACTIONS_PER_TURN = 20;
-const MAX_READ_ROWS = 60;
+const DEFAULT_MAX_READ_ACTIONS_PER_TURN = 12;
+const MAX_READ_ACTIONS_PER_TURN_HARD = 30;
+const DEFAULT_MAX_READ_ROWS = 60;
+const MAX_READ_ROWS_HARD = 200;
 const MAX_READ_TOOL_LOOPS = 4;
 const MAX_EVIDENCE_IMAGES = 6;
 const ATTACHMENT_EXTRACTION_CONCURRENCY = 2;
+const HYBRID_FALLBACK_CONFIDENCE_PCT = 85;
 const ASSISTANT_BATCH_SAFE_ACTIONS = new Set([
   'register_player',
   'update_player',
@@ -87,6 +106,29 @@ const ASSISTANT_ALLOWED_IMAGE_MIME_TYPES = new Set([
   'image/jpeg',
   'image/webp',
 ]);
+const ASSISTANT_SYSTEM_GUARDRAILS_TEXT = [
+  'You are the assistant for a Rise of Kingdoms workspace.',
+  'Use read tools to gather facts before planning writes when the request is ambiguous.',
+  'Only propose typed actions supported by the tool contract.',
+  'Never execute writes directly in the model response; execution happens only after plan confirmation.',
+  'Prefer exact identifiers from evidence. If uncertain, ask for clarification or rely on pending identity flow.',
+  'Be concise and operational. Avoid speculative claims.',
+];
+const ASSISTANT_MISTRAL_GUARDRAILS: Array<Record<string, unknown>> = [
+  {
+    block_on_error: false,
+    moderation_llm_v2: {
+      custom_category_thresholds: {
+        sexual: 0.95,
+        selfharm: 0.95,
+        violence_and_threats: 0.95,
+        hate_and_discrimination: 0.95,
+      },
+      ignore_other_categories: false,
+      action: 'block',
+    },
+  },
+];
 
 export function evaluateAssistantBatchAutoConfirm(actions: Array<{ type?: unknown }>) {
   const actionTypes = actions
@@ -130,6 +172,11 @@ function asJsonObject(value: unknown): Record<string, unknown> {
   return {};
 }
 
+function parseThreadConfigFromConversationMetadata(value: unknown) {
+  const root = asJsonObject(value);
+  return normalizeThreadAssistantConfig(root.threadConfig);
+}
+
 function toIso(value: Date | null | undefined): string | null {
   return value ? value.toISOString() : null;
 }
@@ -155,6 +202,7 @@ async function readAssistantSettings(workspaceId: string) {
       assistantEnabled: true,
       assistantModel: true,
       ocrModel: true,
+      assistantConfig: true,
       assistantLogRetentionDays: true,
     },
   });
@@ -166,6 +214,7 @@ async function readAssistantSettings(workspaceId: string) {
   return {
     assistantModel: settings?.assistantModel || ASSISTANT_MODEL_DEFAULT,
     ocrModel: settings?.ocrModel || OCR_MODEL_DEFAULT,
+    assistantConfig: parseAssistantConfigFromJson(settings?.assistantConfig),
     retentionDays:
       Number.isFinite(settings?.assistantLogRetentionDays) &&
       Number(settings?.assistantLogRetentionDays) > 0
@@ -174,7 +223,7 @@ async function readAssistantSettings(workspaceId: string) {
   };
 }
 
-function clampLimit(value: unknown, fallback: number, max = MAX_READ_ROWS): number {
+function clampLimit(value: unknown, fallback: number, max = MAX_READ_ROWS_HARD): number {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return fallback;
   return Math.max(1, Math.min(max, Math.floor(parsed)));
@@ -658,6 +707,9 @@ export async function createAssistantConversation(input: CreateAssistantConversa
       accessLinkId: input.accessLink.id,
       title: sanitizePrintable(input.title || '', 120) || null,
       status: AssistantConversationStatus.ACTIVE,
+      metadata: {
+        threadConfig: serializeThreadAssistantConfig(normalizeThreadAssistantConfig(null)),
+      } as Prisma.InputJsonValue,
     },
   });
 
@@ -667,8 +719,73 @@ export async function createAssistantConversation(input: CreateAssistantConversa
     title: created.title,
     status: created.status,
     model: created.model,
+    threadConfig: parseThreadConfigFromConversationMetadata(created.metadata),
     createdAt: created.createdAt.toISOString(),
     updatedAt: created.updatedAt.toISOString(),
+  };
+}
+
+export interface UpdateAssistantConversationInput {
+  workspaceId: string;
+  conversationId: string;
+  accessLink: AccessLink;
+  title?: string | null;
+  threadConfig?: {
+    threadInstructions?: string | null;
+    analyzerOverride?: 'inherit' | 'hybrid' | 'ocr_pipeline' | 'vision_model' | null;
+  };
+}
+
+export async function updateAssistantConversation(input: UpdateAssistantConversationInput) {
+  const workspaceId = String(input.workspaceId || '').trim();
+  if (!workspaceId) {
+    throw new ApiHttpError('VALIDATION_ERROR', 'workspaceId is required.', 400);
+  }
+  if (input.accessLink.workspaceId !== workspaceId) {
+    throw new ApiHttpError('FORBIDDEN', 'Access link is not valid for this workspace.', 403);
+  }
+  requireRole(input.accessLink, WorkspaceRole.VIEWER);
+
+  const conversation = await assertConversationAccess({
+    workspaceId,
+    conversationId: input.conversationId,
+    accessLink: input.accessLink,
+  });
+
+  const currentMeta = asJsonObject(conversation.metadata);
+  const currentThreadConfig = parseThreadConfigFromConversationMetadata(conversation.metadata);
+
+  const nextThreadConfig = input.threadConfig
+    ? normalizeThreadAssistantConfig({
+        ...currentThreadConfig,
+        ...input.threadConfig,
+      })
+    : currentThreadConfig;
+
+  const updated = await prisma.assistantConversation.update({
+    where: { id: conversation.id },
+    data: {
+      title:
+        input.title === undefined
+          ? undefined
+          : sanitizePrintable(input.title, 120) || null,
+      metadata: {
+        ...currentMeta,
+        threadConfig: serializeThreadAssistantConfig(nextThreadConfig),
+      } as Prisma.InputJsonValue,
+      updatedAt: new Date(),
+    },
+  });
+
+  return {
+    id: updated.id,
+    workspaceId: updated.workspaceId,
+    title: updated.title,
+    status: updated.status,
+    model: updated.model,
+    threadConfig: parseThreadConfigFromConversationMetadata(updated.metadata),
+    createdAt: updated.createdAt.toISOString(),
+    updatedAt: updated.updatedAt.toISOString(),
   };
 }
 
@@ -718,6 +835,7 @@ export async function listAssistantConversations(args: {
     status: row.status,
     model: row.model,
     mistralConversationId: row.mistralConversationId,
+    threadConfig: parseThreadConfigFromConversationMetadata(row.metadata),
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
     counts: row._count,
@@ -853,6 +971,9 @@ interface AssistantBatchState {
   version: 1;
   scanJobId: string;
   status: AssistantBatchStatus;
+  extractionMode: 'sequential' | 'mistral_batch';
+  batchThreshold: number;
+  lastBatchError: string | null;
   totalArtifacts: number;
   processedArtifactIds: string[];
   flagged: AssistantBatchFlag[];
@@ -907,6 +1028,9 @@ function parseAssistantBatchState(value: unknown): AssistantBatchState | null {
     version: 1,
     scanJobId,
     status: row.status === 'COMPLETED' ? 'COMPLETED' : 'RUNNING',
+    extractionMode: row.extractionMode === 'mistral_batch' ? 'mistral_batch' : 'sequential',
+    batchThreshold: Math.max(20, Number(row.batchThreshold || 80)),
+    lastBatchError: row.lastBatchError == null ? null : sanitizePrintable(row.lastBatchError, 260) || null,
     totalArtifacts: Math.max(0, Number(row.totalArtifacts || 0)),
     processedArtifactIds,
     flagged,
@@ -1047,6 +1171,95 @@ async function hydrateBatchArtifactAttachment(args: {
   };
 }
 
+async function extractBatchEvidenceViaMistralBatch(args: {
+  artifact: BatchArtifactRow;
+  settings: Awaited<ReturnType<typeof readAssistantSettings>>;
+}): Promise<{ evidence: AttachmentEvidence; diagnostic: Record<string, unknown> }> {
+  const request = {
+    custom_id: args.artifact.artifactId,
+    body: {
+      model: args.settings.ocrModel,
+      document: {
+        type: 'image_url',
+        image_url: {
+          url: args.artifact.artifactUrl,
+        },
+      },
+      include_image_base64: false,
+      table_format: 'markdown',
+    },
+  };
+
+  const created = await createMistralBatchJob({
+    endpoint: '/v1/ocr',
+    model: args.settings.ocrModel,
+    requests: [request],
+    metadata: {
+      source: 'assistant_batch_step',
+      artifactId: args.artifact.artifactId,
+      fileName: args.artifact.fileName,
+    },
+    timeoutHours: 1,
+  });
+
+  const completed = await pollMistralBatchJobUntilTerminal({
+    jobId: created.id,
+    inline: true,
+    pollIntervalMs: 2000,
+    timeoutMs: 60000,
+  });
+
+  if (completed.status !== 'SUCCESS') {
+    throw new ApiHttpError(
+      'INTERNAL_ERROR',
+      `Mistral batch extraction failed with status ${completed.status}.`,
+      502,
+      { batchJobId: completed.id, status: completed.status }
+    );
+  }
+
+  const outputs = Array.isArray(completed.outputs) ? completed.outputs : [];
+  const first = asJsonObject(outputs[0]);
+  const responseEnvelope = asJsonObject(
+    first.response || first.output || first.result || first.body || first.data
+  );
+  const responseBody = asJsonObject(
+    responseEnvelope.body || responseEnvelope.response || responseEnvelope.data || responseEnvelope
+  );
+  const pages = Array.isArray(responseBody.pages)
+    ? (responseBody.pages as Array<Record<string, unknown>>)
+    : [];
+  const markdown = pages
+    .slice(0, 4)
+    .map((page) => sanitizePrintable(page.markdown || '', 10_000))
+    .filter(Boolean)
+    .join('\n\n');
+
+  if (!markdown) {
+    throw new ApiHttpError('INTERNAL_ERROR', 'Mistral batch output did not include OCR markdown.', 502, {
+      batchJobId: completed.id,
+      outputs: outputs.slice(0, 1),
+    });
+  }
+
+  return {
+    evidence: {
+      fileName: args.artifact.fileName,
+      markdown,
+      metadata: {
+        strategy: 'mistral_batch_ocr',
+        batchJobId: completed.id,
+      },
+    },
+    diagnostic: {
+      fileName: args.artifact.fileName,
+      strategy: 'mistral_batch_ocr',
+      batchJobId: completed.id,
+      status: completed.status,
+    },
+  };
+}
+
 function serializeAssistantBatch(args: {
   batchId: string;
   workspaceId: string;
@@ -1071,6 +1284,9 @@ function serializeAssistantBatch(args: {
     conversationId: args.conversationId,
     scanJobId: args.batch.scanJobId,
     status: args.batch.status,
+    extractionMode: args.batch.extractionMode,
+    batchThreshold: args.batch.batchThreshold,
+    lastBatchError: args.batch.lastBatchError,
     totalArtifacts,
     processedCount,
     remainingCount: Math.max(0, totalArtifacts - processedCount),
@@ -1100,6 +1316,7 @@ export async function createAssistantBatchRun(args: {
     throw new ApiHttpError('FORBIDDEN', 'Access link is not valid for this workspace.', 403);
   }
   requireRole(args.accessLink, WorkspaceRole.EDITOR);
+  const settings = await readAssistantSettings(args.workspaceId);
 
   const scanJob = await prisma.scanJob.findFirst({
     where: {
@@ -1165,6 +1382,18 @@ export async function createAssistantBatchRun(args: {
   const batch: AssistantBatchState = {
     version: 1,
     scanJobId: args.scanJobId,
+    extractionMode:
+      existingState?.scanJobId === args.scanJobId
+        ? existingState.extractionMode
+        : settings.assistantConfig.batch.enabled &&
+            artifacts.length >= settings.assistantConfig.batch.threshold
+          ? 'mistral_batch'
+          : 'sequential',
+    batchThreshold:
+      existingState?.scanJobId === args.scanJobId
+        ? existingState.batchThreshold
+        : settings.assistantConfig.batch.threshold,
+    lastBatchError: existingState?.scanJobId === args.scanJobId ? existingState.lastBatchError : null,
     status:
       existingState?.scanJobId === args.scanJobId &&
       existingState.status === 'COMPLETED' &&
@@ -1277,6 +1506,7 @@ export async function runAssistantBatchStep(args: {
   if (!batch) {
     throw new ApiHttpError('NOT_FOUND', 'Assistant batch run not found.', 404);
   }
+  const settings = await readAssistantSettings(args.workspaceId);
 
   const artifacts = await listBatchArtifactsForScanJob({
     workspaceId: args.workspaceId,
@@ -1339,8 +1569,28 @@ export async function runAssistantBatchStep(args: {
   const nextFlagged = [...batch.flagged];
   let autoConfirmedCount = batch.autoConfirmedCount;
   let pendingManualCount = batch.pendingManualCount;
+  let nextBatchLastError = batch.lastBatchError;
 
   try {
+    let prefetchedEvidence:
+      | Array<{ fileName: string; markdown: string; metadata: Record<string, unknown> }>
+      | undefined;
+    if (batch.extractionMode === 'mistral_batch') {
+      try {
+        const extracted = await extractBatchEvidenceViaMistralBatch({
+          artifact: nextArtifact,
+          settings,
+        });
+        prefetchedEvidence = [extracted.evidence];
+        nextBatchLastError = null;
+      } catch (batchError) {
+        nextBatchLastError = sanitizePrintable(
+          batchError instanceof Error ? batchError.message : 'Mistral batch extraction failed',
+          260
+        );
+      }
+    }
+
     const attachment = await hydrateBatchArtifactAttachment({
       workspaceId: args.workspaceId,
       artifact: nextArtifact,
@@ -1352,6 +1602,11 @@ export async function runAssistantBatchStep(args: {
       accessLink: args.accessLink,
       text: batch.prompt || ASSISTANT_BATCH_DEFAULT_PROMPT,
       attachments: [attachment],
+      analyzerMode:
+        batch.extractionMode === 'mistral_batch'
+          ? 'ocr_pipeline'
+          : settings.assistantConfig.screenshotAnalyzerDefault,
+      prefetchedEvidence,
     });
 
     const plan = messageResult.plan;
@@ -1483,6 +1738,7 @@ export async function runAssistantBatchStep(args: {
     pendingManualCount,
     lastProcessedArtifactId: nextArtifact.artifactId,
     lastProcessedFileName: nextArtifact.fileName,
+    lastBatchError: nextBatchLastError,
     updatedAt: new Date().toISOString(),
   };
 
@@ -1574,6 +1830,114 @@ async function buildWorkspaceContext(workspaceId: string) {
   };
 }
 
+async function buildAssistantContextPack(args: {
+  workspaceId: string;
+  contextMode: AssistantConfig['contextMode'];
+  rowsLimit: number;
+}): Promise<string> {
+  if (args.contextMode === 'prompt_only') {
+    return '';
+  }
+
+  const [governorCount, eventCount, openWeeklyEvent, scanJobs, rankingRuns, pendingIdentities] =
+    await Promise.all([
+      prisma.governor.count({ where: { workspaceId: args.workspaceId } }),
+      prisma.event.count({ where: { workspaceId: args.workspaceId } }),
+      prisma.event.findFirst({
+        where: {
+          workspaceId: args.workspaceId,
+          eventType: EventType.WEEKLY,
+          isClosed: false,
+        },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        select: {
+          id: true,
+          name: true,
+          weekKey: true,
+        },
+      }),
+      prisma.scanJob.findMany({
+        where: { workspaceId: args.workspaceId },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take: Math.min(8, args.rowsLimit),
+        select: {
+          id: true,
+          status: true,
+          totalFiles: true,
+          processedFiles: true,
+          createdAt: true,
+        },
+      }),
+      prisma.rankingRun.findMany({
+        where: { workspaceId: args.workspaceId },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take: Math.min(8, args.rowsLimit),
+        select: {
+          id: true,
+          status: true,
+          rankingType: true,
+          metricKey: true,
+          createdAt: true,
+        },
+      }),
+      prisma.assistantPendingIdentity.count({
+        where: {
+          workspaceId: args.workspaceId,
+          status: AssistantPendingIdentityStatus.PENDING,
+        },
+      }),
+    ]);
+
+  const lines = [
+    `Counts: governors=${governorCount}, events=${eventCount}, pendingIdentity=${pendingIdentities}`,
+    openWeeklyEvent
+      ? `Open weekly event: ${openWeeklyEvent.id} | ${openWeeklyEvent.name} | week=${openWeeklyEvent.weekKey || '-'}`
+      : 'Open weekly event: none',
+    `Recent scan jobs:\n${
+      scanJobs.length > 0
+        ? scanJobs
+            .map(
+              (row) =>
+                `${row.id} | ${row.status} | ${row.processedFiles}/${row.totalFiles} | ${row.createdAt.toISOString()}`
+            )
+            .join('\n')
+        : '(none)'
+    }`,
+    `Recent ranking runs:\n${
+      rankingRuns.length > 0
+        ? rankingRuns
+            .map(
+              (row) =>
+                `${row.id} | ${row.status} | ${row.rankingType}/${row.metricKey} | ${row.createdAt.toISOString()}`
+            )
+            .join('\n')
+        : '(none)'
+    }`,
+  ];
+
+  if (args.contextMode === 'full') {
+    const workspaceContext = await buildWorkspaceContext(args.workspaceId);
+    const governors = workspaceContext.governors
+      .slice(0, Math.min(160, args.rowsLimit * 4))
+      .map((row) => `${row.id} | ${row.governorId} | ${row.name} | ${row.alliance || '-'}`)
+      .join('\n');
+    const events = workspaceContext.events
+      .slice(0, Math.min(48, args.rowsLimit))
+      .map(
+        (row) =>
+          `${row.id} | ${row.name} | ${row.eventType}${row.weekKey ? ` | week:${row.weekKey}` : ''}${
+            row.isClosed ? ' | closed' : ' | open'
+          }`
+      )
+      .join('\n');
+
+    lines.push(`Known governors:\n${governors || '(none)'}`);
+    lines.push(`Known events:\n${events || '(none)'}`);
+  }
+
+  return lines.join('\n\n');
+}
+
 function buildFallbackPlanningPrompt(args: {
   userText: string;
   ocrMarkdownByImage: Array<{ fileName: string; markdown: string }>;
@@ -1629,8 +1993,16 @@ function buildConversationInputs(args: {
   userText: string;
   attachments: AssistantAttachmentInput[];
   ocrMarkdownByImage: Array<{ fileName: string; markdown: string }>;
+  contextText?: string;
 }): Array<Record<string, unknown>> {
   const chunks: Array<Record<string, unknown>> = [];
+
+  if (sanitizePrintable(args.contextText, 16000)) {
+    chunks.push({
+      type: 'text',
+      text: `Workspace context:\n${sanitizePrintable(args.contextText, 16000)}`,
+    });
+  }
 
   if (sanitizePrintable(args.userText, 8000)) {
     chunks.push({
@@ -1914,8 +2286,10 @@ function profileSeverityForRead(row: {
 async function executeReadAction(args: {
   workspaceId: string;
   action: AssistantReadActionInput;
+  defaultRowsLimit: number;
 }): Promise<AssistantReadExecution> {
   const startedAt = Date.now();
+  const defaultRowsLimit = clampLimit(args.defaultRowsLimit, DEFAULT_MAX_READ_ROWS, MAX_READ_ROWS_HARD);
 
   try {
     switch (args.action.type) {
@@ -1956,7 +2330,7 @@ async function executeReadAction(args: {
       }
 
       case 'read_governors': {
-        const limit = clampLimit(args.action.limit, 20);
+        const limit = clampLimit(args.action.limit, defaultRowsLimit);
         const offset = clampOffset(args.action.offset, 0);
         const search = sanitizePrintable(args.action.search || '', 80);
         const where: Prisma.GovernorWhereInput = {
@@ -2085,7 +2459,7 @@ async function executeReadAction(args: {
       }
 
       case 'read_events': {
-        const limit = clampLimit(args.action.limit, 20);
+        const limit = clampLimit(args.action.limit, defaultRowsLimit);
         const offset = clampOffset(args.action.offset, 0);
         const search = sanitizePrintable(args.action.search || '', 120);
         const includeClosed = Boolean(args.action.includeClosed);
@@ -2197,7 +2571,7 @@ async function executeReadAction(args: {
       }
 
       case 'read_scan_jobs': {
-        const limit = clampLimit(args.action.limit, 20);
+        const limit = clampLimit(args.action.limit, defaultRowsLimit);
         const offset = clampOffset(args.action.offset, 0);
         const statusRaw = String(args.action.status || '').trim();
         const status =
@@ -2253,7 +2627,7 @@ async function executeReadAction(args: {
       }
 
       case 'read_scan_job_tasks': {
-        const limit = clampLimit(args.action.limit, 30);
+        const limit = clampLimit(args.action.limit, defaultRowsLimit);
         const offset = clampOffset(args.action.offset, 0);
         const scanJobId = String(args.action.scanJobId || '').trim();
         const scanJob = await prisma.scanJob.findFirst({
@@ -2326,7 +2700,7 @@ async function executeReadAction(args: {
       }
 
       case 'read_profile_review_queue': {
-        const limit = clampLimit(args.action.limit, 20);
+        const limit = clampLimit(args.action.limit, defaultRowsLimit);
         const offset = clampOffset(args.action.offset, 0);
         const severity = String(args.action.severity || '').trim().toUpperCase();
         const statuses = String(args.action.status || '')
@@ -2404,7 +2778,7 @@ async function executeReadAction(args: {
       }
 
       case 'read_ranking_review_queue': {
-        const limit = clampLimit(args.action.limit, 30);
+        const limit = clampLimit(args.action.limit, defaultRowsLimit);
         const offset = clampOffset(args.action.offset, 0);
         const statuses = String(args.action.status || '')
           .split(',')
@@ -2441,7 +2815,7 @@ async function executeReadAction(args: {
       }
 
       case 'read_ranking_runs': {
-        const limit = clampLimit(args.action.limit, 20);
+        const limit = clampLimit(args.action.limit, defaultRowsLimit);
         const offset = clampOffset(args.action.offset, 0);
         const statusRaw = String(args.action.status || '').trim();
         const status =
@@ -2481,7 +2855,7 @@ async function executeReadAction(args: {
         });
         const result = {
           ...run,
-          rows: run.rows.slice(0, 80),
+          rows: run.rows.slice(0, defaultRowsLimit),
         };
         return {
           actionType: args.action.type,
@@ -2564,14 +2938,24 @@ async function executeReadAction(args: {
 async function executeReadActions(args: {
   workspaceId: string;
   calls: Array<{ toolCallId: string; action: AssistantReadActionInput }>;
+  maxActionsPerTurn: number;
+  defaultRowsLimit: number;
 }): Promise<AssistantReadExecution[]> {
   const executions: AssistantReadExecution[] = [];
-  const readCalls = args.calls.slice(0, MAX_READ_ACTIONS_PER_TURN);
+  const readCallLimit = Math.max(
+    1,
+    Math.min(
+      MAX_READ_ACTIONS_PER_TURN_HARD,
+      Number(args.maxActionsPerTurn || DEFAULT_MAX_READ_ACTIONS_PER_TURN)
+    )
+  );
+  const readCalls = args.calls.slice(0, readCallLimit);
 
   for (const call of readCalls) {
     const execution = await executeReadAction({
       workspaceId: args.workspaceId,
       action: call.action,
+      defaultRowsLimit: args.defaultRowsLimit,
     });
     execution.toolCallId = call.toolCallId;
     executions.push(execution);
@@ -2603,11 +2987,211 @@ function buildReadResultsPrompt(executions: AssistantReadExecution[]): string {
   ].join('\n\n');
 }
 
+type SuggestionCard = {
+  key: string;
+  title: string;
+  detail: string;
+  priority: 'high' | 'medium' | 'low';
+};
+
+function buildAssistantSuggestions(args: {
+  suggestionMode: AssistantConfig['suggestionMode'];
+  userText: string;
+  plannedActions: AssistantActionInput[];
+  readExecutions: AssistantReadExecution[];
+  droppedActions: Array<{ index: number; type: string; reason: string }>;
+  evidenceDiagnostics: Array<Record<string, unknown>>;
+}): SuggestionCard[] {
+  const rows: SuggestionCard[] = [];
+  const hasSuggestionKeyword = /suggest|recommend|improve|optimi[sz]e/i.test(args.userText || '');
+  if (args.suggestionMode === 'on_demand' && !hasSuggestionKeyword) {
+    return rows;
+  }
+
+  const failedEvidence = args.evidenceDiagnostics.filter(
+    (entry) => String(entry.strategy || '').trim() === 'failed'
+  );
+  if (failedEvidence.length > 0) {
+    rows.push({
+      key: 'ocr_failed_images',
+      title: 'Some screenshots were not extracted',
+      detail: `Extraction failed on ${failedEvidence.length} image(s). Consider OCR Review for manual correction.`,
+      priority: 'high',
+    });
+  }
+
+  const erroredReads = args.readExecutions.filter((entry) => Boolean(entry.error));
+  if (erroredReads.length > 0) {
+    rows.push({
+      key: 'read_tool_errors',
+      title: 'Some read tools returned errors',
+      detail: `Read failures: ${erroredReads
+        .slice(0, 3)
+        .map((entry) => entry.actionType)
+        .join(', ')}. Retry the question with narrower scope.`,
+      priority: 'medium',
+    });
+  }
+
+  if (args.droppedActions.length > 0) {
+    rows.push({
+      key: 'dropped_actions',
+      title: 'Some actions were dropped',
+      detail: `${args.droppedActions.length} action(s) were rejected during preflight due to missing identifiers/fields.`,
+      priority: 'medium',
+    });
+  }
+
+  const destructiveCount = args.plannedActions.filter(
+    (action) => action.type === 'delete_player' || action.type === 'delete_event'
+  ).length;
+  if (destructiveCount > 0) {
+    rows.push({
+      key: 'destructive_actions',
+      title: 'Destructive actions detected',
+      detail: `${destructiveCount} destructive action(s) are pending confirmation. Double-check targets before confirming.`,
+      priority: 'high',
+    });
+  }
+
+  if (args.plannedActions.length === 0 && failedEvidence.length === 0) {
+    rows.push({
+      key: 'no_writes_proposed',
+      title: 'No write plan proposed',
+      detail: 'Ask for a specific operation (register, update stats, create event) or include clearer evidence.',
+      priority: 'low',
+    });
+  }
+
+  if (args.suggestionMode === 'signal') {
+    return rows.slice(0, 5);
+  }
+  if (rows.length === 0) {
+    rows.push({
+      key: 'general_review',
+      title: 'Review pending work',
+      detail: 'Use read tools to inspect workspace state before confirming write plans.',
+      priority: 'low',
+    });
+  }
+  return rows.slice(0, 5);
+}
+
 type AttachmentEvidence = {
   fileName: string;
   markdown: string;
   metadata: Record<string, unknown>;
 };
+
+const assistantVisionExtractionJsonSchema: Record<string, unknown> = {
+  type: 'object',
+  additionalProperties: false,
+  required: [
+    'screenArchetype',
+    'confidence',
+    'governorId',
+    'governorName',
+    'alliance',
+    'power',
+    'killPoints',
+    't4Kills',
+    't5Kills',
+    'deads',
+    'rankingType',
+    'metricKey',
+    'rows',
+  ],
+  properties: {
+    screenArchetype: {
+      type: 'string',
+      enum: ['governor_profile', 'ranking_board', 'unknown'],
+    },
+    confidence: { type: 'number', minimum: 0, maximum: 100 },
+    governorId: { type: 'string' },
+    governorName: { type: 'string' },
+    alliance: { type: ['string', 'null'] },
+    power: { type: 'string' },
+    killPoints: { type: 'string' },
+    t4Kills: { type: 'string' },
+    t5Kills: { type: 'string' },
+    deads: { type: 'string' },
+    rankingType: { type: 'string' },
+    metricKey: { type: 'string' },
+    rows: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['sourceRank', 'governorNameRaw', 'metricValue', 'confidence'],
+        properties: {
+          sourceRank: { type: ['integer', 'null'] },
+          governorNameRaw: { type: 'string' },
+          metricValue: { type: 'string' },
+          confidence: { type: 'number', minimum: 0, maximum: 100 },
+        },
+      },
+    },
+  },
+};
+
+type AssistantVisionRow = {
+  sourceRank: number | null;
+  governorNameRaw: string;
+  metricValue: string;
+  confidence: number;
+};
+
+type AssistantVisionExtraction = {
+  screenArchetype: 'governor_profile' | 'ranking_board' | 'unknown';
+  confidence: number;
+  governorId: string;
+  governorName: string;
+  alliance: string | null;
+  power: string;
+  killPoints: string;
+  t4Kills: string;
+  t5Kills: string;
+  deads: string;
+  rankingType: string;
+  metricKey: string;
+  rows: AssistantVisionRow[];
+};
+
+function normalizeVisionExtraction(value: unknown): AssistantVisionExtraction {
+  const row = asJsonObject(value);
+  const rowsRaw = Array.isArray(row.rows)
+    ? row.rows.filter((entry) => entry && typeof entry === 'object')
+    : [];
+  return {
+    screenArchetype:
+      row.screenArchetype === 'governor_profile' || row.screenArchetype === 'ranking_board'
+        ? row.screenArchetype
+        : 'unknown',
+    confidence: Math.max(0, Math.min(100, Number(row.confidence || 0))),
+    governorId: normalizeDigits(row.governorId, 24),
+    governorName: normalizeGovernorName(row.governorName),
+    alliance: sanitizePrintable(row.alliance, 80) || null,
+    power: normalizeDigits(row.power, 24),
+    killPoints: normalizeDigits(row.killPoints, 24),
+    t4Kills: normalizeDigits(row.t4Kills, 24),
+    t5Kills: normalizeDigits(row.t5Kills, 24),
+    deads: normalizeDigits(row.deads, 24),
+    rankingType: sanitizePrintable(row.rankingType, 60) || 'unknown',
+    metricKey: sanitizePrintable(row.metricKey, 60) || 'metric',
+    rows: rowsRaw.slice(0, 40).map((entry) => {
+      const item = asJsonObject(entry);
+      return {
+        sourceRank:
+          Number.isFinite(Number(item.sourceRank)) && Number(item.sourceRank) > 0
+            ? Number(item.sourceRank)
+            : null,
+        governorNameRaw: normalizeGovernorName(item.governorNameRaw),
+        metricValue: normalizeDigits(item.metricValue, 24),
+        confidence: Math.max(0, Math.min(100, Number(item.confidence || 0))),
+      };
+    }),
+  };
+}
 
 function summarizeExtractionForPrompt(
   fileName: string,
@@ -2685,9 +3269,89 @@ function summarizeExtractionForPrompt(
   };
 }
 
+function summarizeVisionExtractionForPrompt(
+  fileName: string,
+  extraction: AssistantVisionExtraction
+): AttachmentEvidence {
+  if (extraction.screenArchetype === 'governor_profile') {
+    return {
+      fileName,
+      markdown: [
+        `Image (${fileName}) vision-extracted as governor profile.`,
+        `governorId: ${extraction.governorId || '(unknown)'}`,
+        `governorName: ${extraction.governorName || '(unknown)'}`,
+        `power: ${extraction.power || '(unknown)'}`,
+        `killPoints: ${extraction.killPoints || '(unknown)'}`,
+        `t4Kills: ${extraction.t4Kills || '(unknown)'}`,
+        `t5Kills: ${extraction.t5Kills || '(unknown)'}`,
+        `deads: ${extraction.deads || '(unknown)'}`,
+        `alliance: ${extraction.alliance || '(unknown)'}`,
+      ].join('\n'),
+      metadata: {
+        ingestionDomain: 'PROFILE_SNAPSHOT',
+        screenArchetype: 'governor_profile',
+        extraction: {
+          normalized: {
+            governorId: extraction.governorId,
+            governorName: extraction.governorName,
+            power: extraction.power,
+            killPoints: extraction.killPoints,
+            t4Kills: extraction.t4Kills,
+            t5Kills: extraction.t5Kills,
+            deads: extraction.deads,
+            alliance: extraction.alliance || '',
+          },
+          confidence: extraction.confidence,
+        },
+      },
+    };
+  }
+
+  const rows = extraction.rows.slice(0, 20);
+  return {
+    fileName,
+    markdown: [
+      `Image (${fileName}) vision-extracted as ranking board.`,
+      `rankingType: ${extraction.rankingType || 'unknown'}`,
+      `metricKey: ${extraction.metricKey || 'metric'}`,
+      'Rows:',
+      ...rows.map((row, index) => {
+        return `${index + 1}. rank=${row.sourceRank ?? '-'} | name=${row.governorNameRaw} | metric=${row.metricValue}`;
+      }),
+    ].join('\n'),
+    metadata: {
+      ingestionDomain: 'RANKING_CAPTURE',
+      screenArchetype: 'ranking_board',
+      extraction: {
+        rankingType: extraction.rankingType,
+        metricKey: extraction.metricKey,
+        rows: rows.length,
+        confidence: extraction.confidence,
+      },
+    },
+  };
+}
+
+function shouldRunVisionFallbackForHybrid(args: {
+  evidence: AttachmentEvidence | null;
+  diagnostics: Record<string, unknown> | null;
+}): boolean {
+  if (!args.evidence) return true;
+  const strategy = String(args.diagnostics?.strategy || '').trim();
+  if (strategy === 'failed') return true;
+  const confidence = Number(args.diagnostics?.confidence || args.diagnostics?.classificationConfidence || 0);
+  if (Number.isFinite(confidence) && confidence > 0 && confidence < HYBRID_FALLBACK_CONFIDENCE_PCT) {
+    return true;
+  }
+  const markdown = String(args.evidence.markdown || '');
+  const unknownCount = (markdown.match(/\(unknown\)/g) || []).length;
+  return unknownCount >= 3;
+}
+
 async function extractAttachmentEvidence(args: {
   settings: Awaited<ReturnType<typeof readAssistantSettings>>;
   attachments: AssistantAttachmentInput[];
+  analyzerMode: AssistantAnalyzerMode;
 }): Promise<{
   evidence: AttachmentEvidence[];
   diagnostics: Array<Record<string, unknown>>;
@@ -2704,73 +3368,219 @@ async function extractAttachmentEvidence(args: {
       const attachment = queue[index];
       const startedAt = Date.now();
 
-      try {
-        const extracted = await runMistralIngestionExtraction({
-          image: {
-            base64: attachment.base64,
-            mimeType: attachment.mimeType,
-          },
-          ocrModel: args.settings.ocrModel,
-          extractionModel: args.settings.assistantModel,
-        });
-
-        const row = summarizeExtractionForPrompt(attachment.fileName, extracted);
-        evidence.push(row);
-        diagnostics.push({
-          fileName: attachment.fileName,
-          strategy: 'mistral_ingestion_extraction',
-          durationMs: Date.now() - startedAt,
-          ...row.metadata,
-        });
-      } catch (primaryError) {
+      const runOcrPipeline = async (): Promise<{
+        evidence: AttachmentEvidence | null;
+        diagnostic: Record<string, unknown>;
+      }> => {
         try {
-          const ocr = await runMistralOcr({
+          const extracted = await runMistralIngestionExtraction({
             image: {
               base64: attachment.base64,
               mimeType: attachment.mimeType,
             },
-            model: args.settings.ocrModel,
-            includeImageBase64: false,
+            ocrModel: args.settings.ocrModel,
+            extractionModel: args.settings.assistantModel,
           });
 
-          const markdown = (ocr.pages || [])
-            .slice(0, 4)
-            .map((page) => String(page.markdown || '').trim())
-            .filter(Boolean)
-            .join('\n\n');
-
-          evidence.push({
-            fileName: attachment.fileName,
-            markdown,
-            metadata: {
-              strategy: 'mistral_ocr_fallback',
+          const row = summarizeExtractionForPrompt(attachment.fileName, extracted);
+          const confidence =
+            Number(
+              asJsonObject(asJsonObject(row.metadata).extraction).confidence ||
+                asJsonObject(extracted.metadata).classificationConfidence ||
+                0
+            ) || 0;
+          return {
+            evidence: row,
+            diagnostic: {
+              fileName: attachment.fileName,
+              strategy: 'mistral_ingestion_extraction',
+              durationMs: Date.now() - startedAt,
+              confidence,
+              ...row.metadata,
             },
-          });
-          diagnostics.push({
-            fileName: attachment.fileName,
-            strategy: 'mistral_ocr_fallback',
-            durationMs: Date.now() - startedAt,
-            ocrModel: ocr.model,
-            primaryError: sanitizePrintable(
-              primaryError instanceof Error ? primaryError.message : 'primary extraction failed',
-              240
-            ),
-          });
-        } catch (fallbackError) {
-          diagnostics.push({
-            fileName: attachment.fileName,
-            strategy: 'failed',
-            durationMs: Date.now() - startedAt,
-            primaryError: sanitizePrintable(
-              primaryError instanceof Error ? primaryError.message : 'primary extraction failed',
-              240
-            ),
-            fallbackError: sanitizePrintable(
-              fallbackError instanceof Error ? fallbackError.message : 'fallback OCR failed',
-              240
-            ),
-          });
+          };
+        } catch (primaryError) {
+          try {
+            const ocr = await runMistralOcr({
+              image: {
+                base64: attachment.base64,
+                mimeType: attachment.mimeType,
+              },
+              model: args.settings.ocrModel,
+              includeImageBase64: false,
+              documentAnnotationFormat: {
+                type: 'json_schema',
+                json_schema: {
+                  name: 'assistant_ocr_extraction',
+                  strict: true,
+                  schema: assistantVisionExtractionJsonSchema,
+                },
+              } as MistralJsonResponseFormat,
+              documentAnnotationPrompt:
+                'Return strict JSON extraction for this game screenshot using the provided schema.',
+            });
+
+            const annotationRaw = String(ocr.document_annotation || '').trim();
+            if (annotationRaw) {
+              try {
+                const parsed = normalizeVisionExtraction(JSON.parse(annotationRaw));
+                const row = summarizeVisionExtractionForPrompt(attachment.fileName, parsed);
+                return {
+                  evidence: row,
+                  diagnostic: {
+                    fileName: attachment.fileName,
+                    strategy: 'mistral_ocr_annotation',
+                    durationMs: Date.now() - startedAt,
+                    confidence: parsed.confidence,
+                    ocrModel: ocr.model,
+                  },
+                };
+              } catch {
+                // fallback to markdown
+              }
+            }
+
+            const markdown = (ocr.pages || [])
+              .slice(0, 4)
+              .map((page) => String(page.markdown || '').trim())
+              .filter(Boolean)
+              .join('\n\n');
+
+            return {
+              evidence: {
+                fileName: attachment.fileName,
+                markdown,
+                metadata: {
+                  strategy: 'mistral_ocr_fallback',
+                },
+              },
+              diagnostic: {
+                fileName: attachment.fileName,
+                strategy: 'mistral_ocr_fallback',
+                durationMs: Date.now() - startedAt,
+                ocrModel: ocr.model,
+                primaryError: sanitizePrintable(
+                  primaryError instanceof Error ? primaryError.message : 'primary extraction failed',
+                  240
+                ),
+              },
+            };
+          } catch (fallbackError) {
+            return {
+              evidence: null,
+              diagnostic: {
+                fileName: attachment.fileName,
+                strategy: 'failed',
+                durationMs: Date.now() - startedAt,
+                primaryError: sanitizePrintable(
+                  primaryError instanceof Error ? primaryError.message : 'primary extraction failed',
+                  240
+                ),
+                fallbackError: sanitizePrintable(
+                  fallbackError instanceof Error ? fallbackError.message : 'fallback OCR failed',
+                  240
+                ),
+              },
+            };
+          }
         }
+      };
+
+      const runVisionPipeline = async (): Promise<{
+        evidence: AttachmentEvidence | null;
+        diagnostic: Record<string, unknown>;
+      }> => {
+        try {
+          const structured = await runMistralVisionStructuredExtraction<AssistantVisionExtraction>({
+            image: {
+              base64: attachment.base64,
+              mimeType: attachment.mimeType,
+            },
+            model: args.settings.assistantConfig.visionModel || args.settings.assistantModel,
+            instructions:
+              'Extract structured data from Rise of Kingdoms screenshots. Prefer exact numeric strings and avoid guessing.',
+            schemaName: 'assistant_vision_extraction',
+            schema: assistantVisionExtractionJsonSchema,
+            prompt: 'Extract profile or leaderboard metrics for assistant planning.',
+            store: false,
+          });
+          const parsed = normalizeVisionExtraction(structured.parsed);
+          const row = summarizeVisionExtractionForPrompt(attachment.fileName, parsed);
+          return {
+            evidence: row,
+            diagnostic: {
+              fileName: attachment.fileName,
+              strategy: 'mistral_vision_structured',
+              durationMs: Date.now() - startedAt,
+              confidence: parsed.confidence,
+              model: args.settings.assistantConfig.visionModel || args.settings.assistantModel,
+            },
+          };
+        } catch (error) {
+          return {
+            evidence: null,
+            diagnostic: {
+              fileName: attachment.fileName,
+              strategy: 'vision_failed',
+              durationMs: Date.now() - startedAt,
+              error: sanitizePrintable(error instanceof Error ? error.message : 'vision extraction failed', 240),
+            },
+          };
+        }
+      };
+
+      if (args.analyzerMode === 'ocr_pipeline') {
+        const ocrResult = await runOcrPipeline();
+        if (ocrResult.evidence) evidence.push(ocrResult.evidence);
+        diagnostics.push(ocrResult.diagnostic);
+        continue;
+      }
+
+      if (args.analyzerMode === 'vision_model') {
+        const visionResult = await runVisionPipeline();
+        if (visionResult.evidence) evidence.push(visionResult.evidence);
+        diagnostics.push(visionResult.diagnostic);
+        continue;
+      }
+
+      const ocrResult = await runOcrPipeline();
+      diagnostics.push(ocrResult.diagnostic);
+      let finalEvidence = ocrResult.evidence;
+
+      const shouldFallback = shouldRunVisionFallbackForHybrid({
+        evidence: ocrResult.evidence,
+        diagnostics: ocrResult.diagnostic,
+      });
+      if (shouldFallback) {
+        const visionResult = await runVisionPipeline();
+        diagnostics.push({
+          ...visionResult.diagnostic,
+          strategy: `${visionResult.diagnostic.strategy}_hybrid`,
+        });
+        if (visionResult.evidence) {
+          if (!ocrResult.evidence) {
+            finalEvidence = visionResult.evidence;
+          } else {
+            const mergedMarkdown = [
+              ocrResult.evidence.markdown,
+              '',
+              'Vision cross-check:',
+              visionResult.evidence.markdown,
+            ].join('\n');
+            finalEvidence = {
+              fileName: ocrResult.evidence.fileName,
+              markdown: mergedMarkdown,
+              metadata: {
+                ...ocrResult.evidence.metadata,
+                hybridVision: visionResult.evidence.metadata,
+              },
+            };
+          }
+        }
+      }
+
+      if (finalEvidence) {
+        evidence.push(finalEvidence);
       }
     }
   };
@@ -3222,7 +4032,7 @@ export async function listAssistantConversationMessages(args: {
   conversationId: string;
   accessLink: AccessLink;
 }) {
-  await assertConversationAccess({
+  const conversation = await assertConversationAccess({
     workspaceId: args.workspaceId,
     conversationId: args.conversationId,
     accessLink: args.accessLink,
@@ -3258,6 +4068,16 @@ export async function listAssistantConversationMessages(args: {
   ]);
 
   return {
+    conversation: {
+      id: conversation.id,
+      workspaceId: conversation.workspaceId,
+      title: conversation.title,
+      status: conversation.status,
+      model: conversation.model,
+      threadConfig: parseThreadConfigFromConversationMetadata(conversation.metadata),
+      createdAt: conversation.createdAt.toISOString(),
+      updatedAt: conversation.updatedAt.toISOString(),
+    },
     messages: messages.map((msg) => ({
       id: msg.id,
       role: msg.role,
@@ -3318,6 +4138,12 @@ export async function postAssistantMessage(args: {
   accessLink: AccessLink;
   text: string;
   attachments: AssistantAttachmentInput[];
+  analyzerMode?: AssistantAnalyzerMode | null;
+  prefetchedEvidence?: Array<{
+    fileName: string;
+    markdown: string;
+    metadata?: Record<string, unknown>;
+  }>;
 }) {
   if (!sanitizePrintable(args.text, 8000) && args.attachments.length === 0) {
     throw new ApiHttpError('VALIDATION_ERROR', 'Message text or at least one image is required.', 400);
@@ -3329,13 +4155,47 @@ export async function postAssistantMessage(args: {
     accessLink: args.accessLink,
   });
   const settings = await readAssistantSettings(args.workspaceId);
+  const threadConfig = parseThreadConfigFromConversationMetadata(conversation.metadata);
+  const parsedOverride = assistantAnalyzerModeSchema.safeParse(args.analyzerMode);
+  const analyzerMode = resolveAssistantAnalyzerMode({
+    workspaceConfig: settings.assistantConfig,
+    threadConfig,
+    messageOverride: parsedOverride.success ? parsedOverride.data : null,
+  });
+  const readRowsLimit = settings.assistantConfig.readLimits.maxRowsPerTool;
+  const readActionsPerTurn = settings.assistantConfig.readLimits.maxToolsPerTurn;
+  const contextPackText = await buildAssistantContextPack({
+    workspaceId: args.workspaceId,
+    contextMode: settings.assistantConfig.contextMode,
+    rowsLimit: readRowsLimit,
+  });
+  const compiledInstructions = buildAssistantInstructionText({
+    baseGuardrails: ASSISTANT_SYSTEM_GUARDRAILS_TEXT,
+    workspaceConfig: settings.assistantConfig,
+    threadConfig,
+  });
 
   const userText = sanitizePrintable(args.text, 8000);
   const stageStartedAt = Date.now();
-  const evidence = await extractAttachmentEvidence({
-    settings,
-    attachments: args.attachments,
-  });
+  const prefetched = Array.isArray(args.prefetchedEvidence) ? args.prefetchedEvidence : [];
+  const evidence =
+    prefetched.length > 0
+      ? {
+          evidence: prefetched.map((row) => ({
+            fileName: sanitizePrintable(row.fileName, 180) || 'attachment',
+            markdown: sanitizePrintable(row.markdown, 12_000),
+            metadata: asJsonObject(row.metadata),
+          })),
+          diagnostics: prefetched.map((row) => ({
+            fileName: sanitizePrintable(row.fileName, 180) || 'attachment',
+            strategy: 'prefetched_batch_evidence',
+          })),
+        }
+      : await extractAttachmentEvidence({
+          settings,
+          attachments: args.attachments,
+          analyzerMode,
+        });
   const ocrMarkdownByImage = evidence.evidence
     .map((row) => ({
       fileName: row.fileName,
@@ -3369,29 +4229,30 @@ export async function postAssistantMessage(args: {
     userText,
     attachments: args.attachments,
     ocrMarkdownByImage,
+    contextText: contextPackText,
   });
 
   let mistralConversationId = conversation.mistralConversationId || null;
   let initialResponse: MistralConversationResponse;
+  const conversationMeta = asJsonObject(conversation.metadata);
+  const currentToolProfile = String(conversationMeta.mistralToolProfile || '').trim();
+  const shouldRestartConversation =
+    !mistralConversationId || currentToolProfile !== 'phase5_action_tools';
 
-  if (mistralConversationId) {
+  if (mistralConversationId && !shouldRestartConversation) {
     initialResponse = await appendMistralConversation({
       conversationId: mistralConversationId,
       inputs: conversationInputs,
+      guardrails: ASSISTANT_MISTRAL_GUARDRAILS,
       store: true,
     });
   } else {
     initialResponse = await startMistralConversation({
       model: settings.assistantModel,
-      instructions: [
-        'You are the assistant for a Rise of Kingdoms workspace.',
-        'Execute read actions immediately when helpful and use the results in your response.',
-        'You can propose typed actions that mutate workspace data.',
-        'Return concise text guidance and function calls for actionable steps.',
-        'Do not execute actions directly; they require explicit plan confirmation.',
-      ].join(' '),
+      instructions: compiledInstructions,
       inputs: conversationInputs,
-      tools: mistralReadTools(),
+      tools: mistralActionTools(),
+      guardrails: ASSISTANT_MISTRAL_GUARDRAILS,
       store: true,
     });
     mistralConversationId = initialResponse.conversation_id;
@@ -3415,6 +4276,8 @@ export async function postAssistantMessage(args: {
       const executed = await executeReadActions({
         workspaceId: args.workspaceId,
         calls: pendingReadCalls,
+        maxActionsPerTurn: readActionsPerTurn,
+        defaultRowsLimit: readRowsLimit,
       });
       readExecutions.push(...executed);
 
@@ -3445,6 +4308,7 @@ export async function postAssistantMessage(args: {
       planningResponse = await appendMistralConversation({
         conversationId: mistralConversationId,
         inputs: functionResults,
+        guardrails: ASSISTANT_MISTRAL_GUARDRAILS,
         store: true,
       });
       functionCallPlan = parseActionsFromFunctionCalls(planningResponse);
@@ -3460,22 +4324,29 @@ export async function postAssistantMessage(args: {
   const readContextText = buildReadResultsPrompt(readExecutions);
 
   if (plannedActions.length === 0) {
-    const workspaceContext = await buildWorkspaceContext(args.workspaceId);
+    const workspaceContext =
+      settings.assistantConfig.contextMode === 'full'
+        ? await buildWorkspaceContext(args.workspaceId)
+        : { governors: [], events: [] };
     const fallbackPrompt = buildFallbackPlanningPrompt({
       userText,
       ocrMarkdownByImage,
       governors: workspaceContext.governors,
       events: workspaceContext.events,
-      readContextText,
+      readContextText: [contextPackText, readContextText].filter(Boolean).join('\n\n'),
     });
 
     const structured = await runMistralStructuredOutput<AssistantPlanOutput>({
-      instructions:
+      instructions: [
+        compiledInstructions,
+        '',
         'Produce assistantResponse, summary, and actions for workspace mutation planning. Output must follow schema exactly.',
+      ].join('\n'),
       input: fallbackPrompt,
       schemaName: 'assistant_action_plan',
       schema: assistantActionOutputJsonSchema,
       model: settings.assistantModel,
+      guardrails: ASSISTANT_MISTRAL_GUARDRAILS,
       store: false,
     });
 
@@ -3515,6 +4386,15 @@ export async function postAssistantMessage(args: {
     ].join('\n\n');
   }
 
+  const suggestions = buildAssistantSuggestions({
+    suggestionMode: settings.assistantConfig.suggestionMode,
+    userText,
+    plannedActions,
+    readExecutions,
+    droppedActions,
+    evidenceDiagnostics: evidence.diagnostics,
+  });
+
   const summary =
     sanitizePrintable(fallbackPlan?.summary || '', 500) ||
     (plannedActions.length > 0
@@ -3535,7 +4415,11 @@ export async function postAssistantMessage(args: {
         status: AssistantConversationStatus.ACTIVE,
         metadata: {
           ...originalConversationMetadata,
+          threadConfig: serializeThreadAssistantConfig(threadConfig),
+          mistralToolProfile: 'phase5_action_tools',
           lastPlanningSource: planningSource,
+          lastAnalyzerMode: analyzerMode,
+          lastContextMode: settings.assistantConfig.contextMode,
           ocrImages: args.attachments.length,
           lastReadActionCount: readExecutions.length,
           lastDroppedActionCount: droppedActions.length,
@@ -3558,6 +4442,9 @@ export async function postAssistantMessage(args: {
           meta: {
             readExecutions,
             droppedActions,
+            suggestions,
+            analyzerMode,
+            contextPack: contextPackText,
             evidenceDiagnostics: evidence.diagnostics,
             totalLatencyMs: Date.now() - stageStartedAt,
             sourceCallCount: functionCallPlan.rawCalls.length,
@@ -3673,6 +4560,8 @@ export async function postAssistantMessage(args: {
         meta: {
           readExecutions,
           droppedActions,
+          suggestions,
+          analyzerMode,
           evidenceDiagnostics: evidence.diagnostics,
         },
       },

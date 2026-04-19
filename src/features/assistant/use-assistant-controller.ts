@@ -7,6 +7,10 @@ export type ConversationRow = {
   id: string;
   title: string | null;
   status: 'ACTIVE' | 'ARCHIVED';
+  threadConfig?: {
+    threadInstructions: string;
+    analyzerOverride: 'inherit' | 'hybrid' | 'ocr_pipeline' | 'vision_model';
+  } | null;
   updatedAt: string;
   counts?: {
     messages: number;
@@ -69,6 +73,19 @@ export type PendingIdentityRow = {
 };
 
 export type ConversationHistory = {
+  conversation?: {
+    id: string;
+    workspaceId: string;
+    title: string | null;
+    status: 'ACTIVE' | 'ARCHIVED';
+    model: string | null;
+    threadConfig?: {
+      threadInstructions: string;
+      analyzerOverride: 'inherit' | 'hybrid' | 'ocr_pipeline' | 'vision_model';
+    } | null;
+    createdAt: string;
+    updatedAt: string;
+  } | null;
   messages: MessageRow[];
   plans: PlanRow[];
   pendingIdentities: PendingIdentityRow[];
@@ -101,6 +118,9 @@ export type AssistantBatchRow = {
   conversationId: string;
   scanJobId: string;
   status: 'RUNNING' | 'COMPLETED';
+  extractionMode?: 'sequential' | 'mistral_batch';
+  batchThreshold?: number;
+  lastBatchError?: string | null;
   totalArtifacts: number;
   processedCount: number;
   remainingCount: number;
@@ -169,6 +189,14 @@ export function useAssistantController(args: {
   const [batchScanJobId, setBatchScanJobId] = useState<string>('');
   const [startingBatch, setStartingBatch] = useState(false);
   const [steppingBatch, setSteppingBatch] = useState(false);
+  const [threadInstructionsDraft, setThreadInstructionsDraft] = useState('');
+  const [threadAnalyzerOverride, setThreadAnalyzerOverride] = useState<
+    'inherit' | 'hybrid' | 'ocr_pipeline' | 'vision_model'
+  >('inherit');
+  const [savingThreadConfig, setSavingThreadConfig] = useState(false);
+  const [composerAnalyzerMode, setComposerAnalyzerMode] = useState<
+    'inherit' | 'hybrid' | 'ocr_pipeline' | 'vision_model'
+  >('inherit');
 
   const authHeaders = useMemo(
     () => ({
@@ -287,6 +315,18 @@ export function useAssistantController(args: {
   }, [args.workspaceReady, selectedConversationId, loadHistory]);
 
   useEffect(() => {
+    const threadConfig = history?.conversation?.threadConfig || null;
+    setThreadInstructionsDraft(String(threadConfig?.threadInstructions || ''));
+    setThreadAnalyzerOverride(
+      threadConfig?.analyzerOverride === 'hybrid' ||
+        threadConfig?.analyzerOverride === 'ocr_pipeline' ||
+        threadConfig?.analyzerOverride === 'vision_model'
+        ? threadConfig.analyzerOverride
+        : 'inherit'
+    );
+  }, [history?.conversation?.id, history?.conversation?.threadConfig]);
+
+  useEffect(() => {
     if (!args.workspaceReady || !args.handoffToken) return;
     const payload = consumeAssistantHandoff(args.handoffToken);
     if (!payload) return;
@@ -366,6 +406,9 @@ export function useAssistantController(args: {
       const formData = new FormData();
       formData.set('workspaceId', args.workspaceId);
       formData.set('text', messageText.trim());
+      if (composerAnalyzerMode !== 'inherit') {
+        formData.set('analyzerMode', composerAnalyzerMode);
+      }
       for (const file of messageFiles) {
         formData.append('file', file);
       }
@@ -385,6 +428,7 @@ export function useAssistantController(args: {
       setMessageFiles([]);
       setArtifactRefs([]);
       setHandoffContext(null);
+      setComposerAnalyzerMode('inherit');
       await loadConversations();
       await loadHistory(conversationId);
       setNotice('Message processed. Review the latest plan below before confirming.');
@@ -399,6 +443,7 @@ export function useAssistantController(args: {
     artifactRefs,
     messageFiles,
     messageText,
+    composerAnalyzerMode,
     selectedConversationId,
     createConversation,
     apiJson,
@@ -497,6 +542,48 @@ export function useAssistantController(args: {
       setBusyPendingId(null);
     }
   }, [apiJson, args.workspaceId, resolveDrafts, selectedConversationId, loadHistory, loadConversations]);
+
+  const saveThreadConfig = useCallback(async () => {
+    if (!args.workspaceId || !selectedConversationId) {
+      setError('Select a conversation first.');
+      return;
+    }
+
+    setSavingThreadConfig(true);
+    setError(null);
+    setNotice(null);
+
+    try {
+      await apiJson<ConversationRow>(`/api/v2/assistant/conversations/${selectedConversationId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          workspaceId: args.workspaceId,
+          threadConfig: {
+            threadInstructions: threadInstructionsDraft,
+            analyzerOverride: threadAnalyzerOverride,
+          },
+        }),
+      });
+      await loadConversations();
+      await loadHistory(selectedConversationId);
+      setNotice('Thread settings saved.');
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Failed to save thread settings.');
+    } finally {
+      setSavingThreadConfig(false);
+    }
+  }, [
+    apiJson,
+    args.workspaceId,
+    selectedConversationId,
+    threadInstructionsDraft,
+    threadAnalyzerOverride,
+    loadConversations,
+    loadHistory,
+  ]);
 
   const startBatchRun = useCallback(
     async (scanJobId?: string) => {
@@ -654,6 +741,14 @@ export function useAssistantController(args: {
     setBatchScanJobId,
     startingBatch,
     steppingBatch,
+    threadInstructionsDraft,
+    setThreadInstructionsDraft,
+    threadAnalyzerOverride,
+    setThreadAnalyzerOverride,
+    savingThreadConfig,
+    saveThreadConfig,
+    composerAnalyzerMode,
+    setComposerAnalyzerMode,
     latestPendingPlan,
     createConversation,
     submitMessage,

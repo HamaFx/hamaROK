@@ -6,7 +6,29 @@ import { useWorkspaceSession } from '@/lib/workspace-session';
 import { InlineError, SessionGate } from '@/components/app/session-gate';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { FilterBar, KpiCard, PageHero, Panel, StatusPill } from '@/components/ui/primitives';
+import { parseAssistantConfigFromJson, serializeAssistantConfig } from '@/lib/assistant/config';
+
+type AssistantAnalyzerMode = 'hybrid' | 'ocr_pipeline' | 'vision_model';
+type AssistantContextMode = 'smart' | 'full' | 'prompt_only';
+type AssistantSuggestionMode = 'signal' | 'always' | 'on_demand';
+
+interface AssistantConfigState {
+  screenshotAnalyzerDefault: AssistantAnalyzerMode;
+  contextMode: AssistantContextMode;
+  suggestionMode: AssistantSuggestionMode;
+  visionModel: string;
+  batchEnabled: boolean;
+  batchThreshold: number;
+  readMaxToolsPerTurn: number;
+  readMaxRowsPerTool: number;
+  instructionGoal: string;
+  instructionStyle: string;
+  instructionDoRules: string;
+  instructionDontRules: string;
+  rawInstruction: string;
+}
 
 interface SettingsConfig {
   t4Weight: number;
@@ -16,6 +38,7 @@ interface SettingsConfig {
   deadPerPowerRatio: number;
   discordWebhook: string;
   weekResetUtcOffset: string;
+  assistantConfig: AssistantConfigState;
 }
 
 type AllianceTag = 'GODt' | 'V57' | 'P57R';
@@ -52,6 +75,21 @@ const DEFAULTS: SettingsConfig = {
   deadPerPowerRatio: 0.02,
   discordWebhook: '',
   weekResetUtcOffset: '+00:00',
+  assistantConfig: {
+    screenshotAnalyzerDefault: 'hybrid',
+    contextMode: 'smart',
+    suggestionMode: 'signal',
+    visionModel: 'mistral-large-latest',
+    batchEnabled: true,
+    batchThreshold: 80,
+    readMaxToolsPerTurn: 12,
+    readMaxRowsPerTool: 60,
+    instructionGoal: '',
+    instructionStyle: '',
+    instructionDoRules: '',
+    instructionDontRules: '',
+    rawInstruction: '',
+  },
 };
 
 function defaultStandards(): ActivityStandardState[] {
@@ -75,6 +113,30 @@ function normalizeIntegerInput(value: string): string {
 function formatInt(value: string): string {
   const n = Number(value);
   return Number.isFinite(n) ? n.toLocaleString() : value;
+}
+
+function toRuleText(value: unknown): string {
+  if (!Array.isArray(value)) return '';
+  return value
+    .map((entry) =>
+      String(entry || '')
+        .replace(/\s+/g, ' ')
+        .trim()
+    )
+    .filter(Boolean)
+    .join('\n');
+}
+
+function parseRuleText(value: string): string[] {
+  return String(value || '')
+    .split('\n')
+    .map((entry) =>
+      entry
+        .replace(/\s+/g, ' ')
+        .trim()
+    )
+    .filter(Boolean)
+    .slice(0, 20);
 }
 
 export default function SettingsPage() {
@@ -121,7 +183,10 @@ export default function SettingsPage() {
           throw new Error(settingsPayload?.error?.message || 'Failed to load settings from API.');
         }
 
-        const settingsData = settingsPayload.data as Partial<SettingsConfig>;
+        const settingsData = settingsPayload.data as Partial<SettingsConfig> & {
+          assistantConfig?: unknown;
+        };
+        const assistantConfig = parseAssistantConfigFromJson(settingsData.assistantConfig);
         setConfig({
           t4Weight: settingsData.t4Weight ?? DEFAULTS.t4Weight,
           t5Weight: settingsData.t5Weight ?? DEFAULTS.t5Weight,
@@ -133,6 +198,21 @@ export default function SettingsPage() {
             typeof settingsData.weekResetUtcOffset === 'string'
               ? settingsData.weekResetUtcOffset
               : DEFAULTS.weekResetUtcOffset,
+          assistantConfig: {
+            screenshotAnalyzerDefault: assistantConfig.screenshotAnalyzerDefault,
+            contextMode: assistantConfig.contextMode,
+            suggestionMode: assistantConfig.suggestionMode,
+            visionModel: assistantConfig.visionModel,
+            batchEnabled: assistantConfig.batch.enabled,
+            batchThreshold: assistantConfig.batch.threshold,
+            readMaxToolsPerTurn: assistantConfig.readLimits.maxToolsPerTurn,
+            readMaxRowsPerTool: assistantConfig.readLimits.maxRowsPerTool,
+            instructionGoal: assistantConfig.instructionProfile.goal,
+            instructionStyle: assistantConfig.instructionProfile.style,
+            instructionDoRules: toRuleText(assistantConfig.instructionProfile.doRules),
+            instructionDontRules: toRuleText(assistantConfig.instructionProfile.dontRules),
+            rawInstruction: assistantConfig.rawInstruction,
+          },
         });
 
         if (standardsRes.ok) {
@@ -219,6 +299,33 @@ export default function SettingsPage() {
         },
       ]);
 
+      const assistantConfigPayload = serializeAssistantConfig({
+        screenshotAnalyzerDefault: config.assistantConfig.screenshotAnalyzerDefault,
+        contextMode: config.assistantConfig.contextMode,
+        suggestionMode: config.assistantConfig.suggestionMode,
+        visionModel: config.assistantConfig.visionModel,
+        batch: {
+          enabled: config.assistantConfig.batchEnabled,
+          threshold: Number(config.assistantConfig.batchThreshold) || 80,
+        },
+        readLimits: {
+          maxToolsPerTurn: Number(config.assistantConfig.readMaxToolsPerTurn) || 12,
+          maxRowsPerTool: Number(config.assistantConfig.readMaxRowsPerTool) || 60,
+        },
+        instructionProfile: {
+          goal: config.assistantConfig.instructionGoal,
+          style: config.assistantConfig.instructionStyle,
+          doRules: parseRuleText(config.assistantConfig.instructionDoRules),
+          dontRules: parseRuleText(config.assistantConfig.instructionDontRules),
+        },
+        rawInstruction: config.assistantConfig.rawInstruction,
+      });
+
+      const settingsBody = {
+        ...config,
+        assistantConfig: assistantConfigPayload,
+      };
+
       const [settingsRes, standardsRes] = await Promise.all([
         fetch(`/api/v2/workspaces/${workspaceId}/settings`, {
           method: 'POST',
@@ -226,7 +333,7 @@ export default function SettingsPage() {
             'Content-Type': 'application/json',
             'x-access-token': accessToken,
           },
-          body: JSON.stringify(config),
+          body: JSON.stringify(settingsBody),
         }),
         fetch('/api/v2/activity/standards', {
           method: 'PATCH',
@@ -271,6 +378,19 @@ export default function SettingsPage() {
         name === 'discordWebhook' || name === 'weekResetUtcOffset'
           ? value
           : Number(value),
+    }));
+  };
+
+  const handleAssistantConfigChange = <K extends keyof AssistantConfigState>(
+    key: K,
+    value: AssistantConfigState[K]
+  ) => {
+    setConfig((prev) => ({
+      ...prev,
+      assistantConfig: {
+        ...prev.assistantConfig,
+        [key]: value,
+      },
     }));
   };
 
@@ -328,6 +448,28 @@ export default function SettingsPage() {
     };
   }, [standards]);
 
+  const assistantInstructionPreview = useMemo(() => {
+    const lines: string[] = [];
+    if (config.assistantConfig.instructionGoal.trim()) {
+      lines.push(`Goal: ${config.assistantConfig.instructionGoal.trim()}`);
+    }
+    if (config.assistantConfig.instructionStyle.trim()) {
+      lines.push(`Style: ${config.assistantConfig.instructionStyle.trim()}`);
+    }
+    const doRules = parseRuleText(config.assistantConfig.instructionDoRules);
+    if (doRules.length > 0) {
+      lines.push(`Do:\n${doRules.map((entry, index) => `${index + 1}. ${entry}`).join('\n')}`);
+    }
+    const dontRules = parseRuleText(config.assistantConfig.instructionDontRules);
+    if (dontRules.length > 0) {
+      lines.push(`Do-not:\n${dontRules.map((entry, index) => `${index + 1}. ${entry}`).join('\n')}`);
+    }
+    if (config.assistantConfig.rawInstruction.trim()) {
+      lines.push(`Raw instruction:\n${config.assistantConfig.rawInstruction.trim()}`);
+    }
+    return lines.join('\n\n');
+  }, [config.assistantConfig]);
+
   return (
     <div className="space-y-4 sm:space-y-5 lg:space-y-6">
       <PageHero
@@ -363,7 +505,16 @@ export default function SettingsPage() {
               <Button
                 variant="outline"
                 className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1"
-                onClick={() => setConfig(DEFAULTS)}
+                onClick={() =>
+                  setConfig((prev) => ({
+                    ...prev,
+                    t4Weight: DEFAULTS.t4Weight,
+                    t5Weight: DEFAULTS.t5Weight,
+                    deadWeight: DEFAULTS.deadWeight,
+                    kpPerPowerRatio: DEFAULTS.kpPerPowerRatio,
+                    deadPerPowerRatio: DEFAULTS.deadPerPowerRatio,
+                  }))
+                }
               >
                 Reset Formula
               </Button>
@@ -613,6 +764,200 @@ export default function SettingsPage() {
           <FilterBar className="mt-4">
             <Webhook className="size-4" />
             <span className="text-sm text-tier-2">Used by Discord publish endpoints and delivery retries.</span>
+          </FilterBar>
+        </Panel>
+
+        <Panel
+          title="AI Assistant"
+          subtitle="Tune analyzer strategy, context behavior, and custom instructions."
+        >
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <label className="text-xs text-tier-3">Screenshot Analyzer Default</label>
+              <select
+                className="h-11 w-full rounded-2xl border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] px-3 text-sm text-tier-1"
+                value={config.assistantConfig.screenshotAnalyzerDefault}
+                onChange={(event) =>
+                  handleAssistantConfigChange(
+                    'screenshotAnalyzerDefault',
+                    event.target.value as AssistantAnalyzerMode
+                  )
+                }
+              >
+                <option value="hybrid">Hybrid (OCR + Vision fallback)</option>
+                <option value="ocr_pipeline">OCR Pipeline</option>
+                <option value="vision_model">Vision Model</option>
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs text-tier-3">Context Mode</label>
+              <select
+                className="h-11 w-full rounded-2xl border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] px-3 text-sm text-tier-1"
+                value={config.assistantConfig.contextMode}
+                onChange={(event) =>
+                  handleAssistantConfigChange('contextMode', event.target.value as AssistantContextMode)
+                }
+              >
+                <option value="smart">Smart Context Pack</option>
+                <option value="full">Full Context</option>
+                <option value="prompt_only">Prompt Only</option>
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs text-tier-3">Suggestion Mode</label>
+              <select
+                className="h-11 w-full rounded-2xl border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] px-3 text-sm text-tier-1"
+                value={config.assistantConfig.suggestionMode}
+                onChange={(event) =>
+                  handleAssistantConfigChange(
+                    'suggestionMode',
+                    event.target.value as AssistantSuggestionMode
+                  )
+                }
+              >
+                <option value="signal">Signal-Based</option>
+                <option value="always">Always</option>
+                <option value="on_demand">On Demand</option>
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs text-tier-3">Vision Model</label>
+              <Input
+                value={config.assistantConfig.visionModel}
+                onChange={(event) => handleAssistantConfigChange('visionModel', event.target.value)}
+                placeholder="mistral-large-latest"
+                className="rounded-2xl border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1"
+              />
+            </div>
+          </div>
+
+          <div className="mt-5 grid gap-4 md:grid-cols-3">
+            <div className="space-y-2">
+              <label className="text-xs text-tier-3">Batch Extraction Enabled</label>
+              <select
+                className="h-11 w-full rounded-2xl border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] px-3 text-sm text-tier-1"
+                value={config.assistantConfig.batchEnabled ? 'enabled' : 'disabled'}
+                onChange={(event) =>
+                  handleAssistantConfigChange('batchEnabled', event.target.value === 'enabled')
+                }
+              >
+                <option value="enabled">Enabled</option>
+                <option value="disabled">Disabled</option>
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs text-tier-3">Batch Threshold</label>
+              <Input
+                type="number"
+                min={20}
+                max={5000}
+                value={config.assistantConfig.batchThreshold}
+                onChange={(event) =>
+                  handleAssistantConfigChange(
+                    'batchThreshold',
+                    Math.max(20, Math.min(5000, Number(event.target.value || 80)))
+                  )
+                }
+                className="rounded-2xl border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs text-tier-3">Max Read Tools / Turn</label>
+              <Input
+                type="number"
+                min={1}
+                max={30}
+                value={config.assistantConfig.readMaxToolsPerTurn}
+                onChange={(event) =>
+                  handleAssistantConfigChange(
+                    'readMaxToolsPerTurn',
+                    Math.max(1, Math.min(30, Number(event.target.value || 12)))
+                  )
+                }
+                className="rounded-2xl border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1"
+              />
+            </div>
+          </div>
+
+          <div className="mt-4 space-y-2">
+            <label className="text-xs text-tier-3">Max Rows / Read Tool</label>
+            <Input
+              type="number"
+              min={1}
+              max={200}
+              value={config.assistantConfig.readMaxRowsPerTool}
+              onChange={(event) =>
+                handleAssistantConfigChange(
+                  'readMaxRowsPerTool',
+                  Math.max(1, Math.min(200, Number(event.target.value || 60)))
+                )
+              }
+              className="rounded-2xl border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1"
+            />
+          </div>
+
+          <div className="mt-5 grid gap-4">
+            <div className="space-y-2">
+              <label className="text-xs text-tier-3">Instruction Goal</label>
+              <Input
+                value={config.assistantConfig.instructionGoal}
+                onChange={(event) => handleAssistantConfigChange('instructionGoal', event.target.value)}
+                placeholder="e.g. Maintain clean player identity linking and conservative writes."
+                className="rounded-2xl border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs text-tier-3">Instruction Style</label>
+              <Input
+                value={config.assistantConfig.instructionStyle}
+                onChange={(event) => handleAssistantConfigChange('instructionStyle', event.target.value)}
+                placeholder="e.g. concise, evidence-first, explicit assumptions."
+                className="rounded-2xl border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs text-tier-3">Do Rules (one per line)</label>
+              <Textarea
+                rows={4}
+                value={config.assistantConfig.instructionDoRules}
+                onChange={(event) => handleAssistantConfigChange('instructionDoRules', event.target.value)}
+                className="rounded-2xl border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs text-tier-3">Do-not Rules (one per line)</label>
+              <Textarea
+                rows={4}
+                value={config.assistantConfig.instructionDontRules}
+                onChange={(event) => handleAssistantConfigChange('instructionDontRules', event.target.value)}
+                className="rounded-2xl border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs text-tier-3">Raw Instruction</label>
+              <Textarea
+                rows={5}
+                value={config.assistantConfig.rawInstruction}
+                onChange={(event) => handleAssistantConfigChange('rawInstruction', event.target.value)}
+                className="rounded-2xl border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1"
+              />
+            </div>
+          </div>
+
+          <FilterBar className="mt-4">
+            <StatusPill label="Preview" tone="info" />
+            <span className="text-sm text-tier-2 whitespace-pre-wrap">
+              {assistantInstructionPreview || 'No custom instruction configured.'}
+            </span>
           </FilterBar>
         </Panel>
 

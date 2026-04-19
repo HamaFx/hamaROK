@@ -1,4 +1,4 @@
-import { WorkspaceRole } from '@prisma/client';
+import { Prisma, WorkspaceRole } from '@prisma/client';
 import { z } from 'zod';
 import { fail, handleApiError, ok, readJson } from '@/lib/api-response';
 import { prisma } from '@/lib/prisma';
@@ -6,6 +6,7 @@ import { createOpaqueToken, hashAccessToken } from '@/lib/security';
 import { getDefaultFallbackOcrModel } from '@/lib/ocr/fallback-config';
 import { PRIMARY_KINGDOM_NUMBER } from '@/lib/alliances';
 import { DEFAULT_WEEK_RESET_UTC_OFFSET } from '@/lib/weekly-events';
+import { parseAssistantConfigFromJson, serializeAssistantConfig } from '@/lib/assistant/config';
 
 const bootstrapSchema = z.object({
   name: z.string().min(2).max(80).optional(),
@@ -71,6 +72,9 @@ export async function POST(request: Request) {
             fallbackOcrMonthlyBudgetUsd: 5,
             fallbackOcrProvider: 'google_vision',
             fallbackOcrModel: getDefaultFallbackOcrModel('google_vision'),
+            assistantConfig: serializeAssistantConfig(
+              parseAssistantConfigFromJson(null)
+            ) as Prisma.InputJsonValue,
             weekResetUtcOffset: DEFAULT_WEEK_RESET_UTC_OFFSET,
           },
         });

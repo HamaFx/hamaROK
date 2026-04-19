@@ -194,6 +194,7 @@ model WorkspaceSettings {
   ocrModel                    String    @default("mistral-ocr-latest")
   assistantEnabled            Boolean   @default(true)
   assistantModel              String    @default("mistral-large-latest")
+  assistantConfig             Json?
   assistantLogRetentionDays   Int       @default(180)
   featureAdbCaptureRnd        Boolean   @default(false)
   weekResetUtcOffset          String    @default("+00:00")

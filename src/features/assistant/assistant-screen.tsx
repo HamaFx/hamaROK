@@ -48,7 +48,7 @@ const NAV_LINKS = [
   { label: 'Settings', href: '/settings', icon: Settings },
 ];
 
-type ContextTab = 'plans' | 'pending' | 'logs';
+type ContextTab = 'plans' | 'pending' | 'logs' | 'thread';
 
 type ExecutionLogTone = 'info' | 'warn' | 'bad';
 
@@ -125,10 +125,24 @@ function getReadExecutions(meta: MessageRow['meta']): Array<Record<string, unkno
   return reads.filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === 'object');
 }
 
+function getSuggestions(meta: MessageRow['meta']): Array<Record<string, unknown>> {
+  if (!meta || typeof meta !== 'object') return [];
+  const rows = (meta as Record<string, unknown>).suggestions;
+  if (!Array.isArray(rows)) return [];
+  return rows.filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === 'object');
+}
+
+function getAnalyzerMode(meta: MessageRow['meta']): string {
+  if (!meta || typeof meta !== 'object') return '';
+  return String((meta as Record<string, unknown>).analyzerMode || '').trim();
+}
+
 function MessageBubble({ message }: { message: MessageRow }) {
   const isUser = message.role === 'USER';
   const isAssistant = message.role === 'ASSISTANT';
   const readExecutions = getReadExecutions(message.meta);
+  const suggestions = getSuggestions(message.meta);
+  const analyzerMode = getAnalyzerMode(message.meta);
 
   return (
     <article className={cn("group relative flex flex-col gap-2 w-full", isUser ? "items-end" : "items-start")}>
@@ -217,8 +231,28 @@ function MessageBubble({ message }: { message: MessageRow }) {
                   <div className="space-y-3">
                     {readExecutions.map((entry, index) => (
                       <div key={`${message.id}-read-${index}`} className="flex flex-col gap-1 border-l-2 border-primary/20 pl-2">
-                        <span className="font-bold text-foreground uppercase tracking-tighter text-[10px] font-mono opacity-80">{String(entry.actionType || 'read_action')}</span>
+                        <span className="font-bold text-foreground uppercase tracking-tighter text-xs font-mono opacity-80">{String(entry.actionType || 'read_action')}</span>
                         <span className="text-muted-foreground leading-relaxed">{shorten(String(entry.summary || 'Completed.'), 220)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              {suggestions.length > 0 ? (
+                <div className="mt-2 rounded-lg border bg-muted/20 p-3 text-xs shadow-inner border-white/5">
+                  <div className="mb-2 text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                    Suggestions
+                  </div>
+                  <div className="space-y-2">
+                    {suggestions.map((entry, index) => (
+                      <div key={`${message.id}-suggestion-${index}`} className="rounded-lg border border-white/10 bg-black/20 p-2">
+                        <p className="text-[11px] font-semibold text-foreground">
+                          {String(entry.title || 'Suggestion')}
+                        </p>
+                        <p className="text-[11px] text-muted-foreground">
+                          {shorten(String(entry.detail || ''), 220)}
+                        </p>
                       </div>
                     ))}
                   </div>
@@ -226,8 +260,9 @@ function MessageBubble({ message }: { message: MessageRow }) {
               ) : null}
             </div>
             
-            <div className={cn("text-[10px] text-muted-foreground/60 flex items-center gap-2 font-mono uppercase tracking-widest", isUser ? "flex-row-reverse" : "flex-row")}>
+            <div className={cn("text-xs text-muted-foreground/60 flex items-center gap-2 font-mono uppercase tracking-widest", isUser ? "flex-row-reverse" : "flex-row")}>
               {message.model ? <span>{message.model}</span> : null}
+              {analyzerMode ? <span>{analyzerMode}</span> : null}
               <span>{new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
             </div>
           </div>
@@ -256,9 +291,9 @@ function PlanCard({
         <div className="flex flex-wrap items-center gap-1.5">
           <StatusPill label={plan.status} tone={planTone(plan.status)} />
           {destructive > 0 ? <StatusPill label="Destructive" tone="bad" /> : null}
-          <span className="text-[10px] uppercase font-bold text-muted-foreground bg-white/5 px-2 py-0.5 rounded-md border border-white/5">{plan.actions.length} actions</span>
+          <span className="text-xs uppercase font-bold text-muted-foreground bg-white/5 px-2 py-0.5 rounded-md border border-white/5">{plan.actions.length} actions</span>
         </div>
-        <span className="text-[10px] text-muted-foreground font-mono uppercase tracking-tighter">{new Date(plan.createdAt).toLocaleTimeString()}</span>
+        <span className="text-xs text-muted-foreground font-mono uppercase tracking-tighter">{new Date(plan.createdAt).toLocaleTimeString()}</span>
       </div>
 
       <p className="text-sm font-bold text-foreground leading-relaxed">{plan.summary}</p>
@@ -342,7 +377,7 @@ function PendingIdentityCard({
       </div>
 
       <div className="mb-4 space-y-1.5">
-        <p className="text-[10px] uppercase tracking-widest text-amber-600 dark:text-amber-400 font-bold opacity-80">Unmapped Identity</p>
+        <p className="text-xs uppercase tracking-widest text-amber-600 dark:text-amber-400 font-bold opacity-80">Unmapped Identity</p>
         <div className="flex flex-col gap-1 rounded-xl bg-black/40 p-3 border border-white/5 shadow-inner">
           <p className="text-lg font-bold text-foreground drop-shadow-sm">{row.governorNameRaw || '(unknown)'}</p>
           {row.governorIdRaw ? <p className="text-xs font-mono text-muted-foreground/80 tracking-widest">ID: {row.governorIdRaw}</p> : null}
@@ -357,7 +392,7 @@ function PendingIdentityCard({
 
       {candidates.length > 0 ? (
         <div className="mb-4">
-           <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold mb-2 opacity-60">Candidate Matches</p>
+           <p className="text-xs uppercase tracking-widest text-muted-foreground font-bold mb-2 opacity-60">Candidate Matches</p>
            <div className="flex flex-col gap-1.5">
              {candidates.map((candidate) => (
                <button
@@ -373,7 +408,7 @@ function PendingIdentityCard({
                >
                  <div>
                    <p className="font-semibold">{candidate.governorName}</p>
-                   <p className="text-[10px] font-mono opacity-60 tracking-widest">Game ID: {candidate.governorGameId}</p>
+                   <p className="text-xs font-mono opacity-60 tracking-widest">Game ID: {candidate.governorGameId}</p>
                  </div>
                  {draft.governorDbId === candidate.governorDbId && <Check className="size-4 text-emerald-500" />}
                </button>
@@ -384,7 +419,7 @@ function PendingIdentityCard({
 
       {row.status === 'PENDING' ? (
         <div className="space-y-3 border-t border-white/5 pt-4">
-           <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold opacity-60">Resolution</p>
+           <p className="text-xs uppercase tracking-widest text-muted-foreground font-bold opacity-60">Resolution</p>
           <Input
             placeholder="Manual Governor DB ID"
             value={draft.governorDbId}
@@ -433,7 +468,7 @@ function ExecutionLogList({ rows }: { rows: ExecutionLogRow[] }) {
         <div key={row.id} className="rounded-xl border border-white/5 bg-white/5 px-3 py-2 text-xs shadow-sm hover:shadow-md transition-shadow">
           <div className="mb-1 flex items-center justify-between gap-2">
             <StatusPill label={row.tone === 'bad' ? 'Error' : row.tone === 'warn' ? 'Dropped' : 'Read'} tone={row.tone} />
-            <span className="text-[10px] text-muted-foreground font-mono uppercase tracking-tighter opacity-60">{new Date(row.createdAt).toLocaleTimeString()}</span>
+            <span className="text-xs text-muted-foreground font-mono uppercase tracking-tighter opacity-60">{new Date(row.createdAt).toLocaleTimeString()}</span>
           </div>
           <p className="text-foreground/90 leading-relaxed font-mono text-[11px] opacity-80">{row.text}</p>
         </div>
@@ -536,6 +571,9 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
         <TabsTrigger value="logs" className="flex-1 rounded-lg data-[state=active]:bg-white/10 data-[state=active]:text-foreground data-[state=active]:shadow-sm font-bold uppercase tracking-widest text-[9px]">
           Logs
         </TabsTrigger>
+        <TabsTrigger value="thread" className="flex-1 rounded-lg data-[state=active]:bg-white/10 data-[state=active]:text-foreground data-[state=active]:shadow-sm font-bold uppercase tracking-widest text-[9px]">
+          Thread
+        </TabsTrigger>
       </TabsList>
 
       <div className="flex-1 overflow-y-auto pr-1">
@@ -591,6 +629,49 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
         <TabsContent value="logs" className="mt-0 animate-in fade-in duration-300">
           <ExecutionLogList rows={executionLogs} />
         </TabsContent>
+
+        <TabsContent value="thread" className="mt-0 animate-in fade-in duration-300 space-y-3">
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+            <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-2">
+              Thread Instructions
+            </p>
+            <Textarea
+              rows={5}
+              value={controller.threadInstructionsDraft}
+              onChange={(event) => controller.setThreadInstructionsDraft(event.target.value)}
+              placeholder="Optional per-thread instruction for this conversation."
+              className="bg-black/40 border-white/10 text-sm"
+            />
+          </div>
+
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-3 space-y-2">
+            <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+              Analyzer Override
+            </p>
+            <select
+              className="h-10 w-full rounded-xl border border-white/10 bg-black/40 px-3 text-sm"
+              value={controller.threadAnalyzerOverride}
+              onChange={(event) =>
+                controller.setThreadAnalyzerOverride(
+                  event.target.value as 'inherit' | 'hybrid' | 'ocr_pipeline' | 'vision_model'
+                )
+              }
+            >
+              <option value="inherit">Inherit Workspace Default</option>
+              <option value="hybrid">Hybrid</option>
+              <option value="ocr_pipeline">OCR Pipeline</option>
+              <option value="vision_model">Vision Model</option>
+            </select>
+          </div>
+
+          <Button
+            className="w-full rounded-xl"
+            onClick={() => void controller.saveThreadConfig()}
+            disabled={controller.savingThreadConfig}
+          >
+            {controller.savingThreadConfig ? 'Saving...' : 'Save Thread Settings'}
+          </Button>
+        </TabsContent>
       </div>
     </Tabs>
   );
@@ -621,7 +702,7 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
                 </div>
                 <div className="flex flex-col">
                   <span className="text-[11px] font-bold tracking-tight uppercase opacity-90 leading-none mb-0.5">HamaROK Cockpit</span>
-                  <span className="text-[10px] text-muted-foreground font-mono leading-none tracking-tighter uppercase opacity-50 truncate max-w-[120px] sm:max-w-none">
+                  <span className="text-xs text-muted-foreground font-mono leading-none tracking-tighter uppercase opacity-50 truncate max-w-[120px] sm:max-w-none">
                     {controller.conversations.find((row) => row.id === controller.selectedConversationId)?.title || 'Untitled Thread'}
                   </span>
                 </div>
@@ -648,7 +729,7 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
           {/* Conversation History Sidebar (Desktop) */}
           <aside className="hidden lg:flex w-[280px] flex-col border-r border-white/10 bg-white/[0.02]">
              <div className="p-3 space-y-1 border-b border-white/10 bg-white/[0.01]">
-                <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-muted-foreground/40 px-2 mb-2">Navigation</p>
+                <p className="text-[9px] font-bold uppercase tracking-[0.06em] text-muted-foreground/40 px-2 mb-2">Navigation</p>
                 {NAV_LINKS.map(link => {
                    const Icon = link.icon;
                    return (
@@ -663,7 +744,7 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
              </div>
              <div className="p-4 border-b border-white/10 bg-white/[0.02] shadow-inner">
                 <Button 
-                   className="w-full justify-start gap-2 shadow-xl font-bold uppercase tracking-wider text-[10px] py-4 rounded-xl" 
+                   className="w-full justify-start gap-2 shadow-xl font-bold uppercase tracking-wider text-xs py-4 rounded-xl" 
                    size="sm"
                    onClick={async () => {
                       const id = await controller.createConversation();
@@ -675,7 +756,7 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
                 </Button>
              </div>
              <div className="flex-1 overflow-y-auto p-3 space-y-1 pr-1 custom-scrollbar">
-                <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-muted-foreground/40 px-2 mb-2">History</p>
+                <p className="text-[9px] font-bold uppercase tracking-[0.06em] text-muted-foreground/40 px-2 mb-2">History</p>
                 {controller.conversations.map(row => (
                    <button
                       key={row.id}
@@ -719,7 +800,7 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
                             <div className="rounded-2xl border border-amber-500/30 bg-white/5 backdrop-blur-md p-5 shadow-[0_8px_32px_rgba(245,158,11,0.15)] ring-1 ring-amber-500/10">
                                <div className="flex items-center gap-2 mb-3">
                                   <div className="size-2.5 rounded-full bg-amber-500 animate-pulse shadow-[0_0_8px_rgba(245,158,11,0.6)]" />
-                                  <span className="text-[10px] font-bold uppercase text-amber-600 dark:text-amber-400 tracking-[0.15em]">Action Required</span>
+                                  <span className="text-xs font-bold uppercase text-amber-600 dark:text-amber-400 tracking-[0.06em]">Action Required</span>
                                </div>
                                <p className="text-sm font-bold text-foreground mb-5 leading-relaxed">{pendingPlan.summary}</p>
                                <div className="flex gap-3">
@@ -737,14 +818,20 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
                             <div className="rounded-2xl border border-white/10 bg-white/5 p-5 shadow-sm overflow-hidden relative group transition-all hover:shadow-md backdrop-blur-sm">
                                <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
                                <div className="flex items-center justify-between mb-4">
-                                  <h4 className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground/80">Batch Processing</h4>
-                                  <span className="text-[10px] font-mono text-muted-foreground bg-white/5 px-2 py-0.5 rounded-md border border-white/5">{controller.batchRun.processedCount}/{controller.batchRun.totalArtifacts}</span>
+                                  <h4 className="text-xs font-bold uppercase tracking-[0.06em] text-muted-foreground/80">Batch Processing</h4>
+                                  <span className="text-xs font-mono text-muted-foreground bg-white/5 px-2 py-0.5 rounded-md border border-white/5">{controller.batchRun.processedCount}/{controller.batchRun.totalArtifacts}</span>
                                </div>
+                               <p className="mb-3 text-xs uppercase tracking-wider text-muted-foreground">
+                                 Extraction: {controller.batchRun.extractionMode || 'sequential'}
+                               </p>
                                <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden border border-white/10">
                                   <div className="h-full bg-primary transition-all duration-700 ease-out shadow-[0_0_10px_rgba(0,163,255,0.4)]" style={{ width: `${(controller.batchRun.processedCount / controller.batchRun.totalArtifacts) * 100}%` }} />
                                </div>
+                               {controller.batchRun.lastBatchError ? (
+                                 <p className="mt-2 text-xs text-amber-400">{controller.batchRun.lastBatchError}</p>
+                               ) : null}
                                <div className="mt-4 flex gap-2">
-                                  <Button size="sm" variant="outline" className="h-8 text-[10px] font-bold uppercase tracking-wider rounded-lg px-4 border-white/10 hover:bg-white/5" onClick={() => void controller.runBatchStep()} disabled={controller.steppingBatch}>
+                                  <Button size="sm" variant="outline" className="h-8 text-xs font-bold uppercase tracking-wider rounded-lg px-4 border-white/10 hover:bg-white/5" onClick={() => void controller.runBatchStep()} disabled={controller.steppingBatch}>
                                      {controller.steppingBatch ? 'Processing...' : 'Run Next Step'}
                                   </Button>
                                </div>
@@ -757,7 +844,7 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
                    {controller.loadingHistory ? (
                       <div className="flex flex-col items-center justify-center py-20 gap-3">
                          <RefreshCcw className="size-6 animate-spin text-primary/40" />
-                         <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground/60">Restoring thread</p>
+                         <p className="text-xs font-bold uppercase tracking-[0.06em] text-muted-foreground/60">Restoring thread</p>
                       </div>
                    ) : !controller.history?.messages?.length ? (
                       <div className="flex flex-col items-center justify-center py-24 text-center animate-in fade-in zoom-in duration-700">
@@ -800,7 +887,7 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
                       {(controller.messageFiles.length > 0 || controller.artifactRefs.length > 0) && (
                          <div className="flex flex-wrap gap-2 p-4 bg-white/5 border-b border-white/10">
                             {controller.messageFiles.map((f, i) => (
-                               <div key={i} className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/40 px-3 py-1.5 text-[10px] font-bold text-muted-foreground shadow-inner group">
+                               <div key={i} className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/40 px-3 py-1.5 text-xs font-bold text-muted-foreground shadow-inner group">
                                   <FileImage className="size-3.5" />
                                   <span className="truncate max-w-[120px] font-mono tracking-tighter opacity-80">{f.name}</span>
                                   <button onClick={() => controller.setMessageFiles(prev => prev.filter((_, idx) => idx !== i))} className="ml-1 hover:text-rose-500 transition-colors">
@@ -809,7 +896,7 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
                                </div>
                             ))}
                             {controller.artifactRefs.map((f, i) => (
-                               <div key={i} className="flex items-center gap-2 rounded-xl border border-sky-500/20 bg-sky-500/20 px-3 py-1.5 text-[10px] font-bold text-sky-400 shadow-inner">
+                               <div key={i} className="flex items-center gap-2 rounded-xl border border-sky-500/20 bg-sky-500/20 px-3 py-1.5 text-xs font-bold text-sky-400 shadow-inner">
                                   <FileImage className="size-3.5" />
                                   <span className="truncate max-w-[120px] font-mono tracking-tighter">Artifact: {(f.fileName || f.artifactId).slice(0,12)}...</span>
                                </div>
@@ -852,6 +939,20 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
                         </div>
 
                         <div className="flex items-center gap-3">
+                           <select
+                              className="hidden md:block h-8 rounded-lg border border-white/10 bg-black/40 px-2 text-xs font-bold uppercase tracking-wider text-muted-foreground"
+                              value={controller.composerAnalyzerMode}
+                              onChange={(event) =>
+                                controller.setComposerAnalyzerMode(
+                                  event.target.value as 'inherit' | 'hybrid' | 'ocr_pipeline' | 'vision_model'
+                                )
+                              }
+                           >
+                              <option value="inherit">Analyzer: Inherit</option>
+                              <option value="hybrid">Analyzer: Hybrid</option>
+                              <option value="ocr_pipeline">Analyzer: OCR</option>
+                              <option value="vision_model">Analyzer: Vision</option>
+                           </select>
                            <span className="text-[9px] font-bold font-mono text-muted-foreground/30 hidden sm:inline-block pr-1 uppercase tracking-widest">Cmd+Enter</span>
                            <Button
                               size="icon"
@@ -864,7 +965,7 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
                         </div>
                       </div>
                    </div>
-                   <p className="mt-3 text-center text-[9px] font-bold uppercase tracking-[0.2em] text-muted-foreground/20">HamaROK Intelligence • Mistral Large • v2.6</p>
+                   <p className="mt-3 text-center text-[9px] font-bold uppercase tracking-[0.06em] text-muted-foreground/20">HamaROK Intelligence • Mistral Large • v2.6</p>
                 </div>
              </footer>
           </main>
@@ -873,7 +974,7 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
           <aside className="hidden xl:flex w-[360px] flex-col border-l border-white/10 bg-white/[0.02]">
              <div className="p-4 border-b border-white/10 bg-white/[0.02] shadow-inner flex items-center gap-2">
                 <Workflow className="size-4 text-primary opacity-70" />
-                <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Execution Context</h3>
+                <h3 className="text-xs font-bold uppercase tracking-[0.06em] text-muted-foreground">Execution Context</h3>
              </div>
              <div className="p-4 flex-1 overflow-y-auto custom-scrollbar pr-1">
                 {contextTabs}
@@ -907,7 +1008,7 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
                  </div>
                  <div className="flex-1 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
                     <div className="space-y-1 mb-8">
-                      <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-muted-foreground/40 px-2 mb-3">Navigation</p>
+                      <p className="text-[9px] font-bold uppercase tracking-[0.06em] text-muted-foreground/40 px-2 mb-3">Navigation</p>
                       {NAV_LINKS.map(link => {
                         const Icon = link.icon;
                         return (
@@ -922,7 +1023,7 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
                     </div>
 
                     <Button 
-                       className="w-full justify-start gap-2 mb-6 font-bold uppercase tracking-widest text-[10px] rounded-xl h-12 shadow-lg" 
+                       className="w-full justify-start gap-2 mb-6 font-bold uppercase tracking-widest text-xs rounded-xl h-12 shadow-lg" 
                        onClick={async () => {
                           const id = await controller.createConversation();
                           await controller.refreshConversation();
@@ -933,7 +1034,7 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
                        <Plus className="size-4" /> New Chat
                     </Button>
                     <div className="space-y-1">
-                      <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-muted-foreground/40 px-2 mb-4">Past 30 Days</p>
+                      <p className="text-[9px] font-bold uppercase tracking-[0.06em] text-muted-foreground/40 px-2 mb-4">Past 30 Days</p>
                       {controller.conversations.map(row => (
                         <button
                             key={row.id}
