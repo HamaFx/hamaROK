@@ -247,5 +247,15 @@ export function withApiTiming<T>(label: string, fn: () => Promise<T>): Promise<T
 }
 
 export async function readJson<T>(request: Request): Promise<T> {
-  return (await request.json()) as T;
+  try {
+    return (await request.json()) as T;
+  } catch (error) {
+    if (
+      error instanceof SyntaxError ||
+      (error instanceof Error && /json|unexpected end of input/i.test(error.message))
+    ) {
+      throw new ApiHttpError('VALIDATION_ERROR', 'Invalid JSON payload.', 400);
+    }
+    throw error;
+  }
 }
