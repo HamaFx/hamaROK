@@ -23,7 +23,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
-import { PageHero, Panel, StatusPill } from '@/components/ui/primitives';
+import { Panel, StatusPill } from '@/components/ui/primitives';
 import {
   type PendingResolutionDraft,
   type PlanActionRow,
@@ -596,7 +596,7 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
   );
 
   return (
-    <div className="flex flex-col w-full h-[calc(100dvh-120px)] lg:h-[calc(100dvh-130px)] mt-[-10px] relative">
+    <div className="flex flex-col w-full h-[calc(100dvh-120px)] lg:h-[calc(100dvh-130px)] mt-[-10px] relative overflow-hidden">
       <SessionGate ready={workspaceReady} loading={sessionLoading} error={sessionError}>
         {/* Mobile Header */}
         <div className="flex lg:hidden items-center justify-between bg-[color:var(--surface-3)] border border-[color:var(--stroke-soft)] rounded-2xl p-3 mb-2 shrink-0">
@@ -613,6 +613,99 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
             </Button>
           </div>
         </div>
+
+        <div className="flex flex-1 min-h-0 gap-4 relative overflow-hidden">
+          <div className={cn(
+            "absolute inset-y-0 left-0 z-40 w-full sm:w-[320px] lg:static lg:w-[300px] lg:flex lg:translate-x-0 transition-transform bg-[color:var(--surface-1)]",
+            showMobileConversations ? "translate-x-0" : "-translate-x-full"
+          )}>
+          <Panel
+            title="Conversations"
+            subtitle="Workspace threads"
+            className="w-full h-full border-none shadow-none flex flex-col p-4 bg-transparent overflow-y-auto"
+            actions={
+              <Button
+                variant="outline"
+                className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)]"
+                onClick={async () => {
+                  try {
+                    controller.setError(null);
+                    const id = await controller.createConversation();
+                    await controller.refreshConversation();
+                    await controller.reloadHistory(id);
+                  } catch (cause) {
+                    controller.setError(cause instanceof Error ? cause.message : 'Failed to create conversation.');
+                  }
+                }}
+                disabled={controller.loadingConversations}
+              >
+                <Plus data-icon="inline-start" />
+                New
+              </Button>
+            }
+          >
+            <div className="space-y-3">
+              <div className="grid gap-2 sm:grid-cols-3 xl:grid-cols-1 2xl:grid-cols-3">
+                <StatusChip label="Threads" value={controller.conversations.length} />
+                <StatusChip label="Pending Plans" value={sortedPlans.filter((plan) => plan.status === 'PENDING').length} />
+                <StatusChip label="Unresolved IDs" value={pendingIdentityCount} />
+              </div>
+
+              <div className="space-y-2">
+                {controller.loadingConversations ? (
+                  <p className="text-sm text-tier-3">Loading conversations...</p>
+                ) : controller.conversations.length === 0 ? (
+                  <p className="text-sm text-tier-3">No conversations yet.</p>
+                ) : (
+                  controller.conversations.map((row) => (
+                    <button
+                      key={row.id}
+                      type="button"
+                      onClick={() => controller.setSelectedConversationId(row.id)}
+                      className={cn(
+                        'w-full rounded-2xl border px-3 py-2.5 text-left transition-all duration-200',
+                        row.id === controller.selectedConversationId
+                          ? 'border-[color:var(--primary)] bg-[color:color-mix(in_oklab,var(--primary)_16%,transparent)] text-tier-1 shadow-[0_0_0_1px_color-mix(in_oklab,var(--primary)_26%,transparent)]'
+                          : 'border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-2 hover:bg-[color:var(--surface-4)]'
+                      )}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-sm font-medium">{shorten(row.title || 'Untitled Conversation', 48)}</p>
+                        {typeof row.counts?.pendingIdentities === 'number' && row.counts.pendingIdentities > 0 ? (
+                          <StatusPill label={`${row.counts.pendingIdentities}`} tone="warn" className="px-2 py-0.5 text-xs" />
+                        ) : null}
+                      </div>
+                      <p className="mt-1 text-xs text-tier-3">{shorten(row.lastMessage?.content || 'No messages yet', 68)}</p>
+                      <div className="mt-2 flex items-center gap-2 text-[11px] text-tier-3">
+                        <Clock3 className="size-3" />
+                        <span>{new Date(row.updatedAt).toLocaleString()}</span>
+                      </div>
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+          </Panel>
+          </div>
+
+          <div className="flex-1 flex flex-col min-w-0 bg-[color:var(--surface-2)] border border-[color:var(--stroke-soft)] rounded-2xl shadow-xl overflow-hidden relative">
+            <div className="flex items-center justify-between p-4 border-b border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] shrink-0">
+              <div className="flex items-center gap-2">
+                <MessageSquare className="size-5 text-sky-400" />
+                <span className="font-heading text-base font-bold text-tier-1">
+                  {shorten(
+                    controller.conversations.find((row) => row.id === controller.selectedConversationId)?.title || 'Untitled Conversation',
+                    52
+                  )}
+                </span>
+              </div>
+              <span className="text-xs font-medium text-tier-3 bg-[color:var(--surface-4)] px-2.5 py-1 rounded-full">{controller.history?.messages?.length || 0} messages</span>
+            </div>
+
+            <div
+              ref={timelineRef}
+              className="flex-1 overflow-y-auto p-4 space-y-4 relative scroll-smooth"
+            >
         {controller.error ? <InlineError message={controller.error} /> : null}
 
         {controller.handoffContext ? (
@@ -735,10 +828,10 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
         ) : null}
 
         {pendingPlan ? (
-          <div className="sticky top-4 z-40 mx-auto max-w-4xl rounded-2xl border border-amber-500/30 bg-black/80 backdrop-blur-xl px-5 py-4 shadow-[0_12px_40px_rgba(245,158,11,0.15)] ring-1 ring-amber-400/20">
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-              <div className="space-y-1 text-center sm:text-left">
-                <div className="flex items-center justify-center sm:justify-start gap-2">
+          <div className="sticky top-0 z-40 mx-auto w-full rounded-2xl border border-amber-500/30 bg-black/80 backdrop-blur-xl px-5 py-4 shadow-[0_12px_40px_rgba(245,158,11,0.15)] ring-1 ring-amber-400/20">
+            <div className="flex flex-col xl:flex-row items-center justify-between gap-4">
+              <div className="space-y-1 text-center xl:text-left">
+                <div className="flex items-center justify-center xl:justify-start gap-2">
                   <div className="size-2 rounded-full bg-amber-400 animate-pulse shadow-[0_0_8px_rgba(251,191,36,0.8)]" />
                   <p className="text-sm font-bold text-amber-200 uppercase tracking-widest">Action Required</p>
                 </div>
@@ -774,99 +867,6 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
             </div>
           </div>
         ) : null}
-
-        <div className="flex flex-1 min-h-0 gap-4 relative overflow-hidden">
-          <div className={cn(
-            "absolute inset-y-0 left-0 z-40 w-full sm:w-[320px] lg:static lg:w-[300px] lg:flex lg:translate-x-0 transition-transform bg-[color:var(--surface-1)]",
-            showMobileConversations ? "translate-x-0" : "-translate-x-full"
-          )}>
-          <Panel
-            title="Conversations"
-            subtitle="Workspace threads"
-            className="w-full h-full border-none shadow-none flex flex-col p-4 bg-transparent overflow-y-auto"
-            actions={
-              <Button
-                variant="outline"
-                className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)]"
-                onClick={async () => {
-                  try {
-                    controller.setError(null);
-                    const id = await controller.createConversation();
-                    await controller.refreshConversation();
-                    await controller.reloadHistory(id);
-                  } catch (cause) {
-                    controller.setError(cause instanceof Error ? cause.message : 'Failed to create conversation.');
-                  }
-                }}
-                disabled={controller.loadingConversations}
-              >
-                <Plus data-icon="inline-start" />
-                New
-              </Button>
-            }
-          >
-            <div className="space-y-3">
-              <div className="grid gap-2 sm:grid-cols-3 xl:grid-cols-1 2xl:grid-cols-3">
-                <StatusChip label="Threads" value={controller.conversations.length} />
-                <StatusChip label="Pending Plans" value={sortedPlans.filter((plan) => plan.status === 'PENDING').length} />
-                <StatusChip label="Unresolved IDs" value={pendingIdentityCount} />
-              </div>
-
-              <div className="space-y-2">
-                {controller.loadingConversations ? (
-                  <p className="text-sm text-tier-3">Loading conversations...</p>
-                ) : controller.conversations.length === 0 ? (
-                  <p className="text-sm text-tier-3">No conversations yet.</p>
-                ) : (
-                  controller.conversations.map((row) => (
-                    <button
-                      key={row.id}
-                      type="button"
-                      onClick={() => controller.setSelectedConversationId(row.id)}
-                      className={cn(
-                        'w-full rounded-2xl border px-3 py-2.5 text-left transition-all duration-200',
-                        row.id === controller.selectedConversationId
-                          ? 'border-[color:var(--primary)] bg-[color:color-mix(in_oklab,var(--primary)_16%,transparent)] text-tier-1 shadow-[0_0_0_1px_color-mix(in_oklab,var(--primary)_26%,transparent)]'
-                          : 'border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-2 hover:bg-[color:var(--surface-4)]'
-                      )}
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <p className="text-sm font-medium">{shorten(row.title || 'Untitled Conversation', 48)}</p>
-                        {typeof row.counts?.pendingIdentities === 'number' && row.counts.pendingIdentities > 0 ? (
-                          <StatusPill label={`${row.counts.pendingIdentities}`} tone="warn" className="px-2 py-0.5 text-xs" />
-                        ) : null}
-                      </div>
-                      <p className="mt-1 text-xs text-tier-3">{shorten(row.lastMessage?.content || 'No messages yet', 68)}</p>
-                      <div className="mt-2 flex items-center gap-2 text-[11px] text-tier-3">
-                        <Clock3 className="size-3" />
-                        <span>{new Date(row.updatedAt).toLocaleString()}</span>
-                      </div>
-                    </button>
-                  ))
-                )}
-              </div>
-            </div>
-          </Panel>
-          </div>
-
-          <div className="flex-1 flex flex-col min-w-0 bg-[color:var(--surface-2)] border border-[color:var(--stroke-soft)] rounded-2xl shadow-xl overflow-hidden relative">
-            <div className="flex items-center justify-between p-4 border-b border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] shrink-0">
-              <div className="flex items-center gap-2">
-                <MessageSquare className="size-5 text-sky-400" />
-                <span className="font-heading text-base font-bold text-tier-1">
-                  {shorten(
-                    controller.conversations.find((row) => row.id === controller.selectedConversationId)?.title || 'Untitled Conversation',
-                    52
-                  )}
-                </span>
-              </div>
-              <span className="text-xs font-medium text-tier-3 bg-[color:var(--surface-4)] px-2.5 py-1 rounded-full">{controller.history?.messages?.length || 0} messages</span>
-            </div>
-
-            <div
-              ref={timelineRef}
-              className="flex-1 overflow-y-auto p-4 space-y-4 relative scroll-smooth"
-            >
                 {controller.loadingHistory ? (
                   <p className="text-sm text-tier-3">Loading messages...</p>
                 ) : !controller.history?.messages?.length ? (
