@@ -708,10 +708,22 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
                 </div>
               </div>
           </div>
-          <div className="flex items-center gap-2">
-             <Button
-                variant="ghost"
-                size="icon"
+	          <div className="flex items-center gap-2">
+	             <Button
+	                size="sm"
+	                className="h-9 gap-2 rounded-xl px-3 text-xs font-semibold tracking-wide shadow-lg"
+	                onClick={async () => {
+	                  const id = await controller.createConversation();
+	                  await controller.refreshConversation();
+	                  await controller.reloadHistory(id);
+	                }}
+	             >
+	                <Plus className="size-3.5" />
+	                <span className="hidden min-[390px]:inline">New Chat</span>
+	             </Button>
+	             <Button
+	                variant="ghost"
+	                size="icon"
                 className="xl:hidden size-9 text-muted-foreground hover:bg-white/10"
                 onClick={() => setShowMobileContext(true)}
               >

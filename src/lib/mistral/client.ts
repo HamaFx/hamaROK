@@ -154,6 +154,52 @@ interface RequestOptions {
   maxRetries?: number;
 }
 
+function sanitizeMetadataValue(value: unknown): string | null {
+  if (value == null) return null;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed ? trimmed.slice(0, 4000) : null;
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+  try {
+    const serialized = JSON.stringify(value);
+    if (!serialized) return null;
+    return serialized.slice(0, 4000);
+  } catch {
+    return '[unserializable]';
+  }
+}
+
+function normalizeConversationMetadata(
+  metadata?: Record<string, unknown>
+): Record<string, string> | undefined {
+  if (!metadata || typeof metadata !== 'object') return undefined;
+  const next: Record<string, string> = {};
+  for (const [rawKey, value] of Object.entries(metadata)) {
+    const key = String(rawKey || '').trim();
+    if (!key) continue;
+    const normalized = sanitizeMetadataValue(value);
+    if (!normalized) continue;
+    next[key] = normalized;
+  }
+  return Object.keys(next).length > 0 ? next : undefined;
+}
+
+function normalizeConversationCompletionArgs(
+  completionArgs?: Record<string, unknown>
+): Record<string, unknown> | undefined {
+  if (!completionArgs || typeof completionArgs !== 'object') return undefined;
+  const next: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(completionArgs)) {
+    if (value === undefined) continue;
+    if (key === 'parallel_tool_calls') continue;
+    next[key] = value;
+  }
+  return Object.keys(next).length > 0 ? next : undefined;
+}
+
 function toDataUrl(args: MistralImageInput): string {
   const mimeType = args.mimeType || 'image/png';
   const payload = args.base64.replace(/^data:[^;]+;base64,/, '').replace(/\s+/g, '');
@@ -275,10 +321,25 @@ function extractErrorMessage(payload: unknown, fallback: string): {
   const nested = record.error && typeof record.error === 'object'
     ? (record.error as Record<string, unknown>)
     : null;
+  const detailList = Array.isArray(record.detail) ? record.detail : null;
+  const firstDetail = detailList?.[0];
+  const detailMessage =
+    firstDetail && typeof firstDetail === 'object'
+      ? (() => {
+          const row = firstDetail as Record<string, unknown>;
+          const msg = typeof row.msg === 'string' ? row.msg.trim() : '';
+          if (!msg) return '';
+          const loc = Array.isArray(row.loc) ? row.loc.map((entry) => String(entry || '')).filter(Boolean).join('.') : '';
+          return loc ? `${msg} (${loc})` : msg;
+        })()
+      : typeof firstDetail === 'string'
+        ? firstDetail.trim()
+        : '';
 
   const message =
     (typeof nested?.message === 'string' && nested.message) ||
     (typeof record.message === 'string' && record.message) ||
+    detailMessage ||
     fallback;
 
   const code =
@@ -474,6 +535,8 @@ export async function startMistralConversation(args: {
   store?: boolean;
 }): Promise<MistralConversationResponse> {
   const normalizedInputs = normalizeConversationInputs(args.inputs);
+  const normalizedMetadata = normalizeConversationMetadata(args.metadata);
+  const normalizedCompletionArgs = normalizeConversationCompletionArgs(args.completionArgs);
   const body: Record<string, unknown> = {
     model: args.model || 'mistral-large-latest',
     inputs: normalizedInputs,
@@ -487,14 +550,14 @@ export async function startMistralConversation(args: {
   if (args.tools && args.tools.length > 0) {
     body.tools = args.tools;
   }
-  if (args.metadata && Object.keys(args.metadata).length > 0) {
-    body.metadata = args.metadata;
+  if (normalizedMetadata && Object.keys(normalizedMetadata).length > 0) {
+    body.metadata = normalizedMetadata;
   }
   if (Array.isArray(args.guardrails) && args.guardrails.length > 0) {
     body.guardrails = args.guardrails;
   }
-  if (args.completionArgs) {
-    body.completion_args = args.completionArgs;
+  if (normalizedCompletionArgs) {
+    body.completion_args = normalizedCompletionArgs;
   }
 
   return requestJson<MistralConversationResponse>({
@@ -513,6 +576,7 @@ export async function appendMistralConversation(args: {
   store?: boolean;
 }): Promise<MistralConversationResponse> {
   const normalizedInputs = normalizeConversationInputs(args.inputs);
+  const normalizedCompletionArgs = normalizeConversationCompletionArgs(args.completionArgs);
   return requestJson<MistralConversationResponse>({
     method: 'POST',
     path: `/v1/conversations/${encodeURIComponent(args.conversationId)}`,
@@ -520,7 +584,7 @@ export async function appendMistralConversation(args: {
       inputs: normalizedInputs,
       tool_confirmations: args.toolConfirmations || undefined,
       guardrails: args.guardrails || undefined,
-      completion_args: args.completionArgs || undefined,
+      completion_args: normalizedCompletionArgs,
       store: args.store ?? true,
       stream: false,
     },

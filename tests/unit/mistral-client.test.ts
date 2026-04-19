@@ -260,8 +260,8 @@ describe('mistral client parsers', () => {
     expect(body.metadata).toMatchObject({ callsite: 'test' });
     expect(body.completion_args).toMatchObject({
       tool_choice: 'auto',
-      parallel_tool_calls: false,
     });
+    expect((body.completion_args as Record<string, unknown>).parallel_tool_calls).toBeUndefined();
     expect((body.completion_args as Record<string, unknown>).response_format).toBeTruthy();
   });
 });
