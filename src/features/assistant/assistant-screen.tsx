@@ -7,8 +7,6 @@ import {
   Check,
   Clock3,
   FileImage,
-  MessageSquare,
-  PanelRight,
   Plus,
   Play,
   Send,
@@ -18,7 +16,7 @@ import {
 } from 'lucide-react';
 import { useWorkspaceSession } from '@/lib/workspace-session';
 import { cn } from '@/lib/utils';
-import { InlineError, SessionGate } from '@/components/app/session-gate';
+import { SessionGate } from '@/components/app/session-gate';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -145,88 +143,112 @@ function StatusChip({ label, value }: { label: string; value: string | number })
 function MessageBubble({ message }: { message: MessageRow }) {
   const isUser = message.role === 'USER';
   const isAssistant = message.role === 'ASSISTANT';
-  const readExecutions = getReadExecutions(message.meta);
   const isTool = message.role === 'TOOL';
+  const readExecutions = getReadExecutions(message.meta);
 
   return (
-    <article
-      className={cn(
-        'max-w-[94%] rounded-2xl border px-3 py-2.5 shadow-[0_6px_18px_rgba(0,0,0,0.24)] sm:max-w-[88%]',
-        isUser
-          ? 'ml-auto border-cyan-400/35 bg-cyan-400/10'
-          : isAssistant
-            ? 'mr-auto border-sky-300/25 bg-sky-400/10'
-            : isTool
-              ? 'mr-auto border-amber-300/30 bg-amber-300/10'
-              : 'mr-auto border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)]'
-      )}
-    >
-      <div className="mb-1.5 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5">
-          <span
+    <article className={cn("group relative flex flex-col gap-2 w-full", isUser ? "items-end" : "items-start")}>
+      <div
+        className={cn(
+          'flex w-full max-w-[85%] flex-col gap-2',
+          isUser ? 'items-end' : 'items-start'
+        )}
+      >
+        <div
+          className={cn(
+            'flex items-start gap-3',
+            isUser ? 'flex-row-reverse' : 'flex-row'
+          )}
+        >
+          {/* Avatar */}
+          <div
             className={cn(
-              'inline-flex size-5 items-center justify-center rounded-full border text-xs',
+              'flex size-8 shrink-0 select-none items-center justify-center rounded-md border shadow-sm',
               isUser
-                ? 'border-cyan-300/40 bg-cyan-300/20 text-cyan-100'
+                ? 'bg-background border-border'
                 : isAssistant
-                  ? 'border-sky-300/35 bg-sky-300/20 text-sky-50'
-                  : 'border-[color:var(--stroke-soft)] bg-[color:var(--surface-4)] text-tier-2'
+                ? 'bg-primary text-primary-foreground border-primary'
+                : 'bg-muted border-border text-muted-foreground'
             )}
           >
-            {isUser ? <User className="size-3" /> : isAssistant ? <Bot className="size-3" /> : <Workflow className="size-3" />}
-          </span>
-          <StatusPill label={message.role} tone={roleTone(message.role)} />
-          {message.model ? <span className="text-[11px] text-tier-3">{message.model}</span> : null}
-        </div>
-        <span className="text-[11px] text-tier-3">{new Date(message.createdAt).toLocaleString()}</span>
-      </div>
-
-      <p className="whitespace-pre-wrap text-sm leading-6 text-tier-1">{message.content}</p>
-
-      {message.attachments && message.attachments.length > 0 ? (
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          {message.attachments.map((attachment, index) => {
-            const label = attachment.fileName || `attachment-${index + 1}`;
-            if (!attachment.url) {
-              return (
-                <span
-                  key={`${message.id}-attachment-${index}`}
-                  className="inline-flex items-center gap-1 rounded-lg border border-[color:var(--stroke-soft)] bg-[color:var(--surface-4)] px-2 py-1 text-xs text-tier-2"
-                >
-                  <FileImage className="size-3" />
-                  {label}
-                </span>
-              );
-            }
-            return (
-              <a
-                key={`${message.id}-attachment-${index}`}
-                href={attachment.url}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1 rounded-lg border border-[color:var(--stroke-soft)] bg-[color:var(--surface-4)] px-2 py-1 text-xs text-tier-2 hover:bg-[color:var(--surface-2)]"
-              >
-                <FileImage className="size-3" />
-                {label}
-              </a>
-            );
-          })}
-        </div>
-      ) : null}
-
-      {readExecutions.length > 0 ? (
-        <details className="mt-2 rounded-xl border border-[color:var(--stroke-soft)] bg-[color:var(--surface-4)] p-2 text-xs">
-          <summary className="cursor-pointer font-medium text-tier-1">Read Tool Results ({readExecutions.length})</summary>
-          <div className="mt-2 space-y-1.5 text-tier-2">
-            {readExecutions.map((entry, index) => (
-              <div key={`${message.id}-read-${index}`} className="rounded-md border border-[color:var(--stroke-soft)] bg-black/20 px-2 py-1">
-                <p className="font-medium text-tier-1">{String(entry.actionType || 'read_action')}</p>
-                <p className="text-tier-3">{shorten(String(entry.summary || 'Completed.'), 220)}</p>
-              </div>
-            ))}
+            {isUser ? <User className="size-4" /> : isAssistant ? <Bot className="size-4" /> : <Workflow className="size-4" />}
           </div>
-        </details>
-      ) : null}
+
+          {/* Message Content */}
+          <div
+            className={cn(
+              'flex flex-col gap-2',
+              isUser ? 'items-end' : 'items-start'
+            )}
+          >
+            <div
+              className={cn(
+                'relative flex flex-col gap-2 rounded-xl px-4 py-3 text-sm leading-relaxed',
+                isUser
+                  ? 'bg-muted text-foreground'
+                  : 'bg-transparent px-0 py-1'
+              )}
+            >
+              <div className="prose dark:prose-invert prose-sm max-w-none break-words">
+                {message.content}
+              </div>
+              
+              {message.attachments && message.attachments.length > 0 ? (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {message.attachments.map((attachment, index) => {
+                    const label = attachment.fileName || `attachment-${index + 1}`;
+                    if (!attachment.url) {
+                      return (
+                        <div
+                          key={`${message.id}-attachment-${index}`}
+                          className="flex items-center gap-2 rounded-lg border bg-background px-3 py-2 text-xs font-medium"
+                        >
+                          <FileImage className="size-4 text-muted-foreground" />
+                          <span className="truncate max-w-[150px]">{label}</span>
+                        </div>
+                      );
+                    }
+                    return (
+                      <a
+                        key={`${message.id}-attachment-${index}`}
+                        href={attachment.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center gap-2 rounded-lg border bg-background px-3 py-2 text-xs font-medium hover:bg-muted transition-colors"
+                      >
+                        <FileImage className="size-4 text-muted-foreground" />
+                        <span className="truncate max-w-[150px]">{label}</span>
+                      </a>
+                    );
+                  })}
+                </div>
+              ) : null}
+
+              {readExecutions.length > 0 ? (
+                <div className="mt-3 rounded-lg border bg-muted/50 p-3 text-xs">
+                  <div className="flex items-center gap-2 font-medium mb-2 text-muted-foreground">
+                    <Workflow className="size-3.5" />
+                    <span>Tool Invocations ({readExecutions.length})</span>
+                  </div>
+                  <div className="space-y-2">
+                    {readExecutions.map((entry, index) => (
+                      <div key={`${message.id}-read-${index}`} className="flex flex-col gap-1">
+                        <span className="font-semibold text-foreground">{String(entry.actionType || 'read_action')}</span>
+                        <span className="text-muted-foreground">{shorten(String(entry.summary || 'Completed.'), 220)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+            
+            <div className={cn("text-[10px] text-muted-foreground flex items-center gap-2", isUser ? "flex-row-reverse" : "flex-row")}>
+              {message.model ? <span>{message.model}</span> : null}
+              <span>{new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+            </div>
+          </div>
+        </div>
+      </div>
     </article>
   );
 }
@@ -624,24 +646,35 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
             subtitle="Workspace threads"
             className="w-full h-full border-none shadow-none flex flex-col p-4 bg-transparent overflow-y-auto"
             actions={
-              <Button
-                variant="outline"
-                className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)]"
-                onClick={async () => {
-                  try {
-                    controller.setError(null);
-                    const id = await controller.createConversation();
-                    await controller.refreshConversation();
-                    await controller.reloadHistory(id);
-                  } catch (cause) {
-                    controller.setError(cause instanceof Error ? cause.message : 'Failed to create conversation.');
-                  }
-                }}
-                disabled={controller.loadingConversations}
-              >
-                <Plus data-icon="inline-start" />
-                New
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)]"
+                  onClick={async () => {
+                    try {
+                      controller.setError(null);
+                      const id = await controller.createConversation();
+                      await controller.refreshConversation();
+                      await controller.reloadHistory(id);
+                    } catch (cause) {
+                      controller.setError(cause instanceof Error ? cause.message : 'Failed to create conversation.');
+                    }
+                  }}
+                  disabled={controller.loadingConversations}
+                >
+                  <Plus className="size-4 mr-1.5" />
+                  New
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="lg:hidden size-8 rounded-full text-muted-foreground p-0"
+                  onClick={() => setShowMobileConversations(false)}
+                >
+                  <X className="size-4" />
+                </Button>
+              </div>
             }
           >
             <div className="space-y-3">
@@ -661,7 +694,10 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
                     <button
                       key={row.id}
                       type="button"
-                      onClick={() => controller.setSelectedConversationId(row.id)}
+                      onClick={() => {
+                        controller.setSelectedConversationId(row.id);
+                        setShowMobileConversations(false);
+                      }}
                       className={cn(
                         'w-full rounded-2xl border px-3 py-2.5 text-left transition-all duration-200',
                         row.id === controller.selectedConversationId
@@ -688,208 +724,216 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
           </Panel>
           </div>
 
-          <div className="flex-1 flex flex-col min-w-0 bg-[color:var(--surface-2)] border border-[color:var(--stroke-soft)] rounded-2xl shadow-xl overflow-hidden relative">
-            <div className="flex items-center justify-between p-4 border-b border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] shrink-0">
-              <div className="flex items-center gap-2">
-                <MessageSquare className="size-5 text-sky-400" />
-                <span className="font-heading text-base font-bold text-tier-1">
-                  {shorten(
-                    controller.conversations.find((row) => row.id === controller.selectedConversationId)?.title || 'Untitled Conversation',
-                    52
-                  )}
-                </span>
+          <div className="flex-1 flex flex-col min-w-0 bg-background border-x border-border overflow-hidden relative">
+            <div className="flex items-center justify-between p-4 border-b border-border bg-background/95 backdrop-blur shrink-0 z-10">
+              <div className="flex items-center gap-3">
+                <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary border border-primary/20">
+                  <Bot className="size-4" />
+                </div>
+                <div className="flex flex-col">
+                  <span className="font-heading text-sm font-bold text-foreground">
+                    {shorten(
+                      controller.conversations.find((row) => row.id === controller.selectedConversationId)?.title || 'Untitled Conversation',
+                      52
+                    )}
+                  </span>
+                  <span className="text-[11px] text-muted-foreground font-medium">{controller.history?.messages?.length || 0} messages</span>
+                </div>
               </div>
-              <span className="text-xs font-medium text-tier-3 bg-[color:var(--surface-4)] px-2.5 py-1 rounded-full">{controller.history?.messages?.length || 0} messages</span>
             </div>
 
             <div
               ref={timelineRef}
-              className="flex-1 overflow-y-auto p-4 space-y-4 relative scroll-smooth"
+              className="flex-1 overflow-y-auto px-4 py-6 relative scroll-smooth flex flex-col items-center"
             >
-        {controller.error ? <InlineError message={controller.error} /> : null}
+              <div className="w-full max-w-3xl flex flex-col gap-6">
 
-        {controller.handoffContext ? (
-          <div className="rounded-2xl border border-sky-300/25 bg-sky-400/10 px-4 py-3 text-sm text-sky-100">
-            <p className="font-medium">Source: {controller.handoffContext.title}</p>
-            <p className="mt-1 text-sky-100/80">{controller.handoffContext.summary || 'Context imported from another workflow.'}</p>
-          </div>
-        ) : null}
-
-        {controller.notice ? (
-          <div className="rounded-2xl border border-emerald-300/20 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-100">
-            {controller.notice}
-          </div>
-        ) : null}
-
-        {(controller.batchRun || controller.batchScanJobId || controller.handoffContext) ? (
-          <div className="rounded-2xl border border-sky-500/20 bg-sky-950/20 p-5 shadow-2xl relative overflow-hidden">
-            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-sky-500/0 via-sky-400/50 to-sky-500/0" />
-            <div className="mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div>
-                <h3 className="font-heading text-lg font-bold text-sky-100 flex items-center gap-2">
-                  <Bot className="size-5 text-sky-400" />
-                  AI Batch Runner
-                </h3>
-                <p className="text-sm text-sky-200/70 mt-1">Autonomous sequential OCR extraction and data entry.</p>
-              </div>
-              <div className="flex flex-wrap gap-2 items-center">
-                <Input
-                  value={controller.batchScanJobId}
-                  onChange={(event) => controller.setBatchScanJobId(event.target.value)}
-                  placeholder="Scan Job ID"
-                  className="h-9 w-[180px] bg-black/20 border-sky-500/20 text-sky-100 placeholder:text-sky-100/30"
-                />
-                <Button
-                  size="sm"
-                  className="rounded-xl bg-sky-500 text-sky-950 hover:bg-sky-400 font-bold shadow-[0_0_15px_rgba(14,165,233,0.3)]"
-                  onClick={() => void controller.startBatchRun()}
-                  disabled={controller.startingBatch}
-                >
-                  <Play className="size-3.5 mr-1.5" />
-                  {controller.startingBatch ? 'Starting...' : 'Start'}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="rounded-xl border-sky-400/30 bg-sky-500/10 text-sky-200 hover:bg-sky-500/20 font-bold"
-                  onClick={() => void controller.runBatchStep()}
-                  disabled={controller.steppingBatch || !controller.batchRun}
-                >
-                  <Workflow className="size-3.5 mr-1.5" />
-                  {controller.steppingBatch ? 'Running...' : 'Run Step'}
-                </Button>
-              </div>
-            </div>
-
-            {controller.batchRun ? (
-              <div className="space-y-5">
-                <div className="bg-black/30 rounded-xl p-4 border border-sky-500/10">
-                  <div className="flex justify-between items-end mb-2">
-                    <span className="text-xs uppercase tracking-wider text-sky-300/70 font-semibold">Progress</span>
-                    <span className="text-sm font-mono text-sky-200">{controller.batchRun.processedCount} / {controller.batchRun.totalArtifacts}</span>
+                {/* System & Operational Banners */}
+                {controller.error ? (
+                  <div className="rounded-xl border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm text-destructive-foreground">
+                    {controller.error}
                   </div>
-                  <div className="h-2 w-full bg-black/50 rounded-full overflow-hidden border border-white/5">
-                    <div 
-                      className="h-full bg-sky-400 shadow-[0_0_10px_rgba(56,189,248,0.8)] transition-all duration-500" 
-                      style={{ width: `${controller.batchRun.totalArtifacts > 0 ? (controller.batchRun.processedCount / controller.batchRun.totalArtifacts) * 100 : 0}%` }} 
-                    />
-                  </div>
-                  <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    <div className="bg-[color:var(--surface-3)] rounded-lg p-2.5 border border-white/5 flex flex-col items-center">
-                       <span className="text-[10px] uppercase text-tier-4 mb-1">Status</span>
-                       <StatusPill label={controller.batchRun.status} tone={controller.batchRun.status === 'COMPLETED' ? 'good' : 'info'} />
-                    </div>
-                    <div className="bg-[color:var(--surface-3)] rounded-lg p-2.5 border border-white/5 flex flex-col items-center">
-                       <span className="text-[10px] uppercase text-tier-4 mb-1">Auto Confirmed</span>
-                       <span className="text-sm font-mono text-emerald-400 font-bold">{controller.batchRun.autoConfirmedCount}</span>
-                    </div>
-                    <div className="bg-[color:var(--surface-3)] rounded-lg p-2.5 border border-white/5 flex flex-col items-center">
-                       <span className="text-[10px] uppercase text-tier-4 mb-1">Needs Manual</span>
-                       <span className="text-sm font-mono text-amber-400 font-bold">{controller.batchRun.pendingManualCount}</span>
-                    </div>
-                    <div className="bg-[color:var(--surface-3)] rounded-lg p-2.5 border border-white/5 flex flex-col items-center">
-                       <span className="text-[10px] uppercase text-tier-4 mb-1">Remaining</span>
-                       <span className="text-sm font-mono text-sky-200 font-bold">{controller.batchRun.remainingCount}</span>
-                    </div>
-                  </div>
-                </div>
+                ) : null}
 
-                {controller.batchRun.flagged.length > 0 ? (
-                  <div className="space-y-2 rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
-                    <p className="text-xs uppercase tracking-wider text-amber-400 font-semibold mb-3 flex items-center gap-2">
-                       <AlertTriangle className="size-3.5" /> Action Required Queue
-                    </p>
-                    <div className="grid gap-2">
-                      {controller.batchRun.flagged.slice(-5).reverse().map((row, index) => (
-                        <div
-                          key={`${row.artifactId}-${index}`}
-                          className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-lg border border-amber-500/10 bg-black/40 px-3 py-2 text-xs"
+                {controller.handoffContext ? (
+                  <div className="rounded-xl border border-sky-500/20 bg-sky-500/10 px-4 py-3 text-sm text-sky-600 dark:text-sky-300">
+                    <p className="font-semibold">Source: {controller.handoffContext.title}</p>
+                    <p className="mt-0.5 text-muted-foreground">{controller.handoffContext.summary || 'Context imported from another workflow.'}</p>
+                  </div>
+                ) : null}
+
+                {controller.notice ? (
+                  <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-600 dark:text-emerald-300">
+                    {controller.notice}
+                  </div>
+                ) : null}
+
+                {(controller.batchRun || controller.batchScanJobId || controller.handoffContext) ? (
+                  <div className="rounded-2xl border border-border bg-card p-5 shadow-sm relative overflow-hidden">
+                    <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-sky-500/50 to-transparent" />
+                    <div className="mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      <div>
+                        <h3 className="font-heading text-lg font-bold text-foreground flex items-center gap-2">
+                          <Bot className="size-5 text-sky-500" />
+                          AI Batch Runner
+                        </h3>
+                        <p className="text-sm text-muted-foreground mt-1">Autonomous sequential OCR extraction and data entry.</p>
+                      </div>
+                      <div className="flex flex-wrap gap-2 items-center">
+                        <Input
+                          value={controller.batchScanJobId}
+                          onChange={(event) => controller.setBatchScanJobId(event.target.value)}
+                          placeholder="Scan Job ID"
+                          className="h-9 w-[180px]"
+                        />
+                        <Button
+                          size="sm"
+                          className="bg-sky-500 text-white hover:bg-sky-600 shadow-sm"
+                          onClick={() => void controller.startBatchRun()}
+                          disabled={controller.startingBatch}
                         >
-                          <div className="flex items-center gap-2">
-                             <FileImage className="size-3.5 text-tier-4" />
-                             <span className="font-mono text-tier-2">{row.fileName}</span>
+                          <Play className="size-3.5 mr-1.5" />
+                          {controller.startingBatch ? 'Starting...' : 'Start'}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => void controller.runBatchStep()}
+                          disabled={controller.steppingBatch || !controller.batchRun}
+                        >
+                          <Workflow className="size-3.5 mr-1.5" />
+                          {controller.steppingBatch ? 'Running...' : 'Run Step'}
+                        </Button>
+                      </div>
+                    </div>
+
+                    {controller.batchRun ? (
+                      <div className="space-y-5">
+                        <div className="bg-muted/50 rounded-xl p-4 border border-border">
+                          <div className="flex justify-between items-end mb-2">
+                            <span className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Progress</span>
+                            <span className="text-sm font-mono text-foreground font-medium">{controller.batchRun.processedCount} / {controller.batchRun.totalArtifacts}</span>
                           </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-amber-200/80 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">{batchFlagReasonLabel(row.reason)}</span>
+                          <div className="h-2 w-full bg-muted rounded-full overflow-hidden border border-border/50">
+                            <div 
+                              className="h-full bg-sky-500 transition-all duration-500" 
+                              style={{ width: `${controller.batchRun.totalArtifacts > 0 ? (controller.batchRun.processedCount / controller.batchRun.totalArtifacts) * 100 : 0}%` }} 
+                            />
+                          </div>
+                          <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
+                            <div className="bg-background rounded-lg p-2.5 border border-border flex flex-col items-center">
+                               <span className="text-[10px] uppercase text-muted-foreground mb-1 font-semibold">Status</span>
+                               <span className="text-xs font-semibold text-foreground">{controller.batchRun.status}</span>
+                            </div>
+                            <div className="bg-background rounded-lg p-2.5 border border-border flex flex-col items-center">
+                               <span className="text-[10px] uppercase text-muted-foreground mb-1 font-semibold">Auto Confirmed</span>
+                               <span className="text-sm font-mono text-emerald-500 font-bold">{controller.batchRun.autoConfirmedCount}</span>
+                            </div>
+                            <div className="bg-background rounded-lg p-2.5 border border-border flex flex-col items-center">
+                               <span className="text-[10px] uppercase text-muted-foreground mb-1 font-semibold">Needs Manual</span>
+                               <span className="text-sm font-mono text-amber-500 font-bold">{controller.batchRun.pendingManualCount}</span>
+                            </div>
+                            <div className="bg-background rounded-lg p-2.5 border border-border flex flex-col items-center">
+                               <span className="text-[10px] uppercase text-muted-foreground mb-1 font-semibold">Remaining</span>
+                               <span className="text-sm font-mono text-sky-600 font-bold">{controller.batchRun.remainingCount}</span>
+                            </div>
                           </div>
                         </div>
-                      ))}
+
+                        {controller.batchRun.flagged.length > 0 ? (
+                          <div className="space-y-2 rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
+                            <p className="text-xs uppercase tracking-wider text-amber-600 dark:text-amber-400 font-semibold mb-3 flex items-center gap-2">
+                               <AlertTriangle className="size-3.5" /> Action Required Queue
+                            </p>
+                            <div className="grid gap-2">
+                              {controller.batchRun.flagged.slice(-5).reverse().map((row, index) => (
+                                <div
+                                  key={`${row.artifactId}-${index}`}
+                                  className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-lg border border-amber-500/10 bg-background px-3 py-2 text-xs shadow-sm"
+                                >
+                                  <div className="flex items-center gap-2">
+                                     <FileImage className="size-3.5 text-muted-foreground" />
+                                     <span className="font-mono text-foreground font-medium">{row.fileName}</span>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-amber-700 dark:text-amber-300 font-medium">{row.reason}</span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <div className="bg-muted/30 rounded-xl p-8 border border-border text-center">
+                        <Workflow className="size-8 text-muted-foreground/30 mx-auto mb-3" />
+                        <p className="text-sm text-muted-foreground font-medium">Start a batch with a scan job ID to process artifacts sequentially.</p>
+                      </div>
+                    )}
+                  </div>
+                ) : null}
+
+                {pendingPlan ? (
+                  <div className="mx-auto w-full rounded-2xl border border-amber-500/30 bg-background/95 backdrop-blur px-5 py-4 shadow-[0_12px_40px_rgba(245,158,11,0.08)] ring-1 ring-amber-500/10">
+                    <div className="flex flex-col xl:flex-row items-center justify-between gap-4">
+                      <div className="space-y-1 text-center xl:text-left">
+                        <div className="flex items-center justify-center xl:justify-start gap-2">
+                          <div className="size-2 rounded-full bg-amber-500 animate-pulse shadow-[0_0_8px_rgba(245,158,11,0.5)]" />
+                          <p className="text-sm font-bold text-amber-600 dark:text-amber-400 uppercase tracking-widest">Action Required</p>
+                        </div>
+                        <p className="text-[13px] text-foreground leading-snug max-w-lg font-medium">{shorten(pendingPlan.summary, 120)}</p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 justify-center">
+                        <span className="rounded-md bg-muted px-2 py-0.5 text-xs font-semibold text-muted-foreground border border-border">{pendingPlan.actions.length} actions</span>
+                        {destructiveCount(pendingPlan) > 0 ? (
+                          <span className="rounded-md bg-destructive/10 px-2 py-0.5 text-xs font-bold uppercase tracking-wider text-destructive border border-destructive/20">Destructive</span>
+                        ) : null}
+                        <div className="flex items-center gap-1.5 ml-2">
+                          <Button
+                            size="sm"
+                            className="rounded-xl bg-emerald-500 text-white hover:bg-emerald-600 font-bold shadow-sm"
+                            onClick={() => void controller.confirmPlan(pendingPlan.id)}
+                            disabled={Boolean(controller.busyPlanId)}
+                          >
+                            <Check className="size-4 mr-1" />
+                            Confirm
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="rounded-xl border-rose-500/30 bg-rose-500/10 text-rose-600 dark:text-rose-400 hover:bg-rose-500/20 font-bold"
+                            onClick={() => void controller.denyPlan(pendingPlan.id)}
+                            disabled={Boolean(controller.busyPlanId)}
+                          >
+                            <X className="size-4 mr-1" />
+                            Deny
+                          </Button>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 ) : null}
-              </div>
-            ) : (
-              <div className="bg-black/20 rounded-xl p-8 border border-sky-500/10 text-center">
-                <Workflow className="size-8 text-sky-500/30 mx-auto mb-3" />
-                <p className="text-sm text-sky-200/50 font-medium">Start a batch with a scan job ID to process artifacts sequentially.</p>
-              </div>
-            )}
-          </div>
-        ) : null}
 
-        {pendingPlan ? (
-          <div className="sticky top-0 z-40 mx-auto w-full rounded-2xl border border-amber-500/30 bg-black/80 backdrop-blur-xl px-5 py-4 shadow-[0_12px_40px_rgba(245,158,11,0.15)] ring-1 ring-amber-400/20">
-            <div className="flex flex-col xl:flex-row items-center justify-between gap-4">
-              <div className="space-y-1 text-center xl:text-left">
-                <div className="flex items-center justify-center xl:justify-start gap-2">
-                  <div className="size-2 rounded-full bg-amber-400 animate-pulse shadow-[0_0_8px_rgba(251,191,36,0.8)]" />
-                  <p className="text-sm font-bold text-amber-200 uppercase tracking-widest">Action Required</p>
-                </div>
-                <p className="text-[13px] text-amber-100/90 leading-snug max-w-lg">{shorten(pendingPlan.summary, 120)}</p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2 justify-center">
-                <StatusPill label={`${pendingPlan.actions.length} actions`} tone="warn" />
-                {destructiveCount(pendingPlan) > 0 ? (
-                  <span className="rounded-md bg-rose-500/20 px-2 py-0.5 text-xs font-bold uppercase tracking-wider text-rose-300 border border-rose-500/30">Destructive</span>
-                ) : null}
-                <div className="flex items-center gap-1.5 ml-2">
-                  <Button
-                    size="sm"
-                    className="rounded-xl bg-emerald-500 text-emerald-950 hover:bg-emerald-400 font-bold shadow-[0_0_15px_rgba(16,185,129,0.25)]"
-                    onClick={() => void controller.confirmPlan(pendingPlan.id)}
-                    disabled={Boolean(controller.busyPlanId)}
-                  >
-                    <Check className="size-4 mr-1" />
-                    Confirm
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="rounded-xl border-rose-500/30 bg-rose-500/10 text-rose-200 hover:bg-rose-500/20 font-bold"
-                    onClick={() => void controller.denyPlan(pendingPlan.id)}
-                    disabled={Boolean(controller.busyPlanId)}
-                  >
-                    <X className="size-4 mr-1" />
-                    Deny
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </div>
-        ) : null}
+                {/* Messages Timeline */}
                 {controller.loadingHistory ? (
-                  <p className="text-sm text-tier-3">Loading messages...</p>
+                  <div className="flex justify-center p-8">
+                    <p className="text-sm text-muted-foreground animate-pulse">Loading messages...</p>
+                  </div>
                 ) : !controller.history?.messages?.length ? (
-                  <p className="text-sm text-tier-3">No messages in this conversation yet.</p>
+                  <div className="flex flex-col items-center justify-center py-20 text-center gap-3">
+                     <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary border border-primary/20">
+                        <Bot className="size-6" />
+                     </div>
+                     <p className="text-sm text-muted-foreground max-w-sm mt-2">No messages yet. Send a message or attach a screenshot to begin.</p>
+                  </div>
                 ) : (
                   controller.history.messages.map((msg) => <MessageBubble key={msg.id} message={msg} />)
                 )}
               </div>
+            </div>
 
-              <div className="space-y-2 rounded-2xl border border-[color:var(--stroke-soft)] bg-[color:var(--surface-2)] p-3">
-                <Textarea
-                  placeholder="Ask for reads, register/update players, record stats, or create/delete events..."
-                  value={controller.messageText}
-                  onChange={(event) => controller.setMessageText(event.target.value)}
-                  rows={4}
-                  onKeyDown={(event) => {
-                    if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
-                      event.preventDefault();
-                      void controller.submitMessage();
-                    }
-                  }}
-                />
-
+            <div className="shrink-0 p-4 pt-0 flex justify-center w-full bg-[color:var(--surface-2)]">
+              <div className="w-full max-w-3xl relative">
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -902,56 +946,82 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
                   }}
                 />
 
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button
-                    variant="outline"
-                    className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)]"
-                    onClick={() => fileInputRef.current?.click()}
-                  >
-                    <FileImage data-icon="inline-start" />
-                    Add Screenshots
-                  </Button>
+                <div className="relative flex w-full flex-col overflow-hidden rounded-2xl border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] focus-within:border-sky-500/50 focus-within:ring-1 focus-within:ring-sky-500/50 shadow-sm transition-all duration-200">
+                  <Textarea
+                    placeholder="Ask for reads, register/update players, record stats..."
+                    value={controller.messageText}
+                    onChange={(event) => controller.setMessageText(event.target.value)}
+                    rows={1}
+                    className="min-h-[52px] w-full resize-none border-0 bg-transparent p-4 pb-2 text-sm focus-visible:ring-0 shadow-none text-tier-1 placeholder:text-tier-4"
+                    onKeyDown={(event) => {
+                      if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+                        event.preventDefault();
+                        void controller.submitMessage();
+                      }
+                    }}
+                  />
 
+                  {/* Attachments Display inside Input */}
                   {(controller.messageFiles.length > 0 || controller.artifactRefs.length > 0) ? (
-                    <Button
-                      variant="outline"
-                      className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)]"
-                      onClick={() => {
-                        controller.setMessageFiles([]);
-                        controller.setArtifactRefs([]);
-                        if (fileInputRef.current) fileInputRef.current.value = '';
-                      }}
-                    >
-                      <X data-icon="inline-start" />
-                      Clear Attachments
-                    </Button>
+                    <div className="flex flex-wrap gap-2 px-4 pb-2">
+                       {controller.messageFiles.map((file, i) => (
+                         <div key={i} className="flex items-center gap-1.5 rounded-lg border border-[color:var(--stroke-soft)] bg-[color:var(--surface-4)] px-2 py-1 text-xs text-tier-2">
+                            <FileImage className="size-3" />
+                            <span className="truncate max-w-[120px]">{file.name}</span>
+                         </div>
+                       ))}
+                       {controller.artifactRefs.map((file, i) => (
+                         <div key={i} className="flex items-center gap-1.5 rounded-lg border border-sky-400/20 bg-sky-500/10 px-2 py-1 text-xs text-sky-200">
+                            <FileImage className="size-3" />
+                            <span className="truncate max-w-[120px]">{file.fileName || file.artifactId}</span>
+                         </div>
+                       ))}
+                    </div>
                   ) : null}
-                </div>
 
-                {controller.messageFiles.length > 0 ? (
-                  <div className="rounded-xl border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] px-3 py-2 text-xs text-tier-2">
-                    Local files: {controller.messageFiles.map((file) => file.name).join(' • ')}
+                  {/* Input Actions Bar */}
+                  <div className="flex items-center justify-between px-2 pb-2 pt-1">
+                    <div className="flex items-center gap-1">
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="size-8 rounded-full text-tier-3 hover:bg-[color:var(--surface-4)] hover:text-tier-1"
+                        onClick={() => fileInputRef.current?.click()}
+                      >
+                        <Plus className="size-4" />
+                      </Button>
+                      {(controller.messageFiles.length > 0 || controller.artifactRefs.length > 0) ? (
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="size-8 rounded-full text-rose-400 hover:text-rose-300 hover:bg-rose-500/10"
+                          onClick={() => {
+                            controller.setMessageFiles([]);
+                            controller.setArtifactRefs([]);
+                            if (fileInputRef.current) fileInputRef.current.value = '';
+                          }}
+                        >
+                          <X className="size-4" />
+                        </Button>
+                      ) : null}
+                    </div>
+
+                    <div className="flex items-center gap-2 pr-1">
+                      <span className="text-[10px] font-mono text-tier-4 hidden sm:inline-block pr-1">Cmd+Enter</span>
+                      <Button
+                        size="icon"
+                        className="size-8 rounded-full bg-sky-500 text-sky-950 shadow-[0_2px_10px_rgba(14,165,233,0.3)] hover:bg-sky-400 transition-opacity disabled:opacity-50"
+                        onClick={() => void controller.submitMessage()}
+                        disabled={controller.sendingMessage || controller.loadingHistory || (!controller.messageText.trim() && controller.messageFiles.length === 0 && controller.artifactRefs.length === 0)}
+                      >
+                        <Send className="size-3.5 ml-[-1px]" />
+                        <span className="sr-only">Send</span>
+                      </Button>
+                    </div>
                   </div>
-                ) : null}
-
-                {controller.artifactRefs.length > 0 ? (
-                  <div className="rounded-xl border border-sky-300/25 bg-sky-400/10 px-3 py-2 text-xs text-sky-100">
-                    Handoff artifacts: {controller.artifactRefs.map((file) => file.fileName || file.artifactId).join(' • ')}
-                  </div>
-                ) : null}
-
-                <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-white/5">
-                  <p className="text-xs text-tier-3 font-mono opacity-70">Tip: Press Ctrl/Cmd + Enter to send.</p>
-                  <Button
-                    className="rounded-xl bg-sky-500 text-sky-950 hover:bg-sky-400 font-bold px-5 shadow-[0_0_15px_rgba(14,165,233,0.3)]"
-                    onClick={() => void controller.submitMessage()}
-                    disabled={controller.sendingMessage || controller.loadingHistory}
-                  >
-                    <Send className="size-4 mr-1.5" />
-                    {controller.sendingMessage ? 'Sending...' : 'Send'}
-                  </Button>
                 </div>
               </div>
+          </div>
           </div>
 
           <div className={cn(
@@ -962,6 +1032,16 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
               title="Context"
               subtitle="Plans, resolutions, and traces."
               className="w-full h-full border-none shadow-none flex flex-col p-4 bg-transparent overflow-y-auto"
+              actions={
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="xl:hidden size-8 rounded-full text-muted-foreground p-0"
+                  onClick={() => setShowMobileContext(false)}
+                >
+                  <X className="size-4" />
+                </Button>
+              }
             >
               {contextTabs}
             </Panel>
