@@ -5,12 +5,10 @@ import {
   AlertTriangle,
   Bot,
   Check,
-  Clock3,
   FileImage,
   Menu,
   PanelRight,
   Plus,
-  Play,
   RefreshCcw,
   Send,
   Sparkles,
@@ -25,8 +23,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
-import { Panel, StatusPill } from '@/components/ui/primitives';
-import {
+import { StatusPill } from '@/components/ui/primitives';
   type PendingResolutionDraft,
   type PlanActionRow,
   type PlanRow,
@@ -111,15 +108,6 @@ function getReadExecutions(meta: MessageRow['meta']): Array<Record<string, unkno
   return reads.filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === 'object');
 }
 
-function StatusChip({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div className="rounded-xl border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] px-3 py-2">
-      <p className="text-[11px] uppercase tracking-wide text-tier-3">{label}</p>
-      <p className="mt-1 text-sm font-medium text-tier-1">{value}</p>
-    </div>
-  );
-}
-
 function MessageBubble({ message }: { message: MessageRow }) {
   const isUser = message.role === 'USER';
   const isAssistant = message.role === 'ASSISTANT';
@@ -144,7 +132,7 @@ function MessageBubble({ message }: { message: MessageRow }) {
             className={cn(
               'flex size-8 shrink-0 select-none items-center justify-center rounded-md border shadow-sm font-bold',
               isUser
-                ? 'bg-background border-border text-foreground'
+                ? 'bg-muted border-border text-foreground'
                 : isAssistant
                 ? 'bg-primary text-primary-foreground border-primary'
                 : 'bg-muted border-border text-muted-foreground'
@@ -164,7 +152,7 @@ function MessageBubble({ message }: { message: MessageRow }) {
               className={cn(
                 'relative flex flex-col gap-2 rounded-xl px-4 py-3 text-sm leading-relaxed',
                 isUser
-                  ? 'bg-muted text-foreground'
+                  ? 'bg-muted/50 text-foreground'
                   : 'bg-transparent px-0 py-1'
               )}
             >
@@ -180,7 +168,7 @@ function MessageBubble({ message }: { message: MessageRow }) {
                       return (
                         <div
                           key={`${message.id}-attachment-${index}`}
-                          className="flex items-center gap-2 rounded-lg border bg-background px-3 py-2 text-xs font-medium"
+                          className="flex items-center gap-2 rounded-lg border bg-black/40 px-3 py-2 text-xs font-medium"
                         >
                           <FileImage className="size-4 text-muted-foreground" />
                           <span className="truncate max-w-[150px] font-mono">{label}</span>
@@ -193,7 +181,7 @@ function MessageBubble({ message }: { message: MessageRow }) {
                         href={attachment.url}
                         target="_blank"
                         rel="noreferrer"
-                        className="flex items-center gap-2 rounded-lg border bg-background px-3 py-2 text-xs font-medium hover:bg-muted transition-colors shadow-sm"
+                        className="flex items-center gap-2 rounded-lg border bg-black/40 px-3 py-2 text-xs font-medium hover:bg-muted transition-colors shadow-sm"
                       >
                         <FileImage className="size-4 text-muted-foreground" />
                         <span className="truncate max-w-[150px] font-mono text-primary">{label}</span>
@@ -204,7 +192,7 @@ function MessageBubble({ message }: { message: MessageRow }) {
               ) : null}
 
               {readExecutions.length > 0 ? (
-                <div className="mt-3 rounded-lg border bg-muted/50 p-3 text-xs shadow-inner">
+                <div className="mt-3 rounded-lg border bg-muted/20 p-3 text-xs shadow-inner border-white/5">
                   <div className="flex items-center gap-2 font-bold mb-2 text-muted-foreground uppercase tracking-widest text-[9px]">
                     <Workflow className="size-3" />
                     <span>Tool Invocations ({readExecutions.length})</span>
@@ -246,21 +234,21 @@ function PlanCard({
   const destructive = destructiveCount(plan);
 
   return (
-    <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+    <div className="rounded-2xl border border-white/10 bg-white/5 p-4 shadow-sm backdrop-blur-sm">
       <div className="mb-3 flex items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-1.5">
           <StatusPill label={plan.status} tone={planTone(plan.status)} />
           {destructive > 0 ? <StatusPill label="Destructive" tone="bad" /> : null}
-          <span className="text-[10px] uppercase font-bold text-muted-foreground bg-muted px-2 py-0.5 rounded-md border border-border">{plan.actions.length} actions</span>
+          <span className="text-[10px] uppercase font-bold text-muted-foreground bg-white/5 px-2 py-0.5 rounded-md border border-white/5">{plan.actions.length} actions</span>
         </div>
         <span className="text-[10px] text-muted-foreground font-mono uppercase tracking-tighter">{new Date(plan.createdAt).toLocaleTimeString()}</span>
       </div>
 
       <p className="text-sm font-bold text-foreground leading-relaxed">{plan.summary}</p>
 
-      <div className="mt-4 space-y-2 pl-2 border-l-2 border-muted">
+      <div className="mt-4 space-y-2 pl-2 border-l-2 border-white/10">
         {plan.actions.map((action) => (
-          <div key={action.id} className="rounded-lg border bg-muted/30 px-2.5 py-1.5 text-xs flex items-center justify-between gap-2 shadow-sm transition-all hover:bg-muted/50">
+          <div key={action.id} className="rounded-lg border border-white/5 bg-white/5 px-2.5 py-1.5 text-xs flex items-center justify-between gap-2 shadow-sm transition-all hover:bg-white/10">
             <span className="font-medium text-foreground tracking-tight">{describeAction(action)}</span>
             <StatusPill
                 label={action.status}
@@ -279,7 +267,7 @@ function PlanCard({
       </div>
 
       {plan.status === 'PENDING' ? (
-        <div className="mt-5 flex flex-wrap gap-2 pt-3 border-t border-border">
+        <div className="mt-5 flex flex-wrap gap-2 pt-3 border-t border-white/10">
           <Button
             className="flex-1 rounded-xl bg-emerald-500 text-white hover:bg-emerald-600 font-bold shadow-sm"
             onClick={() => onConfirm(plan.id)}
@@ -328,7 +316,7 @@ function PendingIdentityCard({
   const candidates = parseCandidates(row.candidateGovernorIds);
 
   return (
-    <div className="rounded-2xl border border-amber-500/20 bg-gradient-to-b from-amber-500/5 to-transparent p-4 shadow-lg relative overflow-hidden">
+    <div className="rounded-2xl border border-amber-500/20 bg-gradient-to-b from-amber-500/10 to-transparent p-4 shadow-lg relative overflow-hidden">
       <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-amber-400/0 via-amber-400/50 to-amber-400/0" />
       
       <div className="mb-3 flex items-center justify-between gap-2">
@@ -338,7 +326,7 @@ function PendingIdentityCard({
 
       <div className="mb-4 space-y-1.5">
         <p className="text-[10px] uppercase tracking-widest text-amber-600 dark:text-amber-400 font-bold opacity-80">Unmapped Identity</p>
-        <div className="flex flex-col gap-1 rounded-xl bg-black/20 p-3 border border-white/5 shadow-inner">
+        <div className="flex flex-col gap-1 rounded-xl bg-black/40 p-3 border border-white/5 shadow-inner">
           <p className="text-lg font-bold text-foreground drop-shadow-sm">{row.governorNameRaw || '(unknown)'}</p>
           {row.governorIdRaw ? <p className="text-xs font-mono text-muted-foreground/80 tracking-widest">ID: {row.governorIdRaw}</p> : null}
           {row.reason ? (
@@ -363,7 +351,7 @@ function PendingIdentityCard({
                    "text-left rounded-xl border p-2.5 text-sm transition-all flex items-center justify-between shadow-sm",
                    draft.governorDbId === candidate.governorDbId 
                      ? "border-emerald-500/40 bg-emerald-500/10 text-foreground font-bold" 
-                     : "border-border bg-background text-muted-foreground hover:bg-muted"
+                     : "border-white/5 bg-white/5 text-muted-foreground hover:bg-white/10"
                  )}
                >
                  <div>
@@ -378,7 +366,7 @@ function PendingIdentityCard({
       ) : null}
 
       {row.status === 'PENDING' ? (
-        <div className="space-y-3 border-t border-border pt-4">
+        <div className="space-y-3 border-t border-white/5 pt-4">
            <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold opacity-60">Resolution</p>
           <Input
             placeholder="Manual Governor DB ID"
@@ -389,7 +377,7 @@ function PendingIdentityCard({
                 governorDbId: event.target.value,
               })
             }
-            className="bg-muted/30 border-border"
+            className="bg-black/40 border-white/5"
           />
           <Textarea
             rows={2}
@@ -401,7 +389,7 @@ function PendingIdentityCard({
                 note: event.target.value,
               })
             }
-            className="bg-muted/30 border-border text-sm resize-none"
+            className="bg-black/40 border-white/5 text-sm resize-none"
           />
           <Button
             className="w-full rounded-xl bg-amber-500 text-white hover:bg-amber-600 font-bold mt-2 shadow-sm"
@@ -425,7 +413,7 @@ function ExecutionLogList({ rows }: { rows: ExecutionLogRow[] }) {
   return (
     <div className="space-y-2">
       {rows.slice(0, 150).map((row) => (
-        <div key={row.id} className="rounded-xl border border-border bg-card px-3 py-2 text-xs shadow-sm hover:shadow-md transition-shadow">
+        <div key={row.id} className="rounded-xl border border-white/5 bg-white/5 px-3 py-2 text-xs shadow-sm hover:shadow-md transition-shadow">
           <div className="mb-1 flex items-center justify-between gap-2">
             <StatusPill label={row.tone === 'bad' ? 'Error' : row.tone === 'warn' ? 'Dropped' : 'Read'} tone={row.tone} />
             <span className="text-[10px] text-muted-foreground font-mono uppercase tracking-tighter opacity-60">{new Date(row.createdAt).toLocaleTimeString()}</span>
@@ -521,14 +509,14 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
       onValueChange={(next) => setContextTab((next as ContextTab) || 'plans')}
       className="h-full flex flex-col"
     >
-      <TabsList className="w-full justify-start rounded-xl border border-border bg-muted/50 p-1 mb-4 shrink-0">
-        <TabsTrigger value="plans" className="flex-1 rounded-lg data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm font-bold uppercase tracking-widest text-[9px]">
+      <TabsList className="w-full justify-start rounded-xl border border-white/5 bg-white/5 p-1 mb-4 shrink-0">
+        <TabsTrigger value="plans" className="flex-1 rounded-lg data-[state=active]:bg-white/10 data-[state=active]:text-foreground data-[state=active]:shadow-sm font-bold uppercase tracking-widest text-[9px]">
           Plans
         </TabsTrigger>
-        <TabsTrigger value="pending" className="flex-1 rounded-lg data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm font-bold uppercase tracking-widest text-[9px]">
+        <TabsTrigger value="pending" className="flex-1 rounded-lg data-[state=active]:bg-white/10 data-[state=active]:text-foreground data-[state=active]:shadow-sm font-bold uppercase tracking-widest text-[9px]">
           Pending
         </TabsTrigger>
-        <TabsTrigger value="logs" className="flex-1 rounded-lg data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm font-bold uppercase tracking-widest text-[9px]">
+        <TabsTrigger value="logs" className="flex-1 rounded-lg data-[state=active]:bg-white/10 data-[state=active]:text-foreground data-[state=active]:shadow-sm font-bold uppercase tracking-widest text-[9px]">
           Logs
         </TabsTrigger>
       </TabsList>
@@ -591,27 +579,27 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
   );
 
   return (
-    <div className="fixed inset-0 flex flex-col overflow-hidden bg-background text-foreground selection:bg-primary/20">
+    <div className="fixed inset-0 flex flex-col overflow-hidden bg-black text-foreground selection:bg-primary/20 font-sans">
       <SessionGate ready={workspaceReady} loading={sessionLoading} error={sessionError}>
         
-        {/* Template Header (Flush & Blurred) */}
-        <header className="flex h-14 shrink-0 items-center justify-between border-b bg-background/95 px-4 backdrop-blur z-20 shadow-sm">
+        {/* Template Header (Hard Black & Blurred) */}
+        <header className="flex h-14 shrink-0 items-center justify-between border-b border-white/10 bg-black/95 px-4 backdrop-blur z-20 shadow-xl">
           <div className="flex items-center gap-3">
              <Button
                 variant="ghost"
                 size="icon"
-                className="lg:hidden size-8 shrink-0 text-muted-foreground hover:bg-muted"
+                className="lg:hidden size-9 shrink-0 text-muted-foreground hover:bg-white/10"
                 onClick={() => setShowMobileConversations(true)}
               >
-                <Menu className="size-4" />
+                <Menu className="size-5" />
               </Button>
-              <div className="flex items-center gap-2">
-                <div className="flex size-7 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm font-bold">
+              <div className="flex items-center gap-2.5">
+                <div className="flex size-7 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-lg font-bold">
                   <Bot className="size-4" />
                 </div>
                 <div className="flex flex-col">
-                  <span className="text-[11px] font-bold tracking-tight uppercase opacity-90 leading-none mb-0.5">HamaROK Intelligence</span>
-                  <span className="text-[10px] text-muted-foreground font-mono leading-none tracking-tighter uppercase opacity-50">
+                  <span className="text-[11px] font-bold tracking-tight uppercase opacity-90 leading-none mb-0.5">HamaROK Cockpit</span>
+                  <span className="text-[10px] text-muted-foreground font-mono leading-none tracking-tighter uppercase opacity-50 truncate max-w-[120px] sm:max-w-none">
                     {controller.conversations.find((row) => row.id === controller.selectedConversationId)?.title || 'Untitled Thread'}
                   </span>
                 </div>
@@ -621,13 +609,13 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
              <Button
                 variant="ghost"
                 size="icon"
-                className="xl:hidden size-8 text-muted-foreground hover:bg-muted"
+                className="xl:hidden size-9 text-muted-foreground hover:bg-white/10"
                 onClick={() => setShowMobileContext(true)}
               >
-                <PanelRight className="size-4" />
+                <PanelRight className="size-5" />
               </Button>
-              <div className="hidden sm:flex items-center gap-2 rounded-full border bg-muted/50 px-2.5 py-1 text-[9px] font-bold text-muted-foreground uppercase tracking-widest shadow-inner opacity-80">
-                <Sparkles className="size-2.5" />
+              <div className="hidden sm:flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[9px] font-bold text-muted-foreground uppercase tracking-widest shadow-inner opacity-80">
+                <Sparkles className="size-2.5 text-primary" />
                 Mistral Large
               </div>
           </div>
@@ -636,10 +624,10 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
         <div className="flex flex-1 min-h-0 relative overflow-hidden">
           
           {/* Conversation History Sidebar (Desktop) */}
-          <aside className="hidden lg:flex w-[280px] flex-col border-r bg-muted/10">
-             <div className="p-4 border-b bg-background/30 shadow-inner">
+          <aside className="hidden lg:flex w-[280px] flex-col border-r border-white/10 bg-white/[0.02]">
+             <div className="p-4 border-b border-white/10 bg-white/[0.02] shadow-inner">
                 <Button 
-                   className="w-full justify-start gap-2 shadow-sm font-bold uppercase tracking-wider text-[10px] py-4 rounded-xl" 
+                   className="w-full justify-start gap-2 shadow-xl font-bold uppercase tracking-wider text-[10px] py-4 rounded-xl" 
                    size="sm"
                    onClick={async () => {
                       const id = await controller.createConversation();
@@ -651,15 +639,15 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
                 </Button>
              </div>
              <div className="flex-1 overflow-y-auto p-3 space-y-1">
-                <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-muted-foreground/50 px-2 mb-2">History</p>
+                <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-muted-foreground/40 px-2 mb-2">History</p>
                 {controller.conversations.map(row => (
                    <button
                       key={row.id}
                       className={cn(
-                         "w-full text-left p-3 rounded-xl text-sm transition-all flex flex-col gap-1 shadow-sm border border-transparent mb-1",
+                         "w-full text-left p-3 rounded-xl text-sm transition-all flex flex-col gap-1 border border-transparent mb-1",
                          row.id === controller.selectedConversationId 
-                           ? "bg-background border-border text-foreground font-bold scale-[1.02]" 
-                           : "text-muted-foreground hover:bg-muted/80 hover:text-foreground opacity-70"
+                           ? "bg-white/5 border-white/10 text-foreground font-bold scale-[1.02] shadow-md" 
+                           : "text-muted-foreground hover:bg-white/5 hover:text-foreground opacity-70 hover:opacity-100"
                       )}
                       onClick={() => controller.setSelectedConversationId(row.id)}
                    >
@@ -673,7 +661,7 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
           </aside>
 
           {/* Core Chat Viewport */}
-          <main className="flex-1 min-w-0 relative flex flex-col bg-background">
+          <main className="flex-1 min-w-0 relative flex flex-col bg-black">
              <div 
                ref={timelineRef}
                className="flex-1 overflow-y-auto px-4 py-8 scroll-smooth flex flex-col items-center"
@@ -684,7 +672,7 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
                    {(controller.batchRun || controller.handoffContext || pendingPlan) && (
                       <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-top-2 duration-700">
                          {controller.handoffContext && (
-                            <div className="rounded-2xl border border-sky-500/20 bg-sky-500/5 px-4 py-3 text-xs shadow-sm">
+                            <div className="rounded-2xl border border-sky-500/20 bg-sky-500/5 px-4 py-3 text-xs shadow-sm backdrop-blur-sm">
                                <p className="font-bold text-sky-600 dark:text-sky-400 tracking-tight uppercase mb-0.5 opacity-80">Imported Context</p>
                                <p className="font-medium text-foreground">{controller.handoffContext.title}</p>
                                <p className="mt-1 text-muted-foreground italic">{controller.handoffContext.summary}</p>
@@ -692,17 +680,17 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
                          )}
 
                          {pendingPlan && (
-                            <div className="rounded-2xl border border-amber-500/30 bg-background/95 backdrop-blur p-5 shadow-[0_8px_32px_rgba(245,158,11,0.08)] ring-1 ring-amber-500/10">
+                            <div className="rounded-2xl border border-amber-500/30 bg-white/5 backdrop-blur-md p-5 shadow-[0_8px_32px_rgba(245,158,11,0.15)] ring-1 ring-amber-500/10">
                                <div className="flex items-center gap-2 mb-3">
                                   <div className="size-2.5 rounded-full bg-amber-500 animate-pulse shadow-[0_0_8px_rgba(245,158,11,0.6)]" />
                                   <span className="text-[10px] font-bold uppercase text-amber-600 dark:text-amber-400 tracking-[0.15em]">Action Required</span>
                                </div>
                                <p className="text-sm font-bold text-foreground mb-5 leading-relaxed">{pendingPlan.summary}</p>
                                <div className="flex gap-3">
-                                  <Button size="sm" className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-xl shadow-md h-9" onClick={() => void controller.confirmPlan(pendingPlan.id)}>
+                                  <Button size="sm" className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-xl shadow-lg h-9" onClick={() => void controller.confirmPlan(pendingPlan.id)}>
                                      Confirm Plan
                                   </Button>
-                                  <Button size="sm" variant="outline" className="text-rose-500 border-rose-500/20 rounded-xl h-9 hover:bg-rose-500/5" onClick={() => void controller.denyPlan(pendingPlan.id)}>
+                                  <Button size="sm" variant="outline" className="text-rose-500 border-rose-500/20 rounded-xl h-9 hover:bg-rose-500/5 backdrop-blur-sm" onClick={() => void controller.denyPlan(pendingPlan.id)}>
                                      Deny
                                   </Button>
                                </div>
@@ -710,17 +698,17 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
                          )}
 
                          {controller.batchRun && (
-                            <div className="rounded-2xl border border-border bg-card p-5 shadow-sm overflow-hidden relative group transition-all hover:shadow-md">
+                            <div className="rounded-2xl border border-white/10 bg-white/5 p-5 shadow-sm overflow-hidden relative group transition-all hover:shadow-md backdrop-blur-sm">
                                <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
                                <div className="flex items-center justify-between mb-4">
                                   <h4 className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground/80">Batch Processing</h4>
-                                  <span className="text-[10px] font-mono text-muted-foreground bg-muted px-2 py-0.5 rounded-md">{controller.batchRun.processedCount}/{controller.batchRun.totalArtifacts}</span>
+                                  <span className="text-[10px] font-mono text-muted-foreground bg-white/5 px-2 py-0.5 rounded-md border border-white/5">{controller.batchRun.processedCount}/{controller.batchRun.totalArtifacts}</span>
                                </div>
-                               <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden border border-border/50">
+                               <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden border border-white/10">
                                   <div className="h-full bg-primary transition-all duration-700 ease-out shadow-[0_0_10px_rgba(0,163,255,0.4)]" style={{ width: `${(controller.batchRun.processedCount / controller.batchRun.totalArtifacts) * 100}%` }} />
                                </div>
                                <div className="mt-4 flex gap-2">
-                                  <Button size="sm" variant="outline" className="h-8 text-[10px] font-bold uppercase tracking-wider rounded-lg px-4" onClick={() => void controller.runBatchStep()} disabled={controller.steppingBatch}>
+                                  <Button size="sm" variant="outline" className="h-8 text-[10px] font-bold uppercase tracking-wider rounded-lg px-4 border-white/10 hover:bg-white/5" onClick={() => void controller.runBatchStep()} disabled={controller.steppingBatch}>
                                      {controller.steppingBatch ? 'Processing...' : 'Run Next Step'}
                                   </Button>
                                </div>
@@ -737,7 +725,7 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
                       </div>
                    ) : !controller.history?.messages?.length ? (
                       <div className="flex flex-col items-center justify-center py-24 text-center animate-in fade-in zoom-in duration-700">
-                         <div className="flex size-20 items-center justify-center rounded-[2.5rem] bg-primary/5 text-primary border border-primary/10 shadow-sm mb-6 relative">
+                         <div className="flex size-20 items-center justify-center rounded-[2.5rem] bg-primary/10 text-primary border border-primary/20 shadow-xl mb-6 relative">
                             <div className="absolute inset-0 rounded-[2.5rem] bg-primary/5 animate-ping opacity-20" />
                             <Bot className="size-10" />
                          </div>
@@ -751,7 +739,7 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
              </div>
 
              {/* Footer Prompt Input (Fixed Bottom) */}
-             <footer className="shrink-0 w-full px-4 pb-8 pt-4 bg-gradient-to-t from-background via-background/95 to-transparent flex flex-col items-center z-10">
+             <footer className="shrink-0 w-full px-4 pb-8 pt-4 bg-gradient-to-t from-black via-black/95 to-transparent flex flex-col items-center z-10">
                 <div className="w-full max-w-2xl">
                    
                    {/* Suggestion Pills */}
@@ -760,7 +748,7 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
                          {['Sync stats', 'Detect outliers', 'Create weekly event', 'Compare alliances'].map(s => (
                             <button 
                                key={s} 
-                               className="px-4 py-2 rounded-full border bg-background/50 backdrop-blur-sm text-[11px] font-bold uppercase tracking-wider text-muted-foreground hover:bg-primary/10 hover:text-primary hover:border-primary/30 transition-all shadow-sm active:scale-95"
+                               className="px-4 py-2 rounded-full border border-white/10 bg-white/5 backdrop-blur-md text-[11px] font-bold uppercase tracking-wider text-muted-foreground hover:bg-primary/20 hover:text-primary hover:border-primary/40 transition-all shadow-md active:scale-95"
                                onClick={() => controller.setMessageText(s)}
                             >
                                {s}
@@ -770,13 +758,13 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
                    )}
 
                    {/* Template Input Box */}
-                   <div className="relative flex w-full flex-col overflow-hidden rounded-[1.5rem] border border-border bg-muted/30 focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary/40 focus-within:bg-background transition-all duration-300 shadow-lg">
+                   <div className="relative flex w-full flex-col overflow-hidden rounded-[1.5rem] border border-white/10 bg-white/5 focus-within:ring-2 focus-within:ring-primary/30 focus-within:border-primary/50 focus-within:bg-white/[0.07] transition-all duration-300 shadow-2xl backdrop-blur-xl">
                       
                       {/* Attachments Section */}
                       {(controller.messageFiles.length > 0 || controller.artifactRefs.length > 0) && (
-                         <div className="flex flex-wrap gap-2 p-4 bg-muted/20 border-b border-border/50">
+                         <div className="flex flex-wrap gap-2 p-4 bg-white/5 border-b border-white/10">
                             {controller.messageFiles.map((f, i) => (
-                               <div key={i} className="flex items-center gap-2 rounded-xl border bg-background px-3 py-1.5 text-[10px] font-bold text-muted-foreground shadow-sm group">
+                               <div key={i} className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/40 px-3 py-1.5 text-[10px] font-bold text-muted-foreground shadow-inner group">
                                   <FileImage className="size-3.5" />
                                   <span className="truncate max-w-[120px] font-mono tracking-tighter opacity-80">{f.name}</span>
                                   <button onClick={() => controller.setMessageFiles(prev => prev.filter((_, idx) => idx !== i))} className="ml-1 hover:text-rose-500 transition-colors">
@@ -785,7 +773,7 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
                                </div>
                             ))}
                             {controller.artifactRefs.map((f, i) => (
-                               <div key={i} className="flex items-center gap-2 rounded-xl border border-sky-500/20 bg-sky-500/10 px-3 py-1.5 text-[10px] font-bold text-sky-700 shadow-sm">
+                               <div key={i} className="flex items-center gap-2 rounded-xl border border-sky-500/20 bg-sky-500/20 px-3 py-1.5 text-[10px] font-bold text-sky-400 shadow-inner">
                                   <FileImage className="size-3.5" />
                                   <span className="truncate max-w-[120px] font-mono tracking-tighter">Artifact: {(f.fileName || f.artifactId).slice(0,12)}...</span>
                                </div>
@@ -798,7 +786,7 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
                         value={controller.messageText}
                         onChange={(event) => controller.setMessageText(event.target.value)}
                         rows={1}
-                        className="min-h-[70px] w-full resize-none border-0 bg-transparent p-5 pb-2 text-sm focus-visible:ring-0 shadow-none text-foreground placeholder:text-muted-foreground/40 font-medium"
+                        className="min-h-[70px] w-full resize-none border-0 bg-transparent p-5 pb-2 text-sm focus-visible:ring-0 shadow-none text-foreground placeholder:text-muted-foreground/40 font-medium scrollbar-hide"
                         onKeyDown={(event) => {
                           if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
                             event.preventDefault();
@@ -812,7 +800,7 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
                           <Button
                             size="icon"
                             variant="ghost"
-                            className="size-9 rounded-xl text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                            className="size-9 rounded-xl text-muted-foreground hover:bg-white/10 hover:text-foreground transition-colors"
                             onClick={() => fileInputRef.current?.click()}
                           >
                             <Plus className="size-5" />
@@ -820,7 +808,7 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
                           <Button
                             size="icon"
                             variant="ghost"
-                            className="size-9 rounded-xl text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                            className="size-9 rounded-xl text-muted-foreground hover:bg-white/10 hover:text-foreground transition-colors"
                             onClick={() => setShowMobileContext(true)}
                           >
                             <PanelRight className="size-5" />
@@ -831,7 +819,7 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
                            <span className="text-[9px] font-bold font-mono text-muted-foreground/30 hidden sm:inline-block pr-1 uppercase tracking-widest">Cmd+Enter</span>
                            <Button
                               size="icon"
-                              className="size-9 rounded-2xl bg-primary text-primary-foreground shadow-[0_4px_12px_rgba(0,163,255,0.3)] hover:opacity-90 disabled:opacity-30 active:scale-95 transition-all flex items-center justify-center mr-1"
+                              className="size-9 rounded-2xl bg-primary text-primary-foreground shadow-[0_4px_16px_rgba(0,163,255,0.4)] hover:opacity-90 disabled:opacity-30 active:scale-95 transition-all flex items-center justify-center mr-1"
                               onClick={() => void controller.submitMessage()}
                               disabled={controller.sendingMessage || controller.loadingHistory || (!controller.messageText.trim() && controller.messageFiles.length === 0)}
                            >
@@ -840,18 +828,18 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
                         </div>
                       </div>
                    </div>
-                   <p className="mt-3 text-center text-[9px] font-bold uppercase tracking-[0.2em] text-muted-foreground/30">Intelligence Cockpit • Mistral Large • HamaROK v2.6</p>
+                   <p className="mt-3 text-center text-[9px] font-bold uppercase tracking-[0.2em] text-muted-foreground/20">HamaROK Intelligence • Mistral Large • v2.6</p>
                 </div>
              </footer>
           </main>
 
           {/* Desktop Sidebar: Context (XL) */}
-          <aside className="hidden xl:flex w-[360px] flex-col border-l bg-muted/10">
-             <div className="p-4 border-b bg-background/30 shadow-inner flex items-center gap-2">
-                <Workflow className="size-4 text-muted-foreground" />
+          <aside className="hidden xl:flex w-[360px] flex-col border-l border-white/10 bg-white/[0.02]">
+             <div className="p-4 border-b border-white/10 bg-white/[0.02] shadow-inner flex items-center gap-2">
+                <Workflow className="size-4 text-primary opacity-70" />
                 <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Execution Context</h3>
              </div>
-             <div className="p-4 flex-1 overflow-y-auto">
+             <div className="p-4 flex-1 overflow-y-auto custom-scrollbar pr-1">
                 {contextTabs}
              </div>
           </aside>
@@ -870,19 +858,20 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
           }}
         />
 
-        {/* MOBILE SIDEBAR OVERLAYS */}
+        {/* MOBILE SIDEBAR OVERLAYS (POLISHED DRAWERS) */}
         {showMobileConversations && (
-           <div className="fixed inset-0 z-[100] flex animate-in fade-in duration-200">
-              <div className="w-[300px] h-full bg-background border-r shadow-2xl flex flex-col p-6 animate-in slide-in-from-left duration-500 ease-out">
+           <div className="fixed inset-0 z-[100] flex">
+              <div className="fixed inset-0 bg-black/80 backdrop-blur-sm animate-in fade-in duration-300" onClick={() => setShowMobileConversations(false)} />
+              <div className="relative w-[300px] h-full bg-black border-r border-white/10 shadow-2xl flex flex-col p-6 animate-in slide-in-from-left duration-500 ease-out transition-all">
                  <div className="flex items-center justify-between mb-8">
                     <h2 className="text-xl font-bold tracking-tight">History</h2>
-                    <Button variant="ghost" size="icon" className="size-10 rounded-full hover:bg-muted" onClick={() => setShowMobileConversations(false)}>
+                    <Button variant="ghost" size="icon" className="size-10 rounded-full hover:bg-white/10" onClick={() => setShowMobileConversations(false)}>
                        <X className="size-5" />
                     </Button>
                  </div>
-                 <div className="flex-1 overflow-y-auto space-y-2">
+                 <div className="flex-1 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
                     <Button 
-                       className="w-full justify-start gap-2 mb-6 font-bold uppercase tracking-widest text-[10px] rounded-xl h-11 shadow-sm" 
+                       className="w-full justify-start gap-2 mb-6 font-bold uppercase tracking-widest text-[10px] rounded-xl h-12 shadow-lg" 
                        onClick={async () => {
                           const id = await controller.createConversation();
                           await controller.refreshConversation();
@@ -892,42 +881,44 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
                     >
                        <Plus className="size-4" /> New Chat
                     </Button>
-                    {controller.conversations.map(row => (
-                       <button
-                          key={row.id}
-                          className={cn(
-                             "w-full text-left p-4 rounded-2xl border transition-all duration-300 mb-1",
-                             row.id === controller.selectedConversationId ? "bg-primary/10 border-primary/20 text-foreground font-bold shadow-sm" : "border-transparent text-muted-foreground hover:bg-muted/80 hover:text-foreground"
-                          )}
-                          onClick={() => {
-                             controller.setSelectedConversationId(row.id);
-                             setShowMobileConversations(false);
-                          }}
-                       >
-                          <p className="truncate tracking-tight mb-1 font-medium">{row.title || 'Untitled Thread'}</p>
-                          <p className="text-[9px] opacity-40 uppercase font-mono tracking-tighter">{new Date(row.updatedAt).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}</p>
-                       </button>
-                    ))}
+                    <div className="space-y-1">
+                      <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-muted-foreground/40 px-2 mb-4">Past 30 Days</p>
+                      {controller.conversations.map(row => (
+                        <button
+                            key={row.id}
+                            className={cn(
+                              "w-full text-left p-4 rounded-2xl border transition-all duration-300 mb-2",
+                              row.id === controller.selectedConversationId ? "bg-white/10 border-white/20 text-foreground font-bold shadow-lg" : "border-transparent text-muted-foreground hover:bg-white/5 hover:text-foreground"
+                            )}
+                            onClick={() => {
+                              controller.setSelectedConversationId(row.id);
+                              setShowMobileConversations(false);
+                            }}
+                        >
+                            <p className="truncate tracking-tight mb-1 font-medium">{row.title || 'Untitled Thread'}</p>
+                            <p className="text-[9px] opacity-40 uppercase font-mono tracking-tighter">{new Date(row.updatedAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}</p>
+                        </button>
+                      ))}
+                    </div>
                  </div>
               </div>
-              <div className="flex-1 h-full bg-black/60 backdrop-blur-[4px]" onClick={() => setShowMobileConversations(false)} />
            </div>
         )}
 
         {showMobileContext && (
-           <div className="fixed inset-0 z-[100] flex animate-in fade-in duration-200">
-              <div className="flex-1 h-full bg-black/60 backdrop-blur-[4px]" onClick={() => setShowMobileContext(false)} />
-              <div className="w-full sm:w-[420px] h-full bg-background border-l shadow-2xl flex flex-col animate-in slide-in-from-right duration-500 ease-out">
-                 <div className="p-6 border-b flex items-center justify-between">
+           <div className="fixed inset-0 z-[100] flex justify-end">
+              <div className="fixed inset-0 bg-black/80 backdrop-blur-sm animate-in fade-in duration-300" onClick={() => setShowMobileContext(false)} />
+              <div className="relative w-full sm:w-[420px] h-full bg-black border-l border-white/10 shadow-2xl flex flex-col animate-in slide-in-from-right duration-500 ease-out transition-all">
+                 <div className="p-6 border-b border-white/10 flex items-center justify-between bg-white/[0.02]">
                     <div className="flex items-center gap-2">
                        <Workflow className="size-5 text-primary" />
                        <h2 className="text-xl font-bold tracking-tight">Context</h2>
                     </div>
-                    <Button variant="ghost" size="icon" className="size-10 rounded-full hover:bg-muted" onClick={() => setShowMobileContext(false)}>
+                    <Button variant="ghost" size="icon" className="size-10 rounded-full hover:bg-white/10" onClick={() => setShowMobileContext(false)}>
                        <X className="size-5" />
                     </Button>
                  </div>
-                 <div className="flex-1 overflow-y-auto p-6 bg-muted/5">
+                 <div className="flex-1 overflow-y-auto p-6 bg-black">
                     {contextTabs}
                  </div>
               </div>
@@ -935,6 +926,29 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
         )}
 
       </SessionGate>
+
+      <style jsx global>{`
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: rgba(255, 255, 255, 0.1);
+          border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: rgba(255, 255, 255, 0.2);
+        }
+        .scrollbar-hide::-webkit-scrollbar {
+          display: none;
+        }
+        .scrollbar-hide {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+      `}</style>
     </div>
   );
 }
