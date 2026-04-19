@@ -1,4 +1,6 @@
-'use client';
+import fs from 'fs';
+
+const code = `'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -55,7 +57,7 @@ function planTone(status: PlanRow['status']): 'neutral' | 'good' | 'warn' | 'bad
 function shorten(value: string, max = 120): string {
   const normalized = String(value || '').trim();
   if (normalized.length <= max) return normalized;
-  return `${normalized.slice(0, max - 1)}...`;
+  return \`\${normalized.slice(0, max - 1)}...\`;
 }
 
 function parseCandidates(value: unknown): Array<{ governorDbId: string; governorGameId: string; governorName: string }> {
@@ -81,17 +83,17 @@ function describeAction(action: PlanActionRow): string {
   const request = action.request || {};
   switch (request.type) {
     case 'register_player':
-      return `Register ${String(request.name || 'player')} (${String(request.governorId || 'unknown id')})`;
+      return \`Register \${String(request.name || 'player')} (\${String(request.governorId || 'unknown id')})\`;
     case 'update_player':
-      return `Update player ${String(request.governorId || request.governorName || request.governorDbId || '')}`;
+      return \`Update player \${String(request.governorId || request.governorName || request.governorDbId || '')}\`;
     case 'delete_player':
-      return `Delete player ${String(request.governorId || request.governorName || request.governorDbId || '')}`;
+      return \`Delete player \${String(request.governorId || request.governorName || request.governorDbId || '')}\`;
     case 'create_event':
-      return `Create event ${String(request.name || '')}`;
+      return \`Create event \${String(request.name || '')}\`;
     case 'delete_event':
-      return `Delete event ${String(request.eventId || request.eventName || '')}`;
+      return \`Delete event \${String(request.eventId || request.eventName || '')}\`;
     case 'record_profile_stats':
-      return `Record stats for ${String(request.governorId || request.governorName || request.governorDbId || '')}`;
+      return \`Record stats for \${String(request.governorId || request.governorName || request.governorDbId || '')}\`;
     default:
       return String(action.actionType || 'Action');
   }
@@ -175,11 +177,11 @@ function MessageBubble({ message }: { message: MessageRow }) {
               {message.attachments && message.attachments.length > 0 ? (
                 <div className="mt-2 flex flex-wrap gap-2">
                   {message.attachments.map((attachment, index) => {
-                    const label = attachment.fileName || `attachment-${index + 1}`;
+                    const label = attachment.fileName || \`attachment-\${index + 1}\`;
                     if (!attachment.url) {
                       return (
                         <div
-                          key={`${message.id}-attachment-${index}`}
+                          key={\`\${message.id}-attachment-\${index}\`}
                           className="flex items-center gap-2 rounded-lg border bg-background px-3 py-2 text-xs font-medium"
                         >
                           <FileImage className="size-4 text-muted-foreground" />
@@ -189,14 +191,14 @@ function MessageBubble({ message }: { message: MessageRow }) {
                     }
                     return (
                       <a
-                        key={`${message.id}-attachment-${index}`}
+                        key={\`\${message.id}-attachment-\${index}\`}
                         href={attachment.url}
                         target="_blank"
                         rel="noreferrer"
                         className="flex items-center gap-2 rounded-lg border bg-background px-3 py-2 text-xs font-medium hover:bg-muted transition-colors shadow-sm"
                       >
                         <FileImage className="size-4 text-muted-foreground" />
-                        <span className="truncate max-w-[150px] font-mono text-primary">{label}</span>
+                        <span className="truncate max-w-[150px] font-mono text-primary">\${label}</span>
                       </a>
                     );
                   })}
@@ -207,13 +209,13 @@ function MessageBubble({ message }: { message: MessageRow }) {
                 <div className="mt-3 rounded-lg border bg-muted/50 p-3 text-xs shadow-inner">
                   <div className="flex items-center gap-2 font-bold mb-2 text-muted-foreground uppercase tracking-widest text-[9px]">
                     <Workflow className="size-3" />
-                    <span>Tool Invocations ({readExecutions.length})</span>
+                    <span>Tool Invocations (\${readExecutions.length})</span>
                   </div>
                   <div className="space-y-3">
                     {readExecutions.map((entry, index) => (
-                      <div key={`${message.id}-read-${index}`} className="flex flex-col gap-1 border-l-2 border-primary/20 pl-2">
-                        <span className="font-bold text-foreground uppercase tracking-tighter text-[10px] font-mono opacity-80">{String(entry.actionType || 'read_action')}</span>
-                        <span className="text-muted-foreground leading-relaxed">{shorten(String(entry.summary || 'Completed.'), 220)}</span>
+                      <div key={\`\${message.id}-read-\${index}\`} className="flex flex-col gap-1 border-l-2 border-primary/20 pl-2">
+                        <span className="font-bold text-foreground uppercase tracking-tighter text-[10px] font-mono opacity-80">\${String(entry.actionType || 'read_action')}</span>
+                        <span className="text-muted-foreground leading-relaxed">\${shorten(String(entry.summary || 'Completed.'), 220)}</span>
                       </div>
                     ))}
                   </div>
@@ -222,8 +224,8 @@ function MessageBubble({ message }: { message: MessageRow }) {
             </div>
             
             <div className={cn("text-[10px] text-muted-foreground/60 flex items-center gap-2 font-mono uppercase tracking-widest", isUser ? "flex-row-reverse" : "flex-row")}>
-              {message.model ? <span>{message.model}</span> : null}
-              <span>{new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+              {message.model ? <span>\${message.model}</span> : null}
+              <span>\${new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
             </div>
           </div>
         </div>
@@ -251,17 +253,17 @@ function PlanCard({
         <div className="flex flex-wrap items-center gap-1.5">
           <StatusPill label={plan.status} tone={planTone(plan.status)} />
           {destructive > 0 ? <StatusPill label="Destructive" tone="bad" /> : null}
-          <span className="text-[10px] uppercase font-bold text-muted-foreground bg-muted px-2 py-0.5 rounded-md border border-border">{plan.actions.length} actions</span>
+          <span className="text-[10px] uppercase font-bold text-muted-foreground bg-muted px-2 py-0.5 rounded-md border border-border">\${plan.actions.length} actions</span>
         </div>
-        <span className="text-[10px] text-muted-foreground font-mono uppercase tracking-tighter">{new Date(plan.createdAt).toLocaleTimeString()}</span>
+        <span className="text-[10px] text-muted-foreground font-mono uppercase tracking-tighter">\${new Date(plan.createdAt).toLocaleTimeString()}</span>
       </div>
 
-      <p className="text-sm font-bold text-foreground leading-relaxed">{plan.summary}</p>
+      <p className="text-sm font-bold text-foreground leading-relaxed">\${plan.summary}</p>
 
       <div className="mt-4 space-y-2 pl-2 border-l-2 border-muted">
         {plan.actions.map((action) => (
           <div key={action.id} className="rounded-lg border bg-muted/30 px-2.5 py-1.5 text-xs flex items-center justify-between gap-2 shadow-sm transition-all hover:bg-muted/50">
-            <span className="font-medium text-foreground tracking-tight">{describeAction(action)}</span>
+            <span className="font-medium text-foreground tracking-tight">\${describeAction(action)}</span>
             <StatusPill
                 label={action.status}
                 tone={
@@ -333,18 +335,18 @@ function PendingIdentityCard({
       
       <div className="mb-3 flex items-center justify-between gap-2">
         <StatusPill label={row.status} tone={row.status === 'RESOLVED' ? 'good' : row.status === 'DENIED' ? 'bad' : 'warn'} />
-        <span className="text-[11px] text-muted-foreground/60 font-mono tracking-tighter uppercase">{new Date(row.createdAt).toLocaleTimeString()}</span>
+        <span className="text-[11px] text-muted-foreground/60 font-mono tracking-tighter uppercase">\${new Date(row.createdAt).toLocaleTimeString()}</span>
       </div>
 
       <div className="mb-4 space-y-1.5">
         <p className="text-[10px] uppercase tracking-widest text-amber-600 dark:text-amber-400 font-bold opacity-80">Unmapped Identity</p>
         <div className="flex flex-col gap-1 rounded-xl bg-black/20 p-3 border border-white/5 shadow-inner">
-          <p className="text-lg font-bold text-foreground drop-shadow-sm">{row.governorNameRaw || '(unknown)'}</p>
-          {row.governorIdRaw ? <p className="text-xs font-mono text-muted-foreground/80 tracking-widest">ID: {row.governorIdRaw}</p> : null}
+          <p className="text-lg font-bold text-foreground drop-shadow-sm">\${row.governorNameRaw || '(unknown)'}</p>
+          {row.governorIdRaw ? <p className="text-xs font-mono text-muted-foreground/80 tracking-widest">ID: \${row.governorIdRaw}</p> : null}
           {row.reason ? (
             <p className="mt-1 flex items-center gap-1.5 text-xs text-rose-500 bg-rose-500/10 px-2 py-1 rounded inline-flex w-fit border border-rose-500/10">
               <AlertTriangle className="size-3" />
-              {row.reason}
+              \${row.reason}
             </p>
           ) : null}
         </div>
@@ -367,8 +369,8 @@ function PendingIdentityCard({
                  )}
                >
                  <div>
-                   <p className="font-semibold">{candidate.governorName}</p>
-                   <p className="text-[10px] font-mono opacity-60 tracking-widest">Game ID: {candidate.governorGameId}</p>
+                   <p className="font-semibold">\${candidate.governorName}</p>
+                   <p className="text-[10px] font-mono opacity-60 tracking-widest">Game ID: \${candidate.governorGameId}</p>
                  </div>
                  {draft.governorDbId === candidate.governorDbId && <Check className="size-4 text-emerald-500" />}
                </button>
@@ -428,9 +430,9 @@ function ExecutionLogList({ rows }: { rows: ExecutionLogRow[] }) {
         <div key={row.id} className="rounded-xl border border-border bg-card px-3 py-2 text-xs shadow-sm hover:shadow-md transition-shadow">
           <div className="mb-1 flex items-center justify-between gap-2">
             <StatusPill label={row.tone === 'bad' ? 'Error' : row.tone === 'warn' ? 'Dropped' : 'Read'} tone={row.tone} />
-            <span className="text-[10px] text-muted-foreground font-mono uppercase tracking-tighter opacity-60">{new Date(row.createdAt).toLocaleTimeString()}</span>
+            <span className="text-[10px] text-muted-foreground font-mono uppercase tracking-tighter opacity-60">\${new Date(row.createdAt).toLocaleTimeString()}</span>
           </div>
-          <p className="text-foreground/90 leading-relaxed font-mono text-[11px] opacity-80">{row.text}</p>
+          <p className="text-foreground/90 leading-relaxed font-mono text-[11px] opacity-80">\${row.text}</p>
         </div>
       ))}
     </div>
@@ -486,8 +488,8 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
         const summary = String(row.summary || '').trim() || 'Completed';
         const error = String(row.error || '').trim();
         rows.push({
-          id: `${message.id}-${actionType}-${rows.length}`,
-          text: `${actionType}: ${error || summary}`,
+          id: \`\${message.id}-\${actionType}-\${rows.length}\`,
+          text: \`\${actionType}: \${error || summary}\`,
           createdAt: message.createdAt,
           tone: error ? 'bad' : 'info',
         });
@@ -498,8 +500,8 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
         if (!item || typeof item !== 'object') continue;
         const row = item as Record<string, unknown>;
         rows.push({
-          id: `${message.id}-drop-${rows.length}`,
-          text: `Dropped ${String(row.type || 'action')}: ${String(row.reason || 'invalid')}`,
+          id: \`\${message.id}-drop-\${rows.length}\`,
+          text: \`Dropped \${String(row.type || 'action')}: \${String(row.reason || 'invalid')}\`,
           createdAt: message.createdAt,
           tone: 'warn',
         });
@@ -519,9 +521,9 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
     <Tabs
       value={contextTab}
       onValueChange={(next) => setContextTab((next as ContextTab) || 'plans')}
-      className="h-full flex flex-col"
+      className="h-full"
     >
-      <TabsList className="w-full justify-start rounded-xl border border-border bg-muted/50 p-1 mb-4 shrink-0">
+      <TabsList className="w-full justify-start rounded-xl border border-border bg-muted/50 p-1 mb-4">
         <TabsTrigger value="plans" className="flex-1 rounded-lg data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm font-bold uppercase tracking-widest text-[9px]">
           Plans
         </TabsTrigger>
@@ -533,7 +535,7 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
         </TabsTrigger>
       </TabsList>
 
-      <div className="flex-1 overflow-y-auto pr-1">
+      <div className="flex-1 overflow-y-auto">
         <TabsContent value="plans" className="mt-0 space-y-4 animate-in fade-in duration-300">
           {sortedPlans.length === 0 ? (
             <p className="text-xs text-muted-foreground p-8 text-center italic opacity-60">No plans generated yet.</p>
@@ -606,13 +608,13 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
                 <Menu className="size-4" />
               </Button>
               <div className="flex items-center gap-2">
-                <div className="flex size-7 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm font-bold">
+                <div className="flex size-7 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm">
                   <Bot className="size-4" />
                 </div>
                 <div className="flex flex-col">
-                  <span className="text-[11px] font-bold tracking-tight uppercase opacity-90 leading-none mb-0.5">HamaROK Intelligence</span>
-                  <span className="text-[10px] text-muted-foreground font-mono leading-none tracking-tighter uppercase opacity-50">
-                    {controller.conversations.find((row) => row.id === controller.selectedConversationId)?.title || 'Untitled Thread'}
+                  <span className="text-xs font-bold tracking-tight uppercase opacity-90">HamaROK Intelligence</span>
+                  <span className="text-[10px] text-muted-foreground font-mono leading-none tracking-tighter uppercase opacity-60">
+                    \${controller.conversations.find((row) => row.id === controller.selectedConversationId)?.title || 'Untitled Thread'}
                   </span>
                 </div>
               </div>
@@ -639,7 +641,7 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
           <aside className="hidden lg:flex w-[280px] flex-col border-r bg-muted/10">
              <div className="p-4 border-b bg-background/30 shadow-inner">
                 <Button 
-                   className="w-full justify-start gap-2 shadow-sm font-bold uppercase tracking-wider text-[10px] py-4 rounded-xl" 
+                   className="w-full justify-start gap-2 shadow-sm font-bold uppercase tracking-wider text-[10px] py-4" 
                    size="sm"
                    onClick={async () => {
                       const id = await controller.createConversation();
@@ -656,16 +658,16 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
                    <button
                       key={row.id}
                       className={cn(
-                         "w-full text-left p-3 rounded-xl text-sm transition-all flex flex-col gap-1 shadow-sm border border-transparent mb-1",
+                         "w-full text-left p-2.5 rounded-xl text-sm transition-all flex flex-col gap-1 shadow-sm border border-transparent mb-1",
                          row.id === controller.selectedConversationId 
                            ? "bg-background border-border text-foreground font-bold scale-[1.02]" 
                            : "text-muted-foreground hover:bg-muted/80 hover:text-foreground opacity-70"
                       )}
                       onClick={() => controller.setSelectedConversationId(row.id)}
                    >
-                      <span className="truncate tracking-tight">{row.title || 'Untitled'}</span>
+                      <span className="truncate tracking-tight">\${row.title || 'Untitled'}</span>
                       <span className="text-[9px] opacity-40 uppercase font-mono tracking-tighter">
-                         {new Date(row.updatedAt).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                         \${new Date(row.updatedAt).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                       </span>
                    </button>
                 ))}
@@ -686,8 +688,8 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
                          {controller.handoffContext && (
                             <div className="rounded-2xl border border-sky-500/20 bg-sky-500/5 px-4 py-3 text-xs shadow-sm">
                                <p className="font-bold text-sky-600 dark:text-sky-400 tracking-tight uppercase mb-0.5 opacity-80">Imported Context</p>
-                               <p className="font-medium text-foreground">{controller.handoffContext.title}</p>
-                               <p className="mt-1 text-muted-foreground italic">{controller.handoffContext.summary}</p>
+                               <p className="font-medium text-foreground">\${controller.handoffContext.title}</p>
+                               <p className="mt-1 text-muted-foreground italic">\${controller.handoffContext.summary}</p>
                             </div>
                          )}
 
@@ -697,7 +699,7 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
                                   <div className="size-2.5 rounded-full bg-amber-500 animate-pulse shadow-[0_0_8px_rgba(245,158,11,0.6)]" />
                                   <span className="text-[10px] font-bold uppercase text-amber-600 dark:text-amber-400 tracking-[0.15em]">Action Required</span>
                                </div>
-                               <p className="text-sm font-bold text-foreground mb-5 leading-relaxed">{pendingPlan.summary}</p>
+                               <p className="text-sm font-bold text-foreground mb-5 leading-relaxed">\${pendingPlan.summary}</p>
                                <div className="flex gap-3">
                                   <Button size="sm" className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-xl shadow-md h-9" onClick={() => void controller.confirmPlan(pendingPlan.id)}>
                                      Confirm Plan
@@ -714,10 +716,10 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
                                <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
                                <div className="flex items-center justify-between mb-4">
                                   <h4 className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground/80">Batch Processing</h4>
-                                  <span className="text-[10px] font-mono text-muted-foreground bg-muted px-2 py-0.5 rounded-md">{controller.batchRun.processedCount}/{controller.batchRun.totalArtifacts}</span>
+                                  <span className="text-[10px] font-mono text-muted-foreground bg-muted px-2 py-0.5 rounded-md">\${controller.batchRun.processedCount}/\${controller.batchRun.totalArtifacts}</span>
                                </div>
                                <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden border border-border/50">
-                                  <div className="h-full bg-primary transition-all duration-700 ease-out shadow-[0_0_10px_rgba(0,163,255,0.4)]" style={{ width: `${(controller.batchRun.processedCount / controller.batchRun.totalArtifacts) * 100}%` }} />
+                                  <div className="h-full bg-primary transition-all duration-700 ease-out shadow-[0_0_10px_rgba(0,163,255,0.4)]" style={{ width: \`\${(controller.batchRun.processedCount / controller.batchRun.totalArtifacts) * 100}%\` }} />
                                </div>
                                <div className="mt-4 flex gap-2">
                                   <Button size="sm" variant="outline" className="h-8 text-[10px] font-bold uppercase tracking-wider rounded-lg px-4" onClick={() => void controller.runBatchStep()} disabled={controller.steppingBatch}>
@@ -787,7 +789,7 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
                             {controller.artifactRefs.map((f, i) => (
                                <div key={i} className="flex items-center gap-2 rounded-xl border border-sky-500/20 bg-sky-500/10 px-3 py-1.5 text-[10px] font-bold text-sky-700 shadow-sm">
                                   <FileImage className="size-3.5" />
-                                  <span className="truncate max-w-[120px] font-mono tracking-tighter">Artifact: {(f.fileName || f.artifactId).slice(0,12)}...</span>
+                                  <span className="truncate max-w-[120px] font-mono tracking-tighter">Artifact: \${(f.fileName || f.artifactId).slice(0,12)}...</span>
                                </div>
                             ))}
                          </div>
@@ -872,7 +874,7 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
 
         {/* MOBILE SIDEBAR OVERLAYS */}
         {showMobileConversations && (
-           <div className="fixed inset-0 z-[100] flex animate-in fade-in duration-200">
+           <div className="fixed inset-0 z-[100] flex animate-in fade-in duration-300">
               <div className="w-[300px] h-full bg-background border-r shadow-2xl flex flex-col p-6 animate-in slide-in-from-left duration-500 ease-out">
                  <div className="flex items-center justify-between mb-8">
                     <h2 className="text-xl font-bold tracking-tight">History</h2>
@@ -904,8 +906,8 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
                              setShowMobileConversations(false);
                           }}
                        >
-                          <p className="truncate tracking-tight mb-1 font-medium">{row.title || 'Untitled Thread'}</p>
-                          <p className="text-[9px] opacity-40 uppercase font-mono tracking-tighter">{new Date(row.updatedAt).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}</p>
+                          <p className="truncate tracking-tight mb-1 font-medium">\${row.title || 'Untitled Thread'}</p>
+                          <p className="text-[9px] opacity-40 uppercase font-mono tracking-tighter">\${new Date(row.updatedAt).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}</p>
                        </button>
                     ))}
                  </div>
@@ -915,7 +917,7 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
         )}
 
         {showMobileContext && (
-           <div className="fixed inset-0 z-[100] flex animate-in fade-in duration-200">
+           <div className="fixed inset-0 z-[100] flex animate-in fade-in duration-300">
               <div className="flex-1 h-full bg-black/60 backdrop-blur-[4px]" onClick={() => setShowMobileContext(false)} />
               <div className="w-full sm:w-[420px] h-full bg-background border-l shadow-2xl flex flex-col animate-in slide-in-from-right duration-500 ease-out">
                  <div className="p-6 border-b flex items-center justify-between">
@@ -938,3 +940,7 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
     </div>
   );
 }
+\`;
+
+fs.writeFileSync('src/features/assistant/assistant-screen.tsx', code);
+console.log('Success');

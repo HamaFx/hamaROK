@@ -250,32 +250,36 @@ export default function AppShell({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <div className="relative min-h-screen overflow-x-hidden bg-background text-foreground">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,color-mix(in_oklab,var(--tone-teal)_4%,transparent),transparent_40%),radial-gradient(circle_at_bottom_right,color-mix(in_oklab,var(--tone-teal)_3%,transparent),transparent_30%)]" />
-      <header className="sticky top-2 sm:top-4 z-30 mx-auto w-[calc(100%-1rem)] max-w-[1600px] rounded-[24px] glass-panel shadow-[0_8px_32px_rgba(0,0,0,0.5)] transition-all duration-300 sm:w-[calc(100%-3rem)] lg:top-6">
-        <div className="mx-auto flex w-full items-center justify-between gap-2 px-3 py-3 min-[390px]:gap-4 min-[390px]:px-4 min-[390px]:py-3.5 sm:px-6 lg:px-8">
-          <div className="flex min-w-0 items-center gap-2.5 min-[390px]:gap-4">
-            <BrandLockup />
-            <div className="hidden h-10 w-px bg-[color:var(--stroke-subtle)] lg:block" />
-            <div className="hidden min-w-0 lg:block">
-              <p className="micro-label">Now viewing</p>
-              <p className="mt-1 truncate font-heading text-sm text-tier-1">{activeNav.label}</p>
+    <div className={cn("relative min-h-screen overflow-x-hidden bg-background text-foreground", pathname === '/assistant' ? "h-[100dvh] overflow-hidden" : "")}>
+      {pathname !== '/assistant' ? (
+        <>
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,color-mix(in_oklab,var(--tone-teal)_4%,transparent),transparent_40%),radial-gradient(circle_at_bottom_right,color-mix(in_oklab,var(--tone-teal)_3%,transparent),transparent_30%)]" />
+          <header className="sticky top-2 sm:top-4 z-30 mx-auto w-[calc(100%-1rem)] max-w-[1600px] rounded-[24px] glass-panel shadow-[0_8px_32px_rgba(0,0,0,0.5)] transition-all duration-300 sm:w-[calc(100%-3rem)] lg:top-6">
+            <div className="mx-auto flex w-full items-center justify-between gap-2 px-3 py-3 min-[390px]:gap-4 min-[390px]:px-4 min-[390px]:py-3.5 sm:px-6 lg:px-8">
+              <div className="flex min-w-0 items-center gap-2.5 min-[390px]:gap-4">
+                <BrandLockup />
+                <div className="hidden h-10 w-px bg-[color:var(--stroke-subtle)] lg:block" />
+                <div className="hidden min-w-0 lg:block">
+                  <p className="micro-label">Now viewing</p>
+                  <p className="mt-1 truncate font-heading text-sm text-tier-1">{activeNav.label}</p>
+                </div>
+              </div>
+
+              <DesktopNav />
+
+              <div className="flex items-center gap-2">
+                <Badge className="chip-label hidden rounded-full border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] px-3 py-1 text-xs text-tier-3 sm:inline-flex">
+                  <Sparkles className="mr-1 size-3" /> Rankings-first
+                </Badge>
+                <ToolsMenu />
+              </div>
             </div>
-          </div>
+          </header>
+        </>
+      ) : null}
 
-          <DesktopNav />
-
-          <div className="flex items-center gap-2">
-            <Badge className="chip-label hidden rounded-full border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] px-3 py-1 text-xs text-tier-3 sm:inline-flex">
-              <Sparkles className="mr-1 size-3" /> Rankings-first
-            </Badge>
-            <ToolsMenu />
-          </div>
-        </div>
-      </header>
-
-      <main className="relative z-10 mx-auto flex w-full max-w-[1600px] flex-col px-3 pb-[calc(6.8rem+env(safe-area-inset-bottom))] pt-4 min-[390px]:px-4 min-[390px]:pb-[calc(7.2rem+env(safe-area-inset-bottom))] min-[390px]:pt-5 sm:px-6 lg:px-8 lg:pb-14 lg:pt-7">
-        {weeklySchemaWarning ? (
+      <main className={cn(pathname === '/assistant' ? "h-[100dvh] w-full" : "relative z-10 mx-auto flex w-full max-w-[1600px] flex-col px-3 pb-[calc(6.8rem+env(safe-area-inset-bottom))] pt-4 min-[390px]:px-4 min-[390px]:pb-[calc(7.2rem+env(safe-area-inset-bottom))] min-[390px]:pt-5 sm:px-6 lg:px-8 lg:pb-14 lg:pt-7")}>
+        {weeklySchemaWarning && pathname !== '/assistant' ? (
           <Alert className="mb-6 border-amber-300/22 bg-[color:color-mix(in_oklab,var(--rank-gold)_18%,transparent)] text-amber-50">
             <AlertTitle className="font-heading text-sm">Schema Attention Needed</AlertTitle>
             <AlertDescription className="text-amber-100/80">{weeklySchemaWarning}</AlertDescription>
@@ -284,7 +288,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
         {children}
       </main>
 
-      <MobileMoreNav />
+      {pathname !== '/assistant' ? <MobileMoreNav /> : null}
     </div>
   );
 }
