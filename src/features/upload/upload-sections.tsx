@@ -214,6 +214,7 @@ export function UploadProcessingPanel({
   completedRankingRows,
   onOpenReview,
   onOpenRankingReview,
+  onOpenAssistant,
 }: {
   scanJobState: ScanJobResponse | null;
   entries: UploadQueueEntry[];
@@ -221,6 +222,7 @@ export function UploadProcessingPanel({
   completedRankingRows: number;
   onOpenReview: () => void;
   onOpenRankingReview: () => void;
+  onOpenAssistant: () => void;
 }) {
   if (!scanJobState || (scanJobState.status !== 'REVIEW' && scanJobState.status !== 'FAILED')) {
     return null;
@@ -236,6 +238,13 @@ export function UploadProcessingPanel({
       }
       actions={
         <FilterBar>
+          <Button
+            variant="outline"
+            className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1"
+            onClick={onOpenAssistant}
+          >
+            Ask Assistant
+          </Button>
           <Button
             variant="outline"
             className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1"

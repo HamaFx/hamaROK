@@ -812,7 +812,7 @@ export default function RankingsScreen() {
                       <div className="flex min-w-0 flex-col">
                         <div className="flex items-center gap-2">
                           <p className="truncate font-heading text-base font-medium text-tier-1">{row.displayName}</p>
-                          {row.titleRaw && <span className="rounded px-1.5 py-0.5 text-[10px] font-bold tracking-wider text-sky-400 bg-sky-400/10 uppercase border border-sky-400/20">{row.titleRaw}</span>}
+                          {row.titleRaw && <span className="rounded px-1.5 py-0.5 text-xs font-bold tracking-wider text-sky-400 bg-sky-400/10 uppercase border border-sky-400/20">{row.titleRaw}</span>}
                         </div>
                         <div className="mt-0.5 flex items-center gap-2 text-xs text-tier-3">
                           {row.allianceLabel ? <span className="truncate text-tier-2">{row.allianceLabel}</span> : <span>No Alliance</span>}
@@ -825,24 +825,24 @@ export default function RankingsScreen() {
                     <div className="grid grid-cols-2 gap-4 sm:flex sm:w-[55%] sm:items-center sm:justify-end sm:gap-6">
                       <div className="flex flex-col items-start sm:items-end">
                         <p className="font-heading text-lg font-bold text-tier-1">{formatMetric(row.metricValue)}</p>
-                        <p className="text-[10px] uppercase tracking-wider text-tier-3">{row.metricLabel}</p>
+                        <p className="text-xs uppercase tracking-wider text-tier-3">{row.metricLabel}</p>
                       </div>
                       
                       <div className="flex flex-col justify-center sm:w-28">
                         <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/5">
                           <div className="h-full rounded-full bg-[color:var(--primary)] shadow-[0_0_8px_var(--primary)]" style={{ width: `${Math.max(2, row.metricRatio)}%` }} />
                         </div>
-                        <p className="mt-1.5 text-right text-[10px] font-medium tracking-wide text-tier-3">{row.metricRatio.toFixed(1)}% / MAX</p>
+                        <p className="mt-1.5 text-right text-xs font-medium tracking-wide text-tier-3">{row.metricRatio.toFixed(1)}% / MAX</p>
                       </div>
 
                       <div className="hidden flex-col items-end sm:flex sm:w-24">
                         <span className="truncate text-[11px] text-tier-2">{row.boardLabel}</span>
                         {isConflict ? (
-                          <span className={`mt-1 whitespace-nowrap rounded px-1.5 py-0.5 text-[10px] font-bold ${row.status === 'UNRESOLVED' ? 'bg-amber-400/10 text-amber-400 border border-amber-400/20' : 'bg-rose-400/10 text-rose-400 border border-rose-400/20'}`}>
+                          <span className={`mt-1 whitespace-nowrap rounded px-1.5 py-0.5 text-xs font-bold ${row.status === 'UNRESOLVED' ? 'bg-amber-400/10 text-amber-400 border border-amber-400/20' : 'bg-rose-400/10 text-rose-400 border border-rose-400/20'}`}>
                             {row.status}
                           </span>
                         ) : (
-                          <span className="mt-1 flex items-center gap-1.5 text-[10px] font-bold tracking-wider text-emerald-400">
+                          <span className="mt-1 flex items-center gap-1.5 text-xs font-bold tracking-wider text-emerald-400">
                             <span className="size-1.5 rounded-full bg-emerald-400 shadow-[0_0_4px_#34d399]" />
                             VERIFIED
                           </span>
@@ -858,19 +858,19 @@ export default function RankingsScreen() {
                      return (
                        <div className="mt-2 grid grid-cols-3 gap-2 rounded-xl bg-white/5 p-3 sm:flex sm:justify-end sm:gap-6">
                          <div className="flex flex-col">
-                           <span className="text-[10px] font-medium uppercase tracking-wider text-tier-3">Weekly KP</span>
+                           <span className="text-xs font-medium uppercase tracking-wider text-tier-3">Weekly KP</span>
                            <span className={`font-heading text-sm font-bold ${kpGrowth > BigInt(0) ? 'text-emerald-400' : 'text-tier-2'}`}>
                              {match.killPointsGrowth ? '+' + formatMetric(match.killPointsGrowth) : 'N/A'}
                            </span>
                          </div>
                          <div className="flex flex-col">
-                           <span className="text-[10px] font-medium uppercase tracking-wider text-tier-3">Forts</span>
+                           <span className="text-xs font-medium uppercase tracking-wider text-tier-3">Forts</span>
                            <span className="font-heading text-sm font-bold text-tier-2">
                              {formatMetric(match.fortDestroying)}
                            </span>
                          </div>
                          <div className="flex flex-col">
-                           <span className="text-[10px] font-medium uppercase tracking-wider text-tier-3">Power Growth</span>
+                           <span className="text-xs font-medium uppercase tracking-wider text-tier-3">Power Growth</span>
                            <span className={`font-heading text-sm font-bold ${pwrGrowth > BigInt(0) ? 'text-emerald-400' : pwrGrowth < BigInt(0) ? 'text-rose-400' : 'text-tier-2'}`}>
                              {match.powerGrowth ? (pwrGrowth > BigInt(0) ? '+' : '') + formatMetric(match.powerGrowth) : 'N/A'}
                            </span>

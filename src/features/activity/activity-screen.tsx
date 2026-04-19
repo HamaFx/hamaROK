@@ -617,10 +617,10 @@ export default function ActivityScreen() {
             </div>
             <div className="flex gap-2">
               {row.deadsGrowth && Number(row.deadsGrowth) > 0 && (
-                <span className="text-[10px] text-[color:var(--rok-crimson)] font-mono">{formatCompactNumber(row.deadsGrowth)} Dead</span>
+                <span className="text-xs text-[color:var(--rok-crimson)] font-mono">{formatCompactNumber(row.deadsGrowth)} Dead</span>
               )}
               {row.t5KillsGrowth && Number(row.t5KillsGrowth) > 0 && (
-                <span className="text-[10px] text-[color:var(--rok-gold)] font-mono">{formatCompactNumber(row.t5KillsGrowth)} T5</span>
+                <span className="text-xs text-[color:var(--rok-gold)] font-mono">{formatCompactNumber(row.t5KillsGrowth)} T5</span>
               )}
             </div>
           </div>

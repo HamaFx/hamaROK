@@ -46,6 +46,7 @@ interface RankingReviewItemCardProps {
   onRerunProfileChange: (value: string) => void;
   onRerun: () => void;
   onAction: (action: ReviewAction) => void;
+  onAskAssistant?: () => void;
 }
 
 const AUTO_PROFILE = '__auto_rankboard__';
@@ -73,6 +74,7 @@ export function RankingReviewItemCard({
   onRerunProfileChange,
   onRerun,
   onAction,
+  onAskAssistant,
 }: RankingReviewItemCardProps) {
   const candidatePreview =
     Array.isArray(row.identitySuggestions) && row.identitySuggestions.length > 0
@@ -237,6 +239,16 @@ export function RankingReviewItemCard({
                 <RefreshCw className="mr-1.5 size-4" />
                 {busyRow === `${row.id}:RERUN_OCR` ? 'Re-running...' : 'Re-run OCR'}
               </Button>
+              {onAskAssistant ? (
+                <Button
+                  variant="outline"
+                  className="shrink-0 rounded-xl border-[color:var(--stroke-soft)] bg-black/40 text-tier-1 hover:bg-[color:var(--surface-4)]"
+                  onClick={onAskAssistant}
+                >
+                  <Sparkles className="mr-1.5 size-4" />
+                  Ask Assistant
+                </Button>
+              ) : null}
             </div>
 
             {/* Thumb-Friendly 2x2 Action Grid */}

@@ -549,7 +549,7 @@ export default function HomeScreen() {
                           </div>
                           <div className="min-w-0">
                             <p className="text-sm font-bold text-tier-1 truncate">{r.governorName}</p>
-                            <p className="text-[10px] text-tier-3">{r.allianceLabel}</p>
+                            <p className="text-xs text-tier-3">{r.allianceLabel}</p>
                           </div>
                         </div>
                         <div className="text-right shrink-0">
@@ -573,7 +573,7 @@ export default function HomeScreen() {
                           </div>
                           <div className="min-w-0">
                             <p className="text-sm font-bold text-tier-1 truncate">{r.governorName}</p>
-                            <p className="text-[10px] text-tier-3">{r.allianceLabel}</p>
+                            <p className="text-xs text-tier-3">{r.allianceLabel}</p>
                           </div>
                         </div>
                         <div className="text-right shrink-0">

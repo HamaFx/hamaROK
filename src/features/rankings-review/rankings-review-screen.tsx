@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import type { OcrRuntimeProfile } from '@/lib/ocr/profiles';
 import { useWorkspaceSession } from '@/lib/workspace-session';
@@ -48,6 +49,7 @@ import {
   SkeletonSet,
   StatusPill,
 } from '@/components/ui/primitives';
+import { createAssistantHandoff } from '@/features/assistant/handoff';
 
 const ALL_STATUS = '__all_status__';
 const ALL_RANKING_TYPE = '__all_ranking_type__';
@@ -124,6 +126,7 @@ function groupRowsClient(rows: ReviewRow[]): RankingReviewGroup[] {
 }
 
 export default function RankingReviewPage() {
+  const router = useRouter();
   const {
     workspaceId,
     accessToken,
@@ -372,13 +375,47 @@ export default function RankingReviewPage() {
       });
 
       const preferredProfileId = rerunProfileByRow[row.id] || undefined;
-      const { processRankingScreenshot } = await import('@/lib/ocr/ocr-engine');
-      const result = await processRankingScreenshot(file, {
-        profiles: rankingProfiles.length > 0 ? rankingProfiles : undefined,
-        preferredProfileId,
+      const formData = new FormData();
+      formData.set('workspaceId', workspaceId);
+      formData.set('archetypeHint', 'ranking_board');
+      formData.set('file', file);
+      if (preferredProfileId) {
+        formData.set('preferredProfileId', preferredProfileId);
+      }
+
+      const diagnosticsRes = await fetch('/api/v2/ocr/run', {
+        method: 'POST',
+        headers: {
+          'x-access-token': accessToken,
+        },
+        body: formData,
       });
 
-      const matched = pickBestRerunRowMatch(row, result.rows);
+      const diagnosticsPayload = await diagnosticsRes.json();
+      if (!diagnosticsRes.ok) {
+        throw new Error(
+          diagnosticsPayload?.error?.message || 'Failed to run server OCR diagnostics.'
+        );
+      }
+
+      const diagnostics = diagnosticsPayload?.data || {};
+      const diagnosticRows = Array.isArray(diagnostics.rows)
+        ? (diagnostics.rows as Array<Record<string, unknown>>).map((entry, index) => ({
+            rowIndex: index,
+            sourceRank:
+              typeof entry.sourceRank === 'number' && Number.isFinite(entry.sourceRank)
+                ? entry.sourceRank
+                : null,
+            governorNameRaw: String(entry.governorNameRaw || ''),
+            metricRaw: String(entry.metricRaw || ''),
+            confidence:
+              typeof entry.confidence === 'number' && Number.isFinite(entry.confidence)
+                ? entry.confidence
+                : 0,
+          }))
+        : [];
+
+      const matched = pickBestRerunRowMatch(row, diagnosticRows);
       if (!matched) {
         throw new Error('Re-run OCR completed but no usable ranking rows were detected.');
       }
@@ -393,21 +430,6 @@ export default function RankingReviewPage() {
         },
       }));
 
-      const diagnosticsRes = await fetch('/api/v2/ocr/run', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-access-token': accessToken,
-        },
-        body: JSON.stringify({
-          workspaceId,
-          preferredProfileId: preferredProfileId || null,
-          extraction: result,
-        }),
-      });
-
-      const diagnosticsPayload = await diagnosticsRes.json();
-      const diagnostics = diagnosticsPayload?.data || {};
       const diagnosticsMetadata =
         diagnostics && typeof diagnostics.metadata === 'object' && diagnostics.metadata
           ? (diagnostics.metadata as Record<string, unknown>)
@@ -430,25 +452,25 @@ export default function RankingReviewPage() {
         typeof diagnosticsMetadata.classificationConfidence === 'number' &&
         Number.isFinite(diagnosticsMetadata.classificationConfidence)
           ? diagnosticsMetadata.classificationConfidence
-          : result.metadata?.classificationConfidence ?? null;
+          : null;
       const hintDroppedRowCount =
         typeof diagnosticsMetadata.droppedRowCount === 'number' &&
         Number.isFinite(diagnosticsMetadata.droppedRowCount)
           ? diagnosticsMetadata.droppedRowCount
-          : result.metadata?.droppedRowCount ?? null;
+          : null;
 
       setRerunHints((prev) => ({
         ...prev,
         [row.id]: {
-          profileId: diagnostics.profileId || result.profileId || null,
-          templateId: diagnostics.templateId || result.templateId || null,
-          detectedRankingType: diagnostics.rankingType || result.rankingType,
-          detectedMetricKey: diagnostics.metricKey || result.metricKey,
+          profileId: preferredProfileId || null,
+          templateId: null,
+          detectedRankingType: diagnostics.rankingType || row.run.rankingType,
+          detectedMetricKey: diagnostics.metricKey || row.run.metricKey,
           matchedRowIndex: matched.rowIndex,
           matchedSourceRank: matched.sourceRank,
           matchedConfidence: matched.confidence,
           lowConfidence: Boolean(
-            diagnostics.lowConfidence ?? result.lowConfidence ?? matched.confidence < 70
+            diagnostics.lowConfidence ?? matched.confidence < 70
           ),
           failureReasons: Array.isArray(diagnostics.failureReasons)
             ? diagnostics.failureReasons.slice(0, 6)
@@ -872,6 +894,39 @@ export default function RankingReviewPage() {
                         <Button
                           size="sm"
                           variant="outline"
+                          className="h-8 rounded-lg border-cyan-400/25 bg-cyan-500/10 text-cyan-100 hover:bg-cyan-500/20"
+                          onClick={() => {
+                            const token = createAssistantHandoff({
+                              source: 'ranking_review',
+                              workspaceId,
+                              title: 'Ranking Screenshot Handoff',
+                              summary: `Run ${group.runId.slice(-8)} with ${group.totalRows} rows.`,
+                              suggestedPrompt:
+                                'Analyze this ranking screenshot and map rows to existing players. Suggest any aliases, player updates, and stat actions needed.',
+                              artifacts: group.artifact?.id
+                                ? [
+                                    {
+                                      artifactId: group.artifact.id,
+                                      url: group.artifact.url,
+                                      fileName: `${group.headerText || 'ranking-run'}.png`,
+                                      mimeType: 'image/png',
+                                    },
+                                  ]
+                                : [],
+                              meta: {
+                                runId: group.runId,
+                                rankingType: group.rankingType,
+                                metricKey: group.metricKey,
+                              },
+                            });
+                            router.push(`/assistant?handoff=${encodeURIComponent(token)}`);
+                          }}
+                        >
+                          Ask Assistant
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
                           className="h-8 rounded-lg border-emerald-500/20 bg-emerald-500/5 text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-300 font-bold text-[11px] uppercase tracking-wider"
                           onClick={() => void runBulkAction('accept_linked', group)}
                           disabled={!!busyRow || !hasAcceptLinkedTargets}
@@ -934,14 +989,14 @@ export default function RankingReviewPage() {
                               {/* Left: Identity & Rank Info */}
                               <div className="flex items-center gap-4 min-w-0 flex-1">
                                 <div className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/5 bg-black/40 font-mono text-[15px] font-bold text-tier-2 shadow-inner">
-                                  <span className="opacity-40 text-[10px] absolute top-1 left-1.5 font-sans">#</span>
+                                  <span className="opacity-40 text-xs absolute top-1 left-1.5 font-sans">#</span>
                                   {row.sourceRank ?? '-'}
                                 </div>
                                 <div className="min-w-0 flex-1">
                                   <div className="flex items-center gap-2 flex-wrap">
                                     <h4 className="font-heading font-bold text-tier-1 text-[15px] tracking-tight truncate">{row.governorNameRaw}</h4>
                                     {row.allianceRaw && (
-                                      <span className="inline-flex items-center rounded-md bg-cyan-400/10 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-cyan-300 border border-cyan-400/20">
+                                      <span className="inline-flex items-center rounded-md bg-cyan-400/10 px-1.5 py-0.5 text-xs font-bold uppercase tracking-wider text-cyan-300 border border-cyan-400/20">
                                         {row.allianceRaw}
                                       </span>
                                     )}
@@ -964,7 +1019,7 @@ export default function RankingReviewPage() {
                                     key={`${row.id}:${suggestion.governorId}`}
                                     size="sm"
                                     variant="outline"
-                                    className="h-7 text-[10px] uppercase tracking-wider font-bold rounded-lg border-white/[0.08] bg-black/20 text-tier-2 hover:bg-white/5 hover:text-tier-1 transition-all"
+                                    className="h-7 text-xs uppercase tracking-wider font-bold rounded-lg border-white/[0.08] bg-black/20 text-tier-2 hover:bg-white/5 hover:text-tier-1 transition-all"
                                     disabled={!!busyRow}
                                     onClick={() => void runAction(row, "LINK_TO_GOVERNOR", { governorGameId: suggestion.governorGameId })}
                                   >
@@ -1029,6 +1084,32 @@ export default function RankingReviewPage() {
                                   onAction={(action) => {
                                       void runAction(row, action);
                                       setExpandedRowId(null);
+                                  }}
+                                  onAskAssistant={() => {
+                                    const token = createAssistantHandoff({
+                                      source: 'ranking_review',
+                                      workspaceId,
+                                      title: 'Ranking Row Handoff',
+                                      summary: `Row ${row.id.slice(-8)} (${row.governorNameRaw}).`,
+                                      suggestedPrompt:
+                                        'Use this ranking row screenshot to resolve player identity and propose clean updates for the workspace.',
+                                      artifacts: row.run.artifact?.id
+                                        ? [
+                                            {
+                                              artifactId: row.run.artifact.id,
+                                              url: row.run.artifact.url,
+                                              fileName: `${row.governorNameRaw || 'ranking-row'}.png`,
+                                              mimeType: 'image/png',
+                                            },
+                                          ]
+                                        : [],
+                                      meta: {
+                                        rowId: row.id,
+                                        runId: row.runId,
+                                        identityStatus: row.identityStatus,
+                                      },
+                                    });
+                                    router.push(`/assistant?handoff=${encodeURIComponent(token)}`);
                                   }}
                                 />
                             </div>

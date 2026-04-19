@@ -464,6 +464,7 @@ function toProvider(value: string | undefined): OcrProvider {
   const normalized = String(value || '')
     .trim()
     .toUpperCase();
+  if (normalized === OcrProvider.MISTRAL) return OcrProvider.MISTRAL;
   if (normalized === OcrProvider.FALLBACK) return OcrProvider.FALLBACK;
   if (normalized === OcrProvider.MANUAL) return OcrProvider.MANUAL;
   return OcrProvider.TESSERACT;

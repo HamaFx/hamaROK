@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import {
   getAppSigningSecret,
   getEnv,
+  getOcrEngine,
   getUploadMode,
   validateRuntimeEnv,
 } from '@/lib/env';
@@ -10,7 +11,7 @@ import { getWeeklySchemaCapability } from '@/lib/weekly-schema-guard';
 export const dynamic = 'force-dynamic';
 
 interface ReadinessCheck {
-  name: 'env' | 'database' | 'weekly_schema';
+  name: 'env' | 'database' | 'weekly_schema' | 'mistral';
   ok: boolean;
   message?: string;
 }
@@ -29,11 +30,13 @@ export async function GET() {
 
   let env: ReturnType<typeof getEnv> | null = null;
   let uploadMode: 'queue_first' | 'client_legacy' | null = null;
+  let ocrEngine: 'mistral' | 'legacy' | null = null;
 
   try {
     env = validateRuntimeEnv();
     getAppSigningSecret();
     uploadMode = getUploadMode();
+    ocrEngine = getOcrEngine();
     checks.push({ name: 'env', ok: true });
   } catch (error) {
     ready = false;
@@ -41,6 +44,24 @@ export async function GET() {
       name: 'env',
       ok: false,
       message: toErrorMessage(error),
+    });
+  }
+
+  if (env && ocrEngine === 'mistral') {
+    const hasApiKey = Boolean(env.MISTRAL_API_KEY);
+    checks.push({
+      name: 'mistral',
+      ok: hasApiKey,
+      message: hasApiKey ? undefined : 'MISTRAL_API_KEY is missing while OCR_ENGINE=mistral.',
+    });
+    if (!hasApiKey) {
+      ready = false;
+    }
+  } else {
+    checks.push({
+      name: 'mistral',
+      ok: true,
+      message: ocrEngine === 'legacy' ? 'Legacy OCR engine active.' : undefined,
     });
   }
 
@@ -89,6 +110,9 @@ export async function GET() {
       `Weekly schema migration required: ${weeklySchema.missing.join(', ')}.`
     );
   }
+  if (env && (env.OCR_ENGINE ?? 'mistral') === 'mistral' && !env.MISTRAL_API_KEY) {
+    warnings.push('MISTRAL_API_KEY is not configured while OCR_ENGINE=mistral.');
+  }
 
   return NextResponse.json(
     {
@@ -107,6 +131,11 @@ export async function GET() {
           startLambdaConfigured: Boolean(env?.AWS_OCR_START_LAMBDA),
           stopLambdaConfigured: Boolean(env?.AWS_OCR_STOP_LAMBDA),
           instanceConfigured: Boolean(env?.AWS_OCR_INSTANCE_ID),
+        },
+        ocr: {
+          engine: ocrEngine || (env?.OCR_ENGINE ?? 'mistral'),
+          mistralConfigured: Boolean(env?.MISTRAL_API_KEY),
+          mistralBaseUrl: env?.MISTRAL_BASE_URL || 'https://api.mistral.ai',
         },
         weeklySchema: weeklySchema
           ? {

@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ShieldCheck, XCircle } from 'lucide-react';
 import type { OcrRuntimeProfile } from '@/lib/ocr/profiles';
@@ -38,10 +39,12 @@ import {
   SkeletonSet,
   StatusPill,
 } from '@/components/ui/primitives';
+import { createAssistantHandoff } from '@/features/assistant/handoff';
 
 const ALL_SEVERITY = '__all__';
 
 export default function ReviewQueuePage() {
+  const router = useRouter();
   const {
     workspaceId,
     accessToken,
@@ -277,20 +280,38 @@ export default function ReviewQueuePage() {
       const ext = blob.type.includes('png') ? 'png' : blob.type.includes('webp') ? 'webp' : 'jpg';
       const file = new File([blob], `rerun-${item.id}.${ext}`, { type: blob.type || 'image/png' });
 
-      const { processScreenshot } = await import('@/lib/ocr/ocr-engine');
-      const result = await processScreenshot(file, {
-        profiles: profiles.length > 0 ? profiles : undefined,
-        preferredProfileId: profileId,
+      const formData = new FormData();
+      formData.set('workspaceId', workspaceId);
+      formData.set('archetypeHint', 'governor_profile');
+      formData.set('file', file);
+
+      const diagnosticsRes = await fetch('/api/v2/ocr/run', {
+        method: 'POST',
+        headers: {
+          'x-access-token': accessToken,
+        },
+        body: formData,
       });
 
+      const diagnosticsPayload = await diagnosticsRes.json();
+      if (!diagnosticsRes.ok) {
+        throw new Error(diagnosticsPayload?.error?.message || 'Failed to run server OCR diagnostics.');
+      }
+
+      const diagnostics = diagnosticsPayload?.data || {};
+      const normalized =
+        diagnostics.normalized && typeof diagnostics.normalized === 'object'
+          ? (diagnostics.normalized as Record<string, unknown>)
+          : {};
+
       const nextDraft = {
-        governorId: result.governorId.value,
-        governorName: result.governorName.value,
-        power: result.power.value,
-        killPoints: result.killPoints.value,
-        t4Kills: result.t4Kills.value,
-        t5Kills: result.t5Kills.value,
-        deads: result.deads.value,
+        governorId: String(normalized.governorId || ''),
+        governorName: String(normalized.governorName || ''),
+        power: String(normalized.power || ''),
+        killPoints: String(normalized.killPoints || ''),
+        t4Kills: String(normalized.t4Kills || ''),
+        t5Kills: String(normalized.t5Kills || ''),
+        deads: String(normalized.deads || ''),
       };
 
       setDrafts((prev) => ({
@@ -298,29 +319,15 @@ export default function ReviewQueuePage() {
         [item.id]: nextDraft,
       }));
 
-      const diagnosticsRes = await fetch('/api/v2/ocr/run', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-access-token': accessToken,
-        },
-        body: JSON.stringify({
-          workspaceId,
-          preferredProfileId: profileId || null,
-          extraction: result,
-        }),
-      });
-
-      const diagnosticsPayload = await diagnosticsRes.json();
       const rerunPayload = {
-        profileId: result.profileId,
-        engineVersion: result.engineVersion,
+        profileId: profileId || null,
+        engineVersion: diagnostics.engineVersion || 'mistral-ocr-latest+mistral-large-latest',
         normalized: nextDraft,
-        preprocessingTrace: result.preprocessingTrace,
-        candidates: result.candidates,
-        fusionDecision: result.fusionDecision,
-        failureReasons: diagnosticsPayload?.data?.failureReasons || result.failureReasons || [],
-        lowConfidence: diagnosticsPayload?.data?.lowConfidence ?? result.lowConfidence ?? false,
+        preprocessingTrace: diagnostics.preprocessingTrace || {},
+        candidates: diagnostics.candidates || {},
+        fusionDecision: diagnostics.fusionDecision || {},
+        failureReasons: diagnostics.failureReasons || [],
+        lowConfidence: diagnostics.lowConfidence ?? false,
       };
 
       setRerunPayloadByItem((prev) => ({
@@ -629,6 +636,32 @@ export default function ReviewQueuePage() {
                     onRerun={() => void rerunOcr(item)}
                     onSaveGolden={() => void saveGoldenFixture(item)}
                     onSubmit={(status) => void submitReview(item.id, status)}
+                    onAskAssistant={() => {
+                      const token = createAssistantHandoff({
+                        source: 'review',
+                        workspaceId,
+                        title: 'OCR Review Row Handoff',
+                        summary: `Queue row ${item.id.slice(-8)} with severity ${item.severity.level}.`,
+                        suggestedPrompt:
+                          'Analyze this OCR review screenshot and propose the exact player registration/update/stat actions required.',
+                        artifacts: item.artifact?.id
+                          ? [
+                              {
+                                artifactId: item.artifact.id,
+                                url: item.artifact.url,
+                                fileName: `${item.values.governorName.value || 'ocr-row'}.png`,
+                                mimeType: 'image/png',
+                              },
+                            ]
+                          : [],
+                        meta: {
+                          reviewQueueId: item.id,
+                          status: item.status,
+                          severity: item.severity.level,
+                        },
+                      });
+                      router.push(`/assistant?handoff=${encodeURIComponent(token)}`);
+                    }}
                   />
                 );
               })}

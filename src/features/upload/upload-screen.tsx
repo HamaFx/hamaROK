@@ -22,6 +22,7 @@ import {
   UploadSubmitNotice,
   UploadWorkerPanel,
 } from './upload-sections';
+import { createAssistantHandoff } from '@/features/assistant/handoff';
 
 const UPLOAD_CONCURRENCY = 4;
 const MAX_RETRIES = 3;
@@ -886,6 +887,39 @@ export default function UploadPage() {
     [entries]
   );
 
+  const openAssistantFromUpload = useCallback(() => {
+    if (!workspaceId) return;
+    const contextArtifacts = entries
+      .filter((entry) => {
+        if (!(entry.status === 'completed' || entry.status === 'duplicate')) return false;
+        if (!entry.artifactId) return false;
+        return true;
+      })
+      .slice(0, 6)
+      .map((entry) => ({
+        artifactId: entry.artifactId || null,
+        url: entry.artifactUrl || undefined,
+        fileName: entry.fileName,
+        mimeType: 'image/png',
+      }));
+
+    const token = createAssistantHandoff({
+      source: 'upload',
+      workspaceId,
+      title: 'Upload Completion Handoff',
+      summary: `Scan job ${scanJobId || ''} finished. Profile rows: ${completedProfileRows}, ranking rows: ${completedRankingRows}.`,
+      suggestedPrompt:
+        'Review these uploaded screenshots. Register any new players and prepare stat updates for existing players. If identities are ambiguous, ask for resolution.',
+      artifacts: contextArtifacts,
+      meta: {
+        scanJobId,
+        status: scanJobState?.status || null,
+      },
+    });
+
+    router.push(`/assistant?handoff=${encodeURIComponent(token)}`);
+  }, [workspaceId, entries, scanJobId, completedProfileRows, completedRankingRows, scanJobState?.status, router]);
+
   return (
     <div className="space-y-4 sm:space-y-5 lg:space-y-6">
       <PageHero
@@ -941,6 +975,7 @@ export default function UploadPage() {
           entries={entries}
           completedProfileRows={completedProfileRows}
           completedRankingRows={completedRankingRows}
+          onOpenAssistant={openAssistantFromUpload}
           onOpenReview={() => router.push('/review')}
           onOpenRankingReview={() => router.push('/rankings/review')}
         />

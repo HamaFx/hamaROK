@@ -4,6 +4,7 @@ import { authorizeWorkspaceAccess } from '@/lib/workspace-auth';
 import { fail, handleApiError, ok } from '@/lib/api-response';
 import { getQueryParam } from '@/lib/v2';
 import { prisma } from '@/lib/prisma';
+import { deleteEventTx } from '@/lib/domain/workspace-actions';
 
 export async function GET(
   request: NextRequest,
@@ -99,20 +100,14 @@ export async function DELETE(
     }
 
     const { id } = await params;
-    const event = await prisma.event.findFirst({
-      where: { id, workspaceId },
-      select: { id: true },
-    });
+    const result = await prisma.$transaction((tx) =>
+      deleteEventTx(tx, {
+        workspaceId,
+        eventId: id,
+      })
+    );
 
-    if (!event) {
-      return fail('NOT_FOUND', 'Event not found in this workspace.', 404);
-    }
-
-    await prisma.event.delete({
-      where: { id: event.id },
-    });
-
-    return ok({ id: event.id, deleted: true });
+    return ok(result);
   } catch (error) {
     return handleApiError(error);
   }

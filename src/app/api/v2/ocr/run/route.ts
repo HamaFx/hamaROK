@@ -8,6 +8,9 @@ import { normalizeFieldValue } from '@/lib/ocr/field-config';
 import { selectBestRuntimeProfile } from '@/lib/ocr/profiles';
 import { authorizeWorkspaceAccess } from '@/lib/workspace-auth';
 import { splitGovernorNameAndAlliance } from '@/lib/alliances';
+import { getOcrEngine } from '@/lib/env';
+import { runMistralDiagnostics } from '@/lib/ocr/mistral-extraction';
+import { prisma } from '@/lib/prisma';
 
 const fieldSchema = z.object({
   value: z.string().default(''),
@@ -81,6 +84,62 @@ const requestSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
+    const contentType = request.headers.get('content-type') || '';
+    if (contentType.includes('multipart/form-data')) {
+      const formData = await request.formData();
+      const workspaceId = String(formData.get('workspaceId') || '').trim();
+      if (!workspaceId) {
+        return fail('VALIDATION_ERROR', 'workspaceId is required.', 400);
+      }
+
+      const auth = await authorizeWorkspaceAccess(
+        request,
+        workspaceId,
+        WorkspaceRole.EDITOR
+      );
+      if (!auth.ok) {
+        return fail(auth.code, auth.message, auth.code === 'UNAUTHORIZED' ? 401 : 403);
+      }
+
+      const file = formData.get('file');
+      if (!(file instanceof File)) {
+        return fail('VALIDATION_ERROR', 'file is required as multipart upload.', 400);
+      }
+
+      if (getOcrEngine() === 'legacy') {
+        return fail(
+          'PRECONDITION_FAILED',
+          'Server-side multipart OCR diagnostics require OCR_ENGINE=mistral.',
+          412
+        );
+      }
+
+      const settings = await prisma.workspaceSettings.findUnique({
+        where: { workspaceId },
+        select: {
+          ocrModel: true,
+          assistantModel: true,
+        },
+      });
+
+      const mimeType = file.type || 'image/png';
+      const imageBuffer = Buffer.from(await file.arrayBuffer());
+      const base64 = imageBuffer.toString('base64');
+      const archetypeHint = String(formData.get('archetypeHint') || '').trim() || undefined;
+
+      const diagnostics = await runMistralDiagnostics({
+        image: {
+          base64,
+          mimeType,
+        },
+        archetypeHint,
+        ocrModel: settings?.ocrModel || undefined,
+        extractionModel: settings?.assistantModel || undefined,
+      });
+
+      return ok(diagnostics);
+    }
+
     const body = requestSchema.parse(await readJson(request));
 
     const auth = await authorizeWorkspaceAccess(

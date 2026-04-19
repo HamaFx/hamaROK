@@ -33,4 +33,13 @@ describe('frontend shell navigation', () => {
     expect(TOOL_NAV_ITEMS.length).toBeGreaterThan(0);
     expect(TOOL_NAV_ITEMS.every((item) => item.group === 'tools')).toBe(true);
   });
+
+  it('includes assistant in tools and keeps calibration on diagnostics wording', () => {
+    const assistant = TOOL_NAV_ITEMS.find((item) => item.href === '/assistant');
+    const calibration = TOOL_NAV_ITEMS.find((item) => item.href === '/calibration');
+
+    expect(assistant).toBeDefined();
+    expect(assistant?.label).toBe('Assistant');
+    expect(calibration?.description.toLowerCase()).toContain('diagnostic');
+  });
 });

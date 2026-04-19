@@ -39,6 +39,7 @@ interface ReviewItemCardProps {
   onRerun: () => void;
   onSaveGolden: () => void;
   onSubmit: (status: ExtractionStatus) => void;
+  onAskAssistant?: () => void;
 }
 
 const AUTO_PROFILE = '__auto__';
@@ -73,6 +74,7 @@ export function ReviewItemCard({
   onRerun,
   onSaveGolden,
   onSubmit,
+  onAskAssistant,
 }: ReviewItemCardProps) {
   const busy = actionBusy != null;
   const busyApprove = actionBusy === `${item.id}APPROVED`;
@@ -171,15 +173,27 @@ export function ReviewItemCard({
         <section className="space-y-3 rounded-2xl border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] p-3.5">
           {item.artifact?.url ? (
             <>
-              <a
-                href={item.artifact.url}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[color:var(--stroke-soft)] bg-black/20 px-3.5 text-sm text-tier-2 hover:bg-black/30"
-              >
-                <ExternalLink className="size-4" />
-                Open Screenshot
-              </a>
+              <div className="flex flex-wrap gap-2">
+                <a
+                  href={item.artifact.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[color:var(--stroke-soft)] bg-black/20 px-3.5 text-sm text-tier-2 hover:bg-black/30"
+                >
+                  <ExternalLink className="size-4" />
+                  Open Screenshot
+                </a>
+                {onAskAssistant ? (
+                  <Button
+                    variant="outline"
+                    className="rounded-full border-[color:var(--stroke-soft)] bg-black/20 text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1"
+                    onClick={onAskAssistant}
+                  >
+                    <Sparkles data-icon="inline-start" />
+                    Ask Assistant
+                  </Button>
+                ) : null}
+              </div>
               <div className="overflow-hidden rounded-2xl border border-[color:var(--stroke-soft)] bg-black/20">
                 <Image
                   src={item.artifact.url}

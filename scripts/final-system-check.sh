@@ -41,7 +41,7 @@ echo "Rules:     $START_RULE_NAME=$START_RULE_STATE, $STOP_RULE_NAME=$STOP_RULE_
 echo ""
 echo "== Vercel env checks =="
 ENV_DUMP="$(npx vercel env ls)"
-for key in AWS_OCR_CONTROL_ENABLED AWS_REGION AWS_OCR_QUEUE_URL AWS_OCR_START_LAMBDA AWS_OCR_STOP_LAMBDA AWS_OCR_INSTANCE_ID UPLOAD_MODE AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY APP_SIGNING_SECRET POSTGRES_PRISMA_URL BLOB_READ_WRITE_TOKEN; do
+for key in POSTGRES_PRISMA_URL BLOB_READ_WRITE_TOKEN NEXT_PUBLIC_APP_URL APP_SIGNING_SECRET OCR_ENGINE MISTRAL_API_KEY MISTRAL_BASE_URL AWS_OCR_CONTROL_ENABLED AWS_REGION AWS_OCR_QUEUE_URL AWS_OCR_START_LAMBDA AWS_OCR_STOP_LAMBDA AWS_OCR_INSTANCE_ID UPLOAD_MODE AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY; do
   echo "$ENV_DUMP" | rg -q "$key" || { echo "Missing Vercel env: $key" >&2; exit 1; }
 done
 echo "OK: required Vercel environment variables present"
@@ -63,6 +63,50 @@ if [[ "$HEALTH_CODE" != "200" ]]; then
   exit 1
 fi
 echo "OK: $APP_URL/api/healthz returns 200"
+
+if ! rg -q '"status":"ok"' /tmp/rok-health.json; then
+  echo "Health payload did not return status=ok." >&2
+  cat /tmp/rok-health.json >&2
+  exit 1
+fi
+if ! rg -q '"name":"mistral"' /tmp/rok-health.json; then
+  echo "Health payload missing mistral readiness check." >&2
+  cat /tmp/rok-health.json >&2
+  exit 1
+fi
+if ! rg -q '"name":"mistral","ok":true' /tmp/rok-health.json; then
+  echo "Health payload reports mistral readiness failure." >&2
+  cat /tmp/rok-health.json >&2
+  exit 1
+fi
+echo "OK: mistral readiness is present and healthy"
+
+ASSISTANT_PAGE_CODE="$(curl -s -o /tmp/rok-assistant.html -w '%{http_code}' "$APP_URL/assistant")"
+if [[ "$ASSISTANT_PAGE_CODE" != "200" ]]; then
+  echo "Assistant page check failed ($APP_URL/assistant -> $ASSISTANT_PAGE_CODE)." >&2
+  head -c 1200 /tmp/rok-assistant.html >&2 || true
+  echo "" >&2
+  exit 1
+fi
+echo "OK: $APP_URL/assistant returns 200"
+
+ASSISTANT_API_CODE="$(curl -s -o /tmp/rok-assistant-api.json -w '%{http_code}' "$APP_URL/api/v2/assistant/conversations?workspaceId=smoke-test-workspace")"
+if [[ "$ASSISTANT_API_CODE" == "404" ]]; then
+  echo "Assistant API route missing ($APP_URL/api/v2/assistant/conversations -> 404)." >&2
+  head -c 1200 /tmp/rok-assistant-api.json >&2 || true
+  echo "" >&2
+  exit 1
+fi
+echo "OK: assistant API route exists (HTTP $ASSISTANT_API_CODE)"
+
+INTERNAL_EXTRACT_CODE="$(curl -s -o /tmp/rok-internal-extract.json -w '%{http_code}' -X POST "$APP_URL/api/v2/internal/ingestion-tasks/smoke-task/extract" -H 'Content-Type: application/json' -d '{}')"
+if [[ "$INTERNAL_EXTRACT_CODE" == "404" ]]; then
+  echo "Internal extract API route missing ($APP_URL/api/v2/internal/ingestion-tasks/:taskId/extract -> 404)." >&2
+  head -c 1200 /tmp/rok-internal-extract.json >&2 || true
+  echo "" >&2
+  exit 1
+fi
+echo "OK: internal extract API route exists (HTTP $INTERNAL_EXTRACT_CODE)"
 
 echo ""
 echo "All checks passed."

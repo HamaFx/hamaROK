@@ -27,6 +27,9 @@ const envSchema = z
     NEXT_PUBLIC_APP_URL: z.string().url().optional(),
     APP_SIGNING_SECRET: z.string().min(16).optional(),
     OPENAI_API_KEY: z.string().optional(),
+    MISTRAL_API_KEY: z.string().optional(),
+    MISTRAL_BASE_URL: z.string().url().optional(),
+    OCR_ENGINE: z.enum(['mistral', 'legacy']).optional(),
     GOOGLE_VISION_API_KEY: z.string().optional(),
     GOOGLE_APPLICATION_CREDENTIALS: z.string().optional(),
     GOOGLE_VISION_SERVICE_ACCOUNT_JSON: z.string().optional(),
@@ -77,6 +80,7 @@ const envSchema = z
         });
       }
     }
+
   });
 
 type Env = z.infer<typeof envSchema>;
@@ -165,4 +169,26 @@ export function isAwsOcrControlEnabled(): boolean {
 
 export function getUploadMode(): 'queue_first' | 'client_legacy' {
   return getEnv().UPLOAD_MODE ?? 'queue_first';
+}
+
+export function getOcrEngine(): 'mistral' | 'legacy' {
+  return getEnv().OCR_ENGINE ?? 'mistral';
+}
+
+export function isMistralOcrEnabled(): boolean {
+  return getOcrEngine() === 'mistral';
+}
+
+export function getMistralApiKey(): string {
+  const env = getEnv();
+  const key = env.MISTRAL_API_KEY?.trim();
+  if (!key) {
+    throw new Error('MISTRAL_API_KEY is required when using Mistral features.');
+  }
+  return key;
+}
+
+export function getMistralBaseUrl(): string {
+  const env = getEnv();
+  return (env.MISTRAL_BASE_URL || 'https://api.mistral.ai').replace(/\/+$/, '');
 }

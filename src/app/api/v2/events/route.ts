@@ -6,6 +6,7 @@ import { ok, fail, handleApiError, readJson } from '@/lib/api-response';
 import { parsePagination, getQueryParam } from '@/lib/v2';
 import { authorizeWorkspaceAccess } from '@/lib/workspace-auth';
 import { assertWeeklySchemaCapability } from '@/lib/weekly-schema-guard';
+import { createEventTx } from '@/lib/domain/workspace-actions';
 
 const createEventSchema = z.object({
   workspaceId: z.string().min(1),
@@ -85,14 +86,14 @@ export async function POST(request: NextRequest) {
 
     await assertWeeklySchemaCapability();
 
-    const event = await prisma.event.create({
-      data: {
+    const event = await prisma.$transaction((tx) =>
+      createEventTx(tx, {
         workspaceId: body.workspaceId,
-        name: body.name.trim(),
-        description: body.description?.trim() || null,
+        name: body.name,
+        description: body.description,
         eventType: body.eventType,
-      },
-    });
+      })
+    );
 
     return ok(
       {

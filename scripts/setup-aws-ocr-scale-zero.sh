@@ -6,6 +6,16 @@ REGION="${AWS_REGION:-$(aws configure get region || true)}"
 REGION="${REGION:-us-east-1}"
 APP_URL="${APP_URL:-${NEXT_PUBLIC_APP_URL:-}}"
 SERVICE_SECRET="${SERVICE_SECRET:-${APP_SIGNING_SECRET:-}}"
+MISTRAL_KEY="${MISTRAL_API_KEY:-}"
+MISTRAL_URL="${MISTRAL_BASE_URL:-https://api.mistral.ai}"
+OCR_ENGINE_RAW="${OCR_ENGINE:-mistral}"
+case "${OCR_ENGINE_RAW,,}" in
+  mistral|legacy) OCR_ENGINE="${OCR_ENGINE_RAW,,}" ;;
+  *)
+    echo "OCR_ENGINE must be one of: mistral, legacy" >&2
+    exit 1
+    ;;
+esac
 
 if [[ -z "${APP_URL}" ]]; then
   echo "APP_URL (or NEXT_PUBLIC_APP_URL) is required to configure worker callbacks." >&2
@@ -14,6 +24,11 @@ fi
 
 if [[ -z "${SERVICE_SECRET}" ]]; then
   echo "SERVICE_SECRET (or APP_SIGNING_SECRET) is required to sign internal worker callbacks." >&2
+  exit 1
+fi
+
+if [[ "$OCR_ENGINE" == "mistral" && -z "${MISTRAL_KEY}" ]]; then
+  echo "MISTRAL_API_KEY is required when OCR_ENGINE=mistral." >&2
   exit 1
 fi
 
@@ -297,6 +312,7 @@ TESSERACT_CMD = os.getenv('TESSERACT_CMD', '/usr/bin/tesseract')
 WORKER_ID = os.getenv('WORKER_ID', os.uname().nodename)
 TESSERACT_BIN = TESSERACT_CMD if os.path.exists(TESSERACT_CMD) else (shutil.which('tesseract') or '')
 TESSERACT_AVAILABLE = bool(TESSERACT_BIN)
+OCR_ENGINE = os.getenv('OCR_ENGINE', 'mistral').strip().lower()
 
 if not QUEUE_URL:
     raise RuntimeError('QUEUE_URL is required')
@@ -1573,63 +1589,96 @@ def _handle_ingestion_message(msg: Dict[str, Any]) -> bool:
             raise RuntimeError('task artifact URL is missing')
 
         started = time.time()
-        image = _download_image(artifact_url)
-        base_height, base_width = image.shape[:2]
-        variants = _preprocess_variants(image)
-        lines, ocr_trace = _merge_lines(variants)
-        archetype = _detect_archetype(lines, hint, int(base_width), int(base_height))
-        if archetype == 'unknown':
-            raise RuntimeError('unknown-board: unable to classify screenshot archetype')
-        width = int(base_width)
-        height = int(base_height)
-        if lines:
-            max_x = max(max(float(line.get('cx', 0.0)), float(line.get('x', 0.0)) + float(line.get('w', 0.0))) for line in lines)
-            max_y = max(max(float(line.get('cy', 0.0)), float(line.get('y', 0.0)) + float(line.get('h', 0.0))) for line in lines)
-            if max_x > base_width * 1.05:
-                width = int(max_x)
-            if max_y > base_height * 1.05:
-                height = int(max_y)
-            ocr_trace['coordinateScale'] = {
-                'baseWidth': int(base_width),
-                'baseHeight': int(base_height),
-                'workingWidth': int(width),
-                'workingHeight': int(height),
-            }
-        ocr_duration_ms = int((time.time() - started) * 1000)
+        if OCR_ENGINE == 'legacy':
+            image = _download_image(artifact_url)
+            height, width = image.shape[:2]
+            variants = _preprocess_variants(image)
+            lines, line_trace = _merge_lines(variants)
+            archetype = _detect_archetype(lines, hint, width, height)
+            ocr_duration_ms = int((time.time() - started) * 1000)
 
-        if archetype == 'ranking_board':
-            ranking = _extract_ranking(lines, width, height)
-            classification_error = (ranking.get('metadata') or {}).get('classificationError')
-            if classification_error:
-                raise RuntimeError(str(classification_error))
-            if len(ranking.get('rows', [])) == 0:
-                raise RuntimeError('ranking extraction produced no rows')
-            complete_payload = {
-                'attempt': attempt,
-                'workerId': WORKER_ID,
-                'ingestionDomain': 'RANKING_CAPTURE',
-                'screenArchetype': archetype,
-                'ranking': ranking,
-                'metadata': {
-                    'worker': 'local-hybrid-opencv',
-                    'ocrDurationMs': ocr_duration_ms,
-                    **ocr_trace,
-                },
-            }
+            if archetype == 'ranking_board':
+                ranking = _extract_ranking(lines, width, height)
+                metadata = ranking.get('metadata') if isinstance(ranking.get('metadata'), dict) else {}
+                classification_error = str(metadata.get('classificationError') or '').strip()
+                if classification_error:
+                    raise RuntimeError(classification_error)
+                if len(ranking.get('rows', [])) == 0:
+                    raise RuntimeError('ranking extraction produced no rows')
+                complete_payload = {
+                    'attempt': attempt,
+                    'workerId': WORKER_ID,
+                    'ingestionDomain': 'RANKING_CAPTURE',
+                    'screenArchetype': archetype,
+                    'ranking': ranking,
+                    'metadata': {
+                        'worker': 'legacy-local',
+                        'ocrDurationMs': ocr_duration_ms,
+                    },
+                }
+            elif archetype == 'governor_profile':
+                profile = _extract_profile(lines, width, height, line_trace)
+                complete_payload = {
+                    'attempt': attempt,
+                    'workerId': WORKER_ID,
+                    'ingestionDomain': 'PROFILE_SNAPSHOT',
+                    'screenArchetype': archetype,
+                    'profile': profile,
+                    'metadata': {
+                        'worker': 'legacy-local',
+                        'ocrDurationMs': ocr_duration_ms,
+                    },
+                }
+            else:
+                raise RuntimeError('unknown-board: could not classify screenshot archetype')
         else:
-            profile = _extract_profile(lines, width, height, ocr_trace)
-            complete_payload = {
+            extract_payload = {
                 'attempt': attempt,
                 'workerId': WORKER_ID,
-                'ingestionDomain': 'PROFILE_SNAPSHOT',
-                'screenArchetype': archetype,
-                'profile': profile,
-                'metadata': {
-                    'worker': 'local-hybrid-opencv',
-                    'ocrDurationMs': ocr_duration_ms,
-                    **ocr_trace,
-                },
+                'archetypeHint': hint,
             }
+            extract_response = _post_internal(
+                f'/api/v2/internal/ingestion-tasks/{task_id}/extract',
+                extract_payload,
+            )
+            extract_data = (extract_response.get('data') or {}) if isinstance(extract_response, dict) else {}
+            ingestion_domain = str(extract_data.get('ingestionDomain') or '')
+            archetype = str(extract_data.get('screenArchetype') or 'unknown')
+            ocr_duration_ms = int((time.time() - started) * 1000)
+            extraction_metadata = extract_data.get('metadata') if isinstance(extract_data.get('metadata'), dict) else {}
+
+            if ingestion_domain == 'RANKING_CAPTURE':
+                ranking = extract_data.get('ranking') if isinstance(extract_data.get('ranking'), dict) else {}
+                if len(ranking.get('rows', [])) == 0:
+                    raise RuntimeError('ranking extraction produced no rows')
+                complete_payload = {
+                    'attempt': attempt,
+                    'workerId': WORKER_ID,
+                    'ingestionDomain': 'RANKING_CAPTURE',
+                    'screenArchetype': archetype,
+                    'ranking': ranking,
+                    'metadata': {
+                        'worker': 'mistral-server',
+                        'ocrDurationMs': ocr_duration_ms,
+                        **extraction_metadata,
+                    },
+                }
+            elif ingestion_domain == 'PROFILE_SNAPSHOT':
+                profile = extract_data.get('profile') if isinstance(extract_data.get('profile'), dict) else {}
+                complete_payload = {
+                    'attempt': attempt,
+                    'workerId': WORKER_ID,
+                    'ingestionDomain': 'PROFILE_SNAPSHOT',
+                    'screenArchetype': archetype,
+                    'profile': profile,
+                    'metadata': {
+                        'worker': 'mistral-server',
+                        'ocrDurationMs': ocr_duration_ms,
+                        **extraction_metadata,
+                    },
+                }
+            else:
+                raise RuntimeError('unknown-board: unsupported ingestion domain from extraction endpoint')
 
         _post_internal(f'/api/v2/internal/ingestion-tasks/{task_id}/complete', complete_payload)
         logging.info('completed ingestion task id=%s archetype=%s attempt=%s', task_id, archetype, attempt)
@@ -1688,6 +1737,9 @@ AWS_REGION=${REGION}
 QUEUE_URL=${QUEUE_URL}
 INTERNAL_API_BASE_URL=${APP_URL}
 APP_SIGNING_SECRET=${SERVICE_SECRET}
+OCR_ENGINE=${OCR_ENGINE}
+MISTRAL_API_KEY=${MISTRAL_KEY}
+MISTRAL_BASE_URL=${MISTRAL_URL}
 MAX_RECEIVE_COUNT=3
 INTERNAL_REQUEST_TIMEOUT_SEC=30
 IMAGE_DOWNLOAD_TIMEOUT_SEC=40

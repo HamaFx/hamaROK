@@ -214,7 +214,7 @@ export function KpiCard({
     <Card className={cn('overflow-hidden', toneClasses(tone))}>
       <CardContent className={cn('flex h-full flex-col gap-2 relative', bodyDensity)}>
         <div className="flex items-center justify-between gap-2">
-          <p className="chip-label text-[10px] font-medium uppercase tracking-wider text-tier-3">{label}</p>
+          <p className="chip-label text-xs font-medium uppercase tracking-wider text-tier-3">{label}</p>
           {icon ? <div className="text-tier-2 opacity-50 [&>svg]:size-4 sm:[&>svg]:size-5">{icon}</div> : null}
         </div>
         <p className={cn('font-heading font-semibold tracking-tight text-tier-1 mt-1', valueDensity)}>
@@ -294,7 +294,7 @@ export function KpiSquare({
           <p className="font-mono text-xl font-black tracking-tight text-tier-1 sm:text-2xl drop-shadow-sm">
             {animated && typeof value === 'number' ? <AnimatedCounter value={value} /> : value}
           </p>
-          <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-tier-3 leading-tight truncate">
+          <p className="text-xs font-bold uppercase tracking-[0.1em] text-tier-3 leading-tight truncate">
             {label}
           </p>
           {subtitle ? (

@@ -1,6 +1,7 @@
 import type { LucideIcon } from 'lucide-react';
 import {
   Activity,
+  Bot,
   CalendarDays,
   ChevronRight,
   Cog,
@@ -68,6 +69,13 @@ export const PRIMARY_NAV_ITEMS: AppNavItem[] = [
 
 export const TOOL_NAV_ITEMS: AppNavItem[] = [
   {
+    href: '/assistant',
+    label: 'Assistant',
+    description: 'Chat with screenshots, review plans, and confirm workspace actions.',
+    icon: Bot,
+    group: 'tools',
+  },
+  {
     href: '/upload',
     label: 'Upload',
     description: 'Queue screenshots and OCR jobs for new weekly data.',
@@ -105,7 +113,7 @@ export const TOOL_NAV_ITEMS: AppNavItem[] = [
   {
     href: '/calibration',
     label: 'Calibration',
-    description: 'Tune OCR templates and live test profile capture regions.',
+    description: 'Run live server-side Mistral extraction diagnostics.',
     icon: Crosshair,
     group: 'tools',
   },

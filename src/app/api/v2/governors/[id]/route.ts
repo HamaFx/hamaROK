@@ -4,7 +4,7 @@ import { authorizeWorkspaceAccess } from '@/lib/workspace-auth';
 import { fail, handleApiError, ok, readJson } from '@/lib/api-response';
 import { getQueryParam } from '@/lib/v2';
 import { prisma } from '@/lib/prisma';
-import { normalizeGovernorAlias } from '@/lib/rankings/normalize';
+import { deleteGovernorTx, updateGovernorTx } from '@/lib/domain/workspace-actions';
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -190,77 +190,15 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       return fail(auth.code, auth.message, auth.code === 'UNAUTHORIZED' ? 401 : 403);
     }
 
-    const governor = await prisma.governor.findUnique({
-      where: { id },
-      select: { id: true, name: true, workspaceId: true },
-    });
-
-    if (!governor) {
-      return fail('NOT_FOUND', 'Governor not found.', 404);
-    }
-
-    const data: Record<string, unknown> = {};
-    if (body.name?.trim()) data.name = body.name.trim();
-    if (body.alliance !== undefined) data.alliance = body.alliance.trim();
-    if (body.governorId?.trim()) {
-      // Check if new governorId conflicts with existing
-      const conflicting = await prisma.governor.findFirst({
-        where: {
-          governorId: body.governorId.trim(),
-          id: { not: id },
-        },
-        select: { id: true },
-      });
-      if (conflicting) {
-        return fail('CONFLICT', 'Another governor with this ID already exists.', 409);
-      }
-      data.governorId = body.governorId.trim();
-    }
-
-    if (Object.keys(data).length === 0) {
-      return fail('VALIDATION_ERROR', 'No fields to update.', 400);
-    }
-
-    const updated = await prisma.governor.update({
-      where: { id },
-      data,
-      select: {
-        id: true,
-        governorId: true,
-        name: true,
-        alliance: true,
-        workspaceId: true,
-        updatedAt: true,
-      },
-    });
-
-    // Update alias if name changed
-    if (body.name?.trim() && body.name.trim() !== governor.name) {
-      const aliasNormalized = normalizeGovernorAlias(body.name.trim());
-      if (aliasNormalized) {
-        await prisma.governorAlias.upsert({
-          where: {
-            workspaceId_aliasNormalized: {
-              workspaceId: body.workspaceId,
-              aliasNormalized,
-            },
-          },
-          create: {
-            workspaceId: body.workspaceId,
-            governorId: updated.id,
-            aliasRaw: body.name.trim(),
-            aliasNormalized,
-            confidence: 1.0,
-            source: 'manual_edit',
-          },
-          update: {
-            governorId: updated.id,
-            aliasRaw: body.name.trim(),
-            confidence: 1.0,
-          },
-        });
-      }
-    }
+    const updated = await prisma.$transaction((tx) =>
+      updateGovernorTx(tx, {
+        workspaceId: body.workspaceId,
+        governorDbId: id,
+        name: body.name,
+        alliance: body.alliance,
+        governorId: body.governorId,
+      })
+    );
 
     return ok(updated);
   } catch (error) {
@@ -281,30 +219,14 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
       return fail(auth.code, auth.message, auth.code === 'UNAUTHORIZED' ? 401 : 403);
     }
 
-    const governor = await prisma.governor.findUnique({
-      where: { id },
-      select: { id: true, workspaceId: true },
-    });
-
-    if (!governor) {
-      return fail('NOT_FOUND', 'Governor not found.', 404);
-    }
-
-    // Soft delete: unlink from workspace
-    await prisma.governor.update({
-      where: { id },
-      data: { workspaceId: null },
-    });
-
-    // Remove workspace-specific aliases
-    await prisma.governorAlias.deleteMany({
-      where: {
+    const result = await prisma.$transaction((tx) =>
+      deleteGovernorTx(tx, {
         workspaceId,
-        governorId: id,
-      },
-    });
+        governorDbId: id,
+      })
+    );
 
-    return ok({ id, deleted: true });
+    return ok(result);
   } catch (error) {
     return handleApiError(error);
   }

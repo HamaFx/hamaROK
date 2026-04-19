@@ -1,5 +1,21 @@
 # OCR Strategy — Solving the Screenshot Challenge
 
+## Current Production Path (Mistral Default)
+
+As of April 18, 2026, the active OCR path is:
+
+1. `OCR_ENGINE=mistral` by default.
+2. Queue worker keeps the same SQS + internal-task lifecycle (`start` / `complete` / `fail`).
+3. Worker extraction runs through the server-side Mistral pipeline:
+   - OCR model: `mistral-ocr-latest`
+   - Structured extraction model: `mistral-large-latest`
+4. Worker emits the same `PROFILE_SNAPSHOT` / `RANKING_CAPTURE` payload shapes used by existing review and ranking flows.
+5. `/upload`, OCR review queue, and rank review queue behavior remains unchanged.
+
+`OCR_ENGINE=legacy` remains available only as an emergency rollback path.
+
+> The legacy local OCR/Tesseract notes below are historical reference and are no longer the default runtime path.
+
 ## The Challenge
 
 Rise of Kingdoms has **no public API**. The only way to get player stats is to read them visually from the "Governor More Info" screen. This screen contains:

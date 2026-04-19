@@ -1,11 +1,63 @@
 # API Design — Route Specifications
 
+## Current V2 Additions (Assistant + Mistral)
+
+As of April 18, 2026, the following v2 API surfaces are active for assistant-driven operations:
+
+### Assistant Conversations
+
+- `POST /api/v2/assistant/conversations`
+  - Body: `{ workspaceId, title? }`
+  - Creates a workspace-scoped assistant conversation.
+
+- `GET /api/v2/assistant/conversations?workspaceId=...`
+  - Lists assistant conversations for the workspace.
+
+- `GET /api/v2/assistant/conversations/:id/messages?workspaceId=...`
+  - Returns conversation messages, plans, and pending identity records.
+
+- `POST /api/v2/assistant/conversations/:id/messages` (multipart)
+  - Multipart fields:
+    - `workspaceId`
+    - `text` (optional)
+    - `file` (0..N screenshot images)
+  - Server stores image artifacts, sends base64 image content to Mistral, and creates a proposed plan.
+
+### Assistant Plan Control
+
+- `POST /api/v2/assistant/plans/:id/confirm`
+  - Body: `{ workspaceId }`
+  - Executes one full confirmed plan.
+
+- `POST /api/v2/assistant/plans/:id/deny`
+  - Body: `{ workspaceId }`
+  - Rejects a pending/confirmed plan.
+
+### Pending Identity Resolution
+
+- `POST /api/v2/assistant/pending-identities/:id/resolve`
+  - Body: `{ workspaceId, governorDbId, eventId?, note? }`
+  - Resolves blocked profile-stat writes when governor identity is missing/ambiguous.
+
+### OCR Diagnostics and Internal Extraction
+
+- `POST /api/v2/ocr/run` (multipart)
+  - Server-side Mistral diagnostics for uploaded screenshots.
+
+- `POST /api/v2/internal/ingestion-tasks/:taskId/extract` (service-signed)
+  - Worker-facing extraction endpoint that returns Mistral profile/ranking payloads while preserving existing ingestion contracts.
+
 ## Base URL
 
 ```
-Production:  https://rok-command-center.vercel.app/api
+Production:  https://hamarok.vercel.app/api
 Development: http://localhost:3000/api
 ```
+
+Production smoke expectation for the assistant release:
+
+- `GET https://hamarok.vercel.app/assistant` returns `200`.
+- `GET https://hamarok.vercel.app/api/v2/assistant/conversations?...` returns an API auth/validation response (not framework `404`).
 
 ## Authentication
 
