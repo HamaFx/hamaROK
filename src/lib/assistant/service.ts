@@ -706,6 +706,106 @@ export async function listAssistantConversations(args: {
   }));
 }
 
+export interface CleanupAssistantWorkspaceInput {
+  workspaceId: string;
+  accessLink: AccessLink;
+  mode: 'archive' | 'purge';
+  requirePurgeConfirmation?: boolean;
+  includePendingIdentities?: boolean;
+}
+
+export async function cleanupAssistantWorkspace(input: CleanupAssistantWorkspaceInput) {
+  const workspaceId = String(input.workspaceId || '').trim();
+  if (!workspaceId) {
+    throw new ApiHttpError('VALIDATION_ERROR', 'workspaceId is required.', 400);
+  }
+  if (input.accessLink.workspaceId !== workspaceId) {
+    throw new ApiHttpError('FORBIDDEN', 'Access link is not valid for this workspace.', 403);
+  }
+  requireRole(input.accessLink, WorkspaceRole.OWNER);
+
+  const mode = input.mode;
+  const includePendingIdentities = input.includePendingIdentities !== false;
+
+  if (mode === 'archive') {
+    const now = new Date();
+    const [totalConversations, archivedResult] = await Promise.all([
+      prisma.assistantConversation.count({
+        where: { workspaceId },
+      }),
+      prisma.assistantConversation.updateMany({
+        where: {
+          workspaceId,
+          status: { not: AssistantConversationStatus.ARCHIVED },
+        },
+        data: {
+          status: AssistantConversationStatus.ARCHIVED,
+          archivedAt: now,
+          updatedAt: now,
+        },
+      }),
+    ]);
+
+    return {
+      workspaceId,
+      mode,
+      totalConversations,
+      archivedConversations: archivedResult.count,
+      deletedConversations: 0,
+      deletedMessages: 0,
+      deletedPlans: 0,
+      deletedActions: 0,
+      deletedPendingIdentities: 0,
+    };
+  }
+
+  if (input.requirePurgeConfirmation) {
+    throw new ApiHttpError(
+      'VALIDATION_ERROR',
+      'Destructive cleanup requires explicit confirmation.',
+      400
+    );
+  }
+
+  const result = await prisma.$transaction(async (tx) => {
+    const totalConversations = await tx.assistantConversation.count({
+      where: { workspaceId },
+    });
+
+    const actionsResult = await tx.assistantAction.deleteMany({
+      where: { workspaceId },
+    });
+    const plansResult = await tx.assistantPlan.deleteMany({
+      where: { workspaceId },
+    });
+    const messagesResult = await tx.assistantMessage.deleteMany({
+      where: { workspaceId },
+    });
+    const pendingResult = includePendingIdentities
+      ? await tx.assistantPendingIdentity.deleteMany({
+          where: { workspaceId },
+        })
+      : { count: 0 };
+    const conversationsResult = await tx.assistantConversation.deleteMany({
+      where: { workspaceId },
+    });
+
+    return {
+      workspaceId,
+      mode,
+      totalConversations,
+      archivedConversations: 0,
+      deletedConversations: conversationsResult.count,
+      deletedMessages: messagesResult.count,
+      deletedPlans: plansResult.count,
+      deletedActions: actionsResult.count,
+      deletedPendingIdentities: pendingResult.count,
+    };
+  });
+
+  return result;
+}
+
 async function assertConversationAccess(args: {
   conversationId: string;
   workspaceId: string;

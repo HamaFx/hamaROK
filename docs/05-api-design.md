@@ -13,6 +13,13 @@ As of April 18, 2026, the following v2 API surfaces are active for assistant-dri
 - `GET /api/v2/assistant/conversations?workspaceId=...`
   - Lists assistant conversations for the workspace.
 
+- `POST /api/v2/assistant/conversations/cleanup`
+  - Body: `{ workspaceId, mode: "archive" | "purge", confirm?, includePendingIdentities? }`
+  - Owner-only administrative cleanup:
+    - `archive` marks all workspace conversations as archived.
+    - `purge` hard-deletes assistant conversation history for full workspace reset.
+  - `purge` requires `confirm: "RESET_ASSISTANT_WORKSPACE"`.
+
 - `GET /api/v2/assistant/conversations/:id/messages?workspaceId=...`
   - Returns conversation messages, plans, and pending identity records.
 
