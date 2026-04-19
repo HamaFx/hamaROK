@@ -145,6 +145,15 @@ export type ArtifactDraftRef = {
   sizeBytes?: number;
 };
 
+function createAssistantMessageIdempotencyKey(): string {
+  const globalCrypto =
+    typeof globalThis !== 'undefined' ? (globalThis.crypto as Crypto | undefined) : undefined;
+  if (globalCrypto?.randomUUID) {
+    return `assistant-message-${globalCrypto.randomUUID()}`;
+  }
+  return `assistant-message-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
+}
+
 function parseCandidates(value: unknown): Array<{ governorDbId: string; governorGameId: string; governorName: string }> {
   if (!Array.isArray(value)) return [];
   const rows: Array<{ governorDbId: string; governorGameId: string; governorName: string }> = [];
@@ -198,6 +207,8 @@ export function useAssistantController(args: {
     'inherit' | 'hybrid' | 'ocr_pipeline' | 'vision_model'
   >('inherit');
   const sendingGuardRef = useRef(false);
+  const conversationsRequestRef = useRef(0);
+  const historyRequestRef = useRef(0);
 
   const authHeaders = useMemo(
     () => ({
@@ -207,18 +218,64 @@ export function useAssistantController(args: {
   );
 
   const apiJson = useCallback(
-    async <T,>(url: string, init?: RequestInit): Promise<T> => {
-      const res = await fetch(url, {
-        ...init,
-        headers: {
-          ...(init?.headers || {}),
-          ...authHeaders,
-        },
-      });
-      const payload = await res.json();
-      if (!res.ok) {
-        throw new Error(payload?.error?.message || 'Assistant request failed.');
+    async <T,>(
+      url: string,
+      init?: RequestInit,
+      options?: {
+        timeoutMs?: number;
+        timeoutMessage?: string;
       }
+    ): Promise<T> => {
+      const timeoutMs = Math.max(1000, Number(options?.timeoutMs || 45_000));
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+      let res: Response;
+      try {
+        res = await fetch(url, {
+          ...init,
+          headers: {
+            ...(init?.headers || {}),
+            ...authHeaders,
+          },
+          signal: controller.signal,
+        });
+      } catch (error) {
+        if (error instanceof Error && error.name === 'AbortError') {
+          throw new Error(options?.timeoutMessage || 'Assistant request timed out.');
+        }
+        throw error;
+      } finally {
+        clearTimeout(timeout);
+      }
+
+      const payloadText = await res.text();
+      let payload: Record<string, unknown> | null = null;
+      if (payloadText) {
+        try {
+          const parsed = JSON.parse(payloadText);
+          if (parsed && typeof parsed === 'object') {
+            payload = parsed as Record<string, unknown>;
+          }
+        } catch {
+          payload = null;
+        }
+      }
+
+      if (!res.ok) {
+        const errorMessage =
+          (payload?.error && typeof payload.error === 'object'
+            ? String((payload.error as Record<string, unknown>).message || '')
+            : '') ||
+          String(payload?.message || '').trim() ||
+          `Assistant request failed (${res.status}).`;
+        throw new Error(errorMessage);
+      }
+
+      if (!payload || !('data' in payload)) {
+        throw new Error('Assistant API returned an unexpected response payload.');
+      }
+
       return payload.data as T;
     },
     [authHeaders]
@@ -245,6 +302,7 @@ export function useAssistantController(args: {
 
   const loadConversations = useCallback(async () => {
     if (!args.workspaceReady || !args.workspaceId) return;
+    const requestId = ++conversationsRequestRef.current;
     setLoadingConversations(true);
     setError(null);
 
@@ -252,17 +310,21 @@ export function useAssistantController(args: {
       const rows = await apiJson<ConversationRow[]>(
         `/api/v2/assistant/conversations?workspaceId=${encodeURIComponent(args.workspaceId)}`
       );
+      if (requestId !== conversationsRequestRef.current) return;
       setConversations(rows);
 
       if (rows.length === 0) {
         const id = await createConversation();
+        if (requestId !== conversationsRequestRef.current) return;
         setSelectedConversationId(id);
       } else if (!selectedConversationId || !rows.some((row) => row.id === selectedConversationId)) {
         setSelectedConversationId(rows[0].id);
       }
     } catch (cause) {
+      if (requestId !== conversationsRequestRef.current) return;
       setError(cause instanceof Error ? cause.message : 'Failed to load assistant conversations.');
     } finally {
+      if (requestId !== conversationsRequestRef.current) return;
       setLoadingConversations(false);
     }
   }, [args.workspaceReady, args.workspaceId, apiJson, createConversation, selectedConversationId]);
@@ -270,6 +332,7 @@ export function useAssistantController(args: {
   const loadHistory = useCallback(
     async (conversationId: string, options?: { background?: boolean }) => {
       if (!args.workspaceReady || !args.workspaceId || !conversationId) return;
+      const requestId = ++historyRequestRef.current;
       const background = Boolean(options?.background);
       if (!background) {
         setLoadingHistory(true);
@@ -282,6 +345,7 @@ export function useAssistantController(args: {
             args.workspaceId
           )}`
         );
+        if (requestId !== historyRequestRef.current) return;
         setHistory(nextHistory);
 
         setResolveDrafts((prev) => {
@@ -298,9 +362,10 @@ export function useAssistantController(args: {
           return merged;
         });
       } catch (cause) {
+        if (requestId !== historyRequestRef.current) return;
         setError(cause instanceof Error ? cause.message : 'Failed to load assistant history.');
       } finally {
-        if (!background) {
+        if (!background && requestId === historyRequestRef.current) {
           setLoadingHistory(false);
         }
       }
@@ -409,12 +474,50 @@ export function useAssistantController(args: {
     setSendingMessage(true);
     setError(null);
     setNotice(null);
+    let conversationId = selectedConversationId;
+    let optimisticMessageId: string | null = null;
 
     try {
-      const conversationId = selectedConversationId || (await createConversation());
+      conversationId = selectedConversationId || (await createConversation());
+      const idempotencyKey = createAssistantMessageIdempotencyKey();
+      optimisticMessageId = `temp-user-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      setHistory((prev) => {
+        if (!prev || prev.conversation?.id !== conversationId) return prev;
+        return {
+          ...prev,
+          messages: [
+            ...prev.messages,
+            {
+              id: optimisticMessageId!,
+              role: 'USER',
+              content: trimmedText || '[image message]',
+              attachments: [
+                ...messageFiles.map((file) => ({
+                  fileName: file.name,
+                  mimeType: file.type || 'image/png',
+                  sizeBytes: file.size,
+                })),
+                ...artifactRefs.map((ref) => ({
+                  artifactId: ref.artifactId,
+                  url: ref.url,
+                  fileName: ref.fileName,
+                  mimeType: ref.mimeType,
+                  sizeBytes: ref.sizeBytes,
+                })),
+              ],
+              model: null,
+              meta: {
+                optimistic: true,
+              },
+              createdAt: new Date().toISOString(),
+            },
+          ],
+        };
+      });
       const formData = new FormData();
       formData.set('workspaceId', args.workspaceId);
       formData.set('text', trimmedText);
+      formData.set('idempotencyKey', idempotencyKey);
       if (composerAnalyzerMode !== 'inherit') {
         formData.set('analyzerMode', composerAnalyzerMode);
       }
@@ -430,6 +533,10 @@ export function useAssistantController(args: {
         {
           method: 'POST',
           body: formData,
+        },
+        {
+          timeoutMs: 240_000,
+          timeoutMessage: 'Assistant took too long to respond. Retrying history sync…',
         }
       );
 
@@ -444,7 +551,19 @@ export function useAssistantController(args: {
       ]);
       setNotice('Message processed. Review the latest plan below before confirming.');
     } catch (cause) {
+      if (optimisticMessageId) {
+        setHistory((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            messages: prev.messages.filter((message) => message.id !== optimisticMessageId),
+          };
+        });
+      }
       setError(cause instanceof Error ? cause.message : 'Failed to send assistant message.');
+      if (conversationId) {
+        void loadHistory(conversationId, { background: true });
+      }
     } finally {
       setSendingMessage(false);
       sendingGuardRef.current = false;

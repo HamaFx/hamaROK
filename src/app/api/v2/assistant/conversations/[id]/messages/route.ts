@@ -2,6 +2,7 @@ import { put } from '@vercel/blob';
 import { ArtifactType, Prisma, WorkspaceRole } from '@prisma/client';
 import { NextRequest } from 'next/server';
 import { fail, handleApiError, ok, requireParam } from '@/lib/api-response';
+import { withIdempotency } from '@/lib/idempotency';
 import { authorizeWorkspaceAccess } from '@/lib/workspace-auth';
 import { prisma } from '@/lib/prisma';
 import {
@@ -10,6 +11,9 @@ import {
   type AssistantAnalyzerMode,
   type AssistantAttachmentInput,
 } from '@/lib/assistant/service';
+
+export const runtime = 'nodejs';
+export const maxDuration = 300;
 
 const ALLOWED_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
 
@@ -192,6 +196,9 @@ export async function POST(
       .getAll('artifactId')
       .map((value) => String(value || '').trim())
       .filter(Boolean);
+    const uniqueArtifactIds = [...new Set(artifactIds)];
+    const idempotencyKeyRaw = String(formData.get('idempotencyKey') || '').trim();
+    const idempotencyKey = idempotencyKeyRaw ? idempotencyKeyRaw.slice(0, 120) : null;
     const analyzerModeRaw = String(formData.get('analyzerMode') || '')
       .trim()
       .toLowerCase();
@@ -206,40 +213,63 @@ export async function POST(
       return fail('VALIDATION_ERROR', 'text or image attachment is required.', 400);
     }
 
-    if (files.length + artifactIds.length > 6) {
+    if (files.length + uniqueArtifactIds.length > 6) {
       return fail('VALIDATION_ERROR', 'At most 6 image attachments are allowed per message.', 400);
     }
 
-    const attachments: AssistantAttachmentInput[] = [];
-    for (const file of files) {
-      const stored = await storeAssistantImage({
-        workspaceId,
-        conversationId,
-        accessLinkId: auth.link.id,
-        file,
-      });
-      attachments.push(stored);
-    }
-
-    const uniqueArtifactIds = [...new Set(artifactIds)];
-    for (const artifactId of uniqueArtifactIds) {
-      const hydrated = await hydrateAssistantArtifactAttachment({
-        workspaceId,
-        artifactId,
-      });
-      attachments.push(hydrated);
-    }
-
-    const result = await postAssistantMessage({
+    const idempotent = await withIdempotency({
       workspaceId,
-      conversationId,
-      accessLink: auth.link,
-      text,
-      attachments,
-      analyzerMode,
+      scope: `assistant:message:${conversationId}:${auth.link.id}`,
+      key: idempotencyKey,
+      request: {
+        conversationId,
+        text,
+        analyzerMode,
+        artifactIds: uniqueArtifactIds,
+        files: files.map((file) => ({
+          name: file.name,
+          size: file.size,
+          type: file.type,
+          lastModified: file.lastModified,
+        })),
+      },
+      ttlHours: 24,
+      execute: async () => {
+        const attachments: AssistantAttachmentInput[] = [];
+        for (const file of files) {
+          const stored = await storeAssistantImage({
+            workspaceId,
+            conversationId,
+            accessLinkId: auth.link.id,
+            file,
+          });
+          attachments.push(stored);
+        }
+
+        for (const artifactId of uniqueArtifactIds) {
+          const hydrated = await hydrateAssistantArtifactAttachment({
+            workspaceId,
+            artifactId,
+          });
+          attachments.push(hydrated);
+        }
+
+        return postAssistantMessage({
+          workspaceId,
+          conversationId,
+          accessLink: auth.link,
+          text,
+          attachments,
+          analyzerMode,
+        });
+      },
     });
 
-    return ok(result, null, 201);
+    return ok(
+      idempotent.value,
+      idempotent.replayed ? { idempotentReplay: true } : null,
+      idempotent.replayed ? 200 : 201
+    );
   } catch (error) {
     return handleApiError(error);
   }

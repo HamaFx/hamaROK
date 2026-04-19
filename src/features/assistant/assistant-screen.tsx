@@ -915,7 +915,6 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
                             event.preventDefault();
                             if (
                               controller.sendingMessage ||
-                              controller.loadingHistory ||
                               (!controller.messageText.trim() &&
                                 controller.messageFiles.length === 0 &&
                                 controller.artifactRefs.length === 0)
@@ -969,7 +968,6 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
                               onClick={() => void controller.submitMessage()}
                               disabled={
                                 controller.sendingMessage ||
-                                controller.loadingHistory ||
                                 (!controller.messageText.trim() &&
                                   controller.messageFiles.length === 0 &&
                                   controller.artifactRefs.length === 0)
