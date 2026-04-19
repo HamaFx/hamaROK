@@ -913,6 +913,15 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
                         onKeyDown={(event) => {
                           if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
                             event.preventDefault();
+                            if (
+                              controller.sendingMessage ||
+                              controller.loadingHistory ||
+                              (!controller.messageText.trim() &&
+                                controller.messageFiles.length === 0 &&
+                                controller.artifactRefs.length === 0)
+                            ) {
+                              return;
+                            }
                             void controller.submitMessage();
                           }
                         }}
@@ -958,7 +967,13 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
                               size="icon"
                               className="size-9 rounded-2xl bg-primary text-primary-foreground shadow-[0_4px_16px_rgba(0,163,255,0.4)] hover:opacity-90 disabled:opacity-30 active:scale-95 transition-all flex items-center justify-center mr-1"
                               onClick={() => void controller.submitMessage()}
-                              disabled={controller.sendingMessage || controller.loadingHistory || (!controller.messageText.trim() && controller.messageFiles.length === 0)}
+                              disabled={
+                                controller.sendingMessage ||
+                                controller.loadingHistory ||
+                                (!controller.messageText.trim() &&
+                                  controller.messageFiles.length === 0 &&
+                                  controller.artifactRefs.length === 0)
+                              }
                            >
                               {controller.sendingMessage ? <RefreshCcw className="size-4 animate-spin" /> : <Send className="size-4" />}
                            </Button>

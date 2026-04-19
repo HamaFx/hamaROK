@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { consumeAssistantHandoff, type AssistantHandoffPayload } from './handoff';
 
 export type ConversationRow = {
@@ -197,6 +197,7 @@ export function useAssistantController(args: {
   const [composerAnalyzerMode, setComposerAnalyzerMode] = useState<
     'inherit' | 'hybrid' | 'ocr_pipeline' | 'vision_model'
   >('inherit');
+  const sendingGuardRef = useRef(false);
 
   const authHeaders = useMemo(
     () => ({
@@ -267,9 +268,12 @@ export function useAssistantController(args: {
   }, [args.workspaceReady, args.workspaceId, apiJson, createConversation, selectedConversationId]);
 
   const loadHistory = useCallback(
-    async (conversationId: string) => {
+    async (conversationId: string, options?: { background?: boolean }) => {
       if (!args.workspaceReady || !args.workspaceId || !conversationId) return;
-      setLoadingHistory(true);
+      const background = Boolean(options?.background);
+      if (!background) {
+        setLoadingHistory(true);
+      }
       setError(null);
 
       try {
@@ -296,7 +300,9 @@ export function useAssistantController(args: {
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : 'Failed to load assistant history.');
       } finally {
-        setLoadingHistory(false);
+        if (!background) {
+          setLoadingHistory(false);
+        }
       }
     },
     [args.workspaceReady, args.workspaceId, apiJson]
@@ -388,15 +394,18 @@ export function useAssistantController(args: {
   }, [args.workspaceReady, args.workspaceId, selectedConversationId, apiJson, batchScanJobId]);
 
   const submitMessage = useCallback(async () => {
+    if (sendingGuardRef.current) return;
     if (!args.workspaceReady || !args.workspaceId) {
       setError('Workspace session is not ready.');
       return;
     }
-    if (!messageText.trim() && messageFiles.length === 0 && artifactRefs.length === 0) {
+    const trimmedText = messageText.trim();
+    if (!trimmedText && messageFiles.length === 0 && artifactRefs.length === 0) {
       setError('Write a message or attach at least one screenshot.');
       return;
     }
 
+    sendingGuardRef.current = true;
     setSendingMessage(true);
     setError(null);
     setNotice(null);
@@ -405,7 +414,7 @@ export function useAssistantController(args: {
       const conversationId = selectedConversationId || (await createConversation());
       const formData = new FormData();
       formData.set('workspaceId', args.workspaceId);
-      formData.set('text', messageText.trim());
+      formData.set('text', trimmedText);
       if (composerAnalyzerMode !== 'inherit') {
         formData.set('analyzerMode', composerAnalyzerMode);
       }
@@ -429,13 +438,16 @@ export function useAssistantController(args: {
       setArtifactRefs([]);
       setHandoffContext(null);
       setComposerAnalyzerMode('inherit');
-      await loadConversations();
-      await loadHistory(conversationId);
+      await Promise.all([
+        loadConversations(),
+        loadHistory(conversationId, { background: true }),
+      ]);
       setNotice('Message processed. Review the latest plan below before confirming.');
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Failed to send assistant message.');
     } finally {
       setSendingMessage(false);
+      sendingGuardRef.current = false;
     }
   }, [
     args.workspaceReady,
