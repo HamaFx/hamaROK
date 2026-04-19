@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { resolveOcrEnginePolicy } from '@/lib/ocr/engine-policy';
 
 const booleanString = z
   .string()
@@ -173,7 +174,11 @@ export function getUploadMode(): 'queue_first' | 'client_legacy' {
 }
 
 export function getRequestedOcrEngine(): 'mistral' | 'legacy' {
-  return getEnv().OCR_ENGINE ?? 'mistral';
+  const env = getEnv();
+  return resolveOcrEnginePolicy({
+    envRequested: env.OCR_ENGINE,
+    allowLegacy: env.ALLOW_LEGACY_OCR,
+  }).requested;
 }
 
 export function isLegacyOcrAllowed(): boolean {
@@ -181,11 +186,11 @@ export function isLegacyOcrAllowed(): boolean {
 }
 
 export function getOcrEngine(): 'mistral' | 'legacy' {
-  const requested = getRequestedOcrEngine();
-  if (requested !== 'legacy') {
-    return requested;
-  }
-  return isLegacyOcrAllowed() ? 'legacy' : 'mistral';
+  const env = getEnv();
+  return resolveOcrEnginePolicy({
+    envRequested: env.OCR_ENGINE,
+    allowLegacy: env.ALLOW_LEGACY_OCR,
+  }).effective;
 }
 
 export function isMistralOcrEnabled(): boolean {

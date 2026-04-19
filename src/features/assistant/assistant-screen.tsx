@@ -59,6 +59,13 @@ type ExecutionLogRow = {
   tone: ExecutionLogTone;
 };
 
+type AnalysisTable = {
+  key: string;
+  title: string;
+  columns: string[];
+  rows: Array<Record<string, unknown>>;
+};
+
 function planTone(status: PlanRow['status']): 'neutral' | 'good' | 'warn' | 'bad' | 'info' {
   if (status === 'EXECUTED') return 'good';
   if (status === 'PENDING' || status === 'CONFIRMED') return 'warn';
@@ -137,12 +144,42 @@ function getAnalyzerMode(meta: MessageRow['meta']): string {
   return String((meta as Record<string, unknown>).analyzerMode || '').trim();
 }
 
+function getAnalysisTables(meta: MessageRow['meta']): AnalysisTable[] {
+  if (!meta || typeof meta !== 'object') return [];
+  const rows = (meta as Record<string, unknown>).analysisTables;
+  if (!Array.isArray(rows)) return [];
+
+  return rows
+    .filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === 'object')
+    .map((entry) => {
+      const key = String(entry.key || '').trim();
+      const title = String(entry.title || '').trim() || 'Analysis';
+      const columns = Array.isArray(entry.columns)
+        ? entry.columns
+            .map((col) => String(col || '').trim())
+            .filter(Boolean)
+        : [];
+      const tableRows = Array.isArray(entry.rows)
+        ? entry.rows.filter((row): row is Record<string, unknown> => Boolean(row) && typeof row === 'object')
+        : [];
+      if (!key || columns.length === 0 || tableRows.length === 0) return null;
+      return {
+        key,
+        title,
+        columns,
+        rows: tableRows,
+      } satisfies AnalysisTable;
+    })
+    .filter((entry): entry is AnalysisTable => Boolean(entry));
+}
+
 function MessageBubble({ message }: { message: MessageRow }) {
   const isUser = message.role === 'USER';
   const isAssistant = message.role === 'ASSISTANT';
   const readExecutions = getReadExecutions(message.meta);
   const suggestions = getSuggestions(message.meta);
   const analyzerMode = getAnalyzerMode(message.meta);
+  const analysisTables = getAnalysisTables(message.meta);
 
   return (
     <article className={cn("group relative flex flex-col gap-2 w-full", isUser ? "items-end" : "items-start")}>
@@ -256,6 +293,42 @@ function MessageBubble({ message }: { message: MessageRow }) {
                       </div>
                     ))}
                   </div>
+                </div>
+              ) : null}
+
+              {analysisTables.length > 0 ? (
+                <div className="mt-2 space-y-3">
+                  {analysisTables.map((table) => (
+                    <div key={`${message.id}-analysis-${table.key}`} className="rounded-lg border bg-muted/20 p-3 text-xs border-white/5">
+                      <div className="mb-2 text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                        {table.title}
+                      </div>
+                      <div className="overflow-x-auto rounded-lg border border-white/10">
+                        <table className="min-w-full border-collapse text-[11px]">
+                          <thead className="bg-white/5 text-muted-foreground">
+                            <tr>
+                              {table.columns.map((column) => (
+                                <th key={`${table.key}-${column}`} className="px-2 py-1.5 text-left font-semibold uppercase tracking-wide whitespace-nowrap">
+                                  {column}
+                                </th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {table.rows.map((row, rowIndex) => (
+                              <tr key={`${table.key}-row-${rowIndex}`} className="border-t border-white/5">
+                                {table.columns.map((column) => (
+                                  <td key={`${table.key}-${rowIndex}-${column}`} className="px-2 py-1.5 text-foreground whitespace-nowrap">
+                                    {String(row[column] ?? '-')}
+                                  </td>
+                                ))}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               ) : null}
             </div>
@@ -798,7 +871,7 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
                 <div className="w-full max-w-2xl flex flex-col gap-8 pb-32">
                    
                    {/* Operational Status (Pinned top of thread if active) */}
-                   {(controller.error || controller.notice || controller.batchRun || controller.handoffContext || pendingPlan) && (
+                   {(controller.error || controller.notice || controller.batchRun || controller.batchScanJobId || controller.handoffContext || pendingPlan) && (
                       <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-top-2 duration-700">
                          {controller.error && (
                             <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-xs shadow-sm backdrop-blur-sm">
@@ -840,26 +913,74 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
                             </div>
                          )}
 
-                         {controller.batchRun && (
+                         {(controller.batchRun || controller.batchScanJobId) && (
                             <div className="rounded-2xl border border-white/10 bg-white/5 p-5 shadow-sm overflow-hidden relative group transition-all hover:shadow-md backdrop-blur-sm">
                                <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
                                <div className="flex items-center justify-between mb-4">
                                   <h4 className="text-xs font-bold uppercase tracking-[0.06em] text-muted-foreground/80">Batch Processing</h4>
-                                  <span className="text-xs font-mono text-muted-foreground bg-white/5 px-2 py-0.5 rounded-md border border-white/5">{controller.batchRun.processedCount}/{controller.batchRun.totalArtifacts}</span>
+                                  {controller.batchRun ? (
+                                    <span className="text-xs font-mono text-muted-foreground bg-white/5 px-2 py-0.5 rounded-md border border-white/5">{controller.batchRun.processedCount}/{controller.batchRun.totalArtifacts}</span>
+                                  ) : null}
                                </div>
-                               <p className="mb-3 text-xs uppercase tracking-wider text-muted-foreground">
-                                 Extraction: {controller.batchRun.extractionMode || 'sequential'}
-                               </p>
-                               <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden border border-white/10">
-                                  <div className="h-full bg-primary transition-all duration-700 ease-out shadow-[0_0_10px_rgba(0,163,255,0.4)]" style={{ width: `${(controller.batchRun.processedCount / controller.batchRun.totalArtifacts) * 100}%` }} />
-                               </div>
-                               {controller.batchRun.lastBatchError ? (
-                                 <p className="mt-2 text-xs text-amber-400">{controller.batchRun.lastBatchError}</p>
-                               ) : null}
-                               <div className="mt-4 flex gap-2">
-                                  <Button size="sm" variant="outline" className="h-8 text-xs font-bold uppercase tracking-wider rounded-lg px-4 border-white/10 hover:bg-white/5" onClick={() => void controller.runBatchStep()} disabled={controller.steppingBatch}>
+                               <div className="space-y-3">
+                                 <div className="space-y-1.5">
+                                   <label className="text-xs text-muted-foreground">Scan Job ID</label>
+                                   <Input
+                                     value={controller.batchScanJobId}
+                                     onChange={(event) => controller.setBatchScanJobId(event.target.value)}
+                                     placeholder="scan job id"
+                                     className="h-9 rounded-xl border-white/10 bg-black/40 text-xs font-mono"
+                                   />
+                                 </div>
+                                 {controller.batchRun ? (
+                                   <>
+                                     <p className="text-xs uppercase tracking-wider text-muted-foreground">
+                                       Extraction: {controller.batchRun.extractionMode || 'sequential'}
+                                     </p>
+                                     <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden border border-white/10">
+                                       <div className="h-full bg-primary transition-all duration-700 ease-out shadow-[0_0_10px_rgba(0,163,255,0.4)]" style={{ width: `${Math.max(0, Math.min(100, (controller.batchRun.processedCount / Math.max(1, controller.batchRun.totalArtifacts)) * 100))}%` }} />
+                                     </div>
+                                     {controller.batchRun.lastBatchError ? (
+                                       <p className="text-xs text-amber-400">{controller.batchRun.lastBatchError}</p>
+                                     ) : null}
+                                     {controller.batchRun.flagged.length > 0 ? (
+                                       <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 p-2 text-xs">
+                                         <p className="font-semibold text-amber-200">Flagged items: {controller.batchRun.flagged.length}</p>
+                                         <ul className="mt-1 space-y-1 text-amber-100/90">
+                                           {controller.batchRun.flagged.slice(0, 3).map((flag, idx) => (
+                                             <li key={`${flag.artifactId}-${idx}`}>
+                                               {flag.fileName}: {flag.reason}
+                                             </li>
+                                           ))}
+                                         </ul>
+                                       </div>
+                                     ) : null}
+                                   </>
+                                 ) : (
+                                   <p className="text-xs text-muted-foreground">
+                                     Batch not started for this scan job. Start batch to process screenshots one-by-one.
+                                   </p>
+                                 )}
+                                 <div className="flex flex-wrap gap-2">
+                                   <Button
+                                     size="sm"
+                                     variant="outline"
+                                     className="h-8 text-xs font-bold uppercase tracking-wider rounded-lg px-4 border-white/10 hover:bg-white/5"
+                                     onClick={() => void controller.startBatchRun()}
+                                     disabled={controller.startingBatch || !controller.batchScanJobId.trim()}
+                                   >
+                                     {controller.startingBatch ? 'Starting...' : controller.batchRun ? 'Restart Batch' : 'Start Batch'}
+                                   </Button>
+                                   <Button
+                                     size="sm"
+                                     variant="outline"
+                                     className="h-8 text-xs font-bold uppercase tracking-wider rounded-lg px-4 border-white/10 hover:bg-white/5"
+                                     onClick={() => void controller.runBatchStep()}
+                                     disabled={controller.steppingBatch || !controller.batchRun}
+                                   >
                                      {controller.steppingBatch ? 'Processing...' : 'Run Next Step'}
-                                  </Button>
+                                   </Button>
+                                 </div>
                                </div>
                             </div>
                          )}

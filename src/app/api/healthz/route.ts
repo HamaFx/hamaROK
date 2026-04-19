@@ -2,12 +2,10 @@ import { NextResponse } from 'next/server';
 import {
   getAppSigningSecret,
   getEnv,
-  getOcrEngine,
-  getRequestedOcrEngine,
   getUploadMode,
-  isLegacyOcrAllowed,
   validateRuntimeEnv,
 } from '@/lib/env';
+import { resolveOcrEnginePolicy } from '@/lib/ocr/engine-policy';
 import { getWeeklySchemaCapability } from '@/lib/weekly-schema-guard';
 
 export const dynamic = 'force-dynamic';
@@ -32,9 +30,9 @@ export async function GET() {
 
   let env: ReturnType<typeof getEnv> | null = null;
   let uploadMode: 'queue_first' | 'client_legacy' | null = null;
-  let ocrEngine: 'mistral' | 'legacy' | null = null;
-  let requestedOcrEngine: 'mistral' | 'legacy' | null = null;
-  let legacyOcrAllowed: boolean | null = null;
+  let ocrPolicy:
+    | ReturnType<typeof resolveOcrEnginePolicy>
+    | null = null;
   let embeddingInstalled: boolean | null = null;
   let embeddingConfigValid: boolean | null = null;
   let embeddingInvalidWorkspaceCount = 0;
@@ -43,9 +41,10 @@ export async function GET() {
     env = validateRuntimeEnv();
     getAppSigningSecret();
     uploadMode = getUploadMode();
-    requestedOcrEngine = getRequestedOcrEngine();
-    legacyOcrAllowed = isLegacyOcrAllowed();
-    ocrEngine = getOcrEngine();
+    ocrPolicy = resolveOcrEnginePolicy({
+      envRequested: env.OCR_ENGINE,
+      allowLegacy: env.ALLOW_LEGACY_OCR,
+    });
     checks.push({ name: 'env', ok: true });
   } catch (error) {
     ready = false;
@@ -56,7 +55,7 @@ export async function GET() {
     });
   }
 
-  if (env && ocrEngine === 'mistral') {
+  if (env && ocrPolicy?.effective === 'mistral') {
     const hasApiKey = Boolean(env.MISTRAL_API_KEY);
     checks.push({
       name: 'mistral',
@@ -70,7 +69,7 @@ export async function GET() {
     checks.push({
       name: 'mistral',
       ok: true,
-      message: ocrEngine === 'legacy' ? 'Legacy OCR engine active.' : undefined,
+      message: ocrPolicy?.effective === 'legacy' ? 'Legacy OCR engine active.' : undefined,
     });
   }
 
@@ -171,7 +170,7 @@ export async function GET() {
   if (env && (env.OCR_ENGINE ?? 'mistral') === 'mistral' && !env.MISTRAL_API_KEY) {
     warnings.push('MISTRAL_API_KEY is not configured while OCR_ENGINE=mistral.');
   }
-  if (requestedOcrEngine === 'legacy' && !legacyOcrAllowed) {
+  if (ocrPolicy?.requested === 'legacy' && !ocrPolicy.legacyAllowed) {
     warnings.push('OCR_ENGINE=legacy requested but blocked because ALLOW_LEGACY_OCR is not enabled.');
   }
   if (embeddingConfigValid === false) {
@@ -199,9 +198,11 @@ export async function GET() {
           instanceConfigured: Boolean(env?.AWS_OCR_INSTANCE_ID),
         },
         ocr: {
-          engine: ocrEngine || (env?.OCR_ENGINE ?? 'mistral'),
-          requestedEngine: requestedOcrEngine || (env?.OCR_ENGINE ?? 'mistral'),
-          legacyAllowed: legacyOcrAllowed,
+          engine: ocrPolicy?.effective || (env?.OCR_ENGINE ?? 'mistral'),
+          requestedEngine: ocrPolicy?.requested || (env?.OCR_ENGINE ?? 'mistral'),
+          legacyAllowed: ocrPolicy?.legacyAllowed ?? null,
+          locked: ocrPolicy?.locked ?? null,
+          reason: ocrPolicy?.reason ?? null,
           mistralConfigured: Boolean(env?.MISTRAL_API_KEY),
           mistralBaseUrl: env?.MISTRAL_BASE_URL || 'https://api.mistral.ai',
         },

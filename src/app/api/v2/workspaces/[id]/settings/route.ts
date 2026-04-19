@@ -18,6 +18,8 @@ import {
   parseAssistantConfigFromJson,
   serializeAssistantConfig,
 } from '@/lib/assistant/config';
+import { getEnv } from '@/lib/env';
+import { resolveOcrEnginePolicy } from '@/lib/ocr/engine-policy';
 
 const fallbackProviderSchema = z
   .string()
@@ -58,6 +60,15 @@ const settingsSchema = z.object({
     .optional(),
 });
 
+function buildWorkspaceOcrPolicy(workspaceOcrEngine: unknown) {
+  const env = getEnv();
+  return resolveOcrEnginePolicy({
+    envRequested: env.OCR_ENGINE,
+    allowLegacy: env.ALLOW_LEGACY_OCR,
+    workspaceRequested: workspaceOcrEngine,
+  });
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -81,8 +92,14 @@ export async function GET(
       return fail('NOT_FOUND', 'Workspace settings not found.', 404);
     }
 
+    const ocrPolicy = buildWorkspaceOcrPolicy(settings.ocrEngine);
     return ok({
       ...settings,
+      ocrEngine: ocrPolicy.requested,
+      ocrEngineEffective: ocrPolicy.effective,
+      ocrEngineLocked: ocrPolicy.locked,
+      ocrEnginePolicyReason: ocrPolicy.reason,
+      accessRole: auth.link.role,
       assistantConfig: serializeAssistantConfig(parseAssistantConfigFromJson(settings.assistantConfig)),
       discordWebhook: settings.discordWebhook || null,
       updatedAt: settings.updatedAt.toISOString(),
@@ -108,12 +125,24 @@ export async function POST(
     }
 
     const body = settingsSchema.parse(await readJson(request));
+    const existingSettings = await prisma.workspaceSettings.findUnique({
+      where: { workspaceId },
+      select: { ocrEngine: true },
+    });
+
     const requestedProvider = body.fallbackOcrProvider ?? undefined;
     const requestedModel = body.fallbackOcrModel?.trim() || undefined;
     const defaultProvider = 'google_vision' as const;
     const assistantConfigJson = body.assistantConfig
       ? serializeAssistantConfig(parseAssistantConfigFromJson(body.assistantConfig))
       : undefined;
+    const currentRequestedOcrEngine = buildWorkspaceOcrPolicy(existingSettings?.ocrEngine || null).requested;
+    const wantsToChangeOcrEngine =
+      body.ocrEngine != null && body.ocrEngine !== currentRequestedOcrEngine;
+
+    if (wantsToChangeOcrEngine && auth.link.role !== WorkspaceRole.OWNER) {
+      return fail('FORBIDDEN', 'Only OWNER can change OCR engine selection.', 403);
+    }
 
     const settings = await prisma.workspaceSettings.upsert({
       where: { workspaceId },
@@ -169,8 +198,14 @@ export async function POST(
       },
     });
 
+    const ocrPolicy = buildWorkspaceOcrPolicy(settings.ocrEngine);
     return ok({
       ...settings,
+      ocrEngine: ocrPolicy.requested,
+      ocrEngineEffective: ocrPolicy.effective,
+      ocrEngineLocked: ocrPolicy.locked,
+      ocrEnginePolicyReason: ocrPolicy.reason,
+      accessRole: auth.link.role,
       assistantConfig: serializeAssistantConfig(parseAssistantConfigFromJson(settings.assistantConfig)),
       discordWebhook: settings.discordWebhook || null,
       updatedAt: settings.updatedAt.toISOString(),

@@ -7,19 +7,34 @@ import {
   getAwsOcrControlStatus,
   invokeAwsOcrControlAction,
 } from '@/lib/aws/ocr-control';
-import { getUploadMode } from '@/lib/env';
+import { getEnv, getUploadMode } from '@/lib/env';
 import {
   invalidateServerCacheTags,
   makeServerCacheKey,
   withServerCache,
 } from '@/lib/server-cache';
 import { workspaceCacheTags } from '@/lib/cache-scopes';
+import { prisma } from '@/lib/prisma';
+import { resolveOcrEnginePolicy } from '@/lib/ocr/engine-policy';
 
 const controlSchema = z.object({
   workspaceId: z.string().min(1),
   action: z.enum(['START', 'STOP']),
   force: z.boolean().optional(),
 });
+
+async function resolveWorkspaceOcrPolicy(workspaceId: string) {
+  const env = getEnv();
+  const settings = await prisma.workspaceSettings.findUnique({
+    where: { workspaceId },
+    select: { ocrEngine: true },
+  });
+  return resolveOcrEnginePolicy({
+    envRequested: env.OCR_ENGINE,
+    allowLegacy: env.ALLOW_LEGACY_OCR,
+    workspaceRequested: settings?.ocrEngine || null,
+  });
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -43,9 +58,11 @@ export async function GET(request: NextRequest) {
       },
       getAwsOcrControlStatus
     );
+    const ocrPolicy = await resolveWorkspaceOcrPolicy(workspaceId);
     return ok({
       ...status,
       uploadMode: getUploadMode(),
+      ocrPolicy,
     });
   } catch (error) {
     return handleApiError(error);
@@ -70,6 +87,7 @@ export async function POST(request: NextRequest) {
         ...Object.values(workspaceCacheTags(body.workspaceId)),
       ]);
       const status = await getAwsOcrControlStatus();
+      const ocrPolicy = await resolveWorkspaceOcrPolicy(body.workspaceId);
       return ok({
         action: body.action,
         force: Boolean(body.force),
@@ -77,6 +95,7 @@ export async function POST(request: NextRequest) {
         status: {
           ...status,
           uploadMode: getUploadMode(),
+          ocrPolicy,
         },
       });
     } catch (error) {

@@ -11,6 +11,8 @@ import { assertValidServiceRequest } from '@/lib/service-auth';
 import { prisma } from '@/lib/prisma';
 import { invalidateServerCacheTags } from '@/lib/server-cache';
 import { scanJobCacheTag, workspaceCacheTags } from '@/lib/cache-scopes';
+import { getEnv } from '@/lib/env';
+import { resolveOcrEnginePolicy } from '@/lib/ocr/engine-policy';
 
 const startSchema = z.object({
   attempt: z.number().int().min(1).max(20).optional(),
@@ -34,9 +36,24 @@ export async function POST(
       return fail('NOT_FOUND', 'Ingestion task not found.', 404);
     }
 
+    const workspaceSettings = await prisma.workspaceSettings.findUnique({
+      where: { workspaceId: task.workspaceId },
+      select: { ocrEngine: true },
+    });
+    const env = getEnv();
+    const ocrPolicy = resolveOcrEnginePolicy({
+      envRequested: env.OCR_ENGINE,
+      allowLegacy: env.ALLOW_LEGACY_OCR,
+      workspaceRequested: workspaceSettings?.ocrEngine || null,
+    });
+
     if (task.status === IngestionTaskStatus.COMPLETED) {
       return ok({
         task: toIngestionTaskResponse(task),
+        ocrEngineRequested: ocrPolicy.requested,
+        ocrEngineEffective: ocrPolicy.effective,
+        ocrEngineLocked: ocrPolicy.locked,
+        ocrEnginePolicyReason: ocrPolicy.reason,
         idempotentReplay: true,
       });
     }
@@ -92,6 +109,10 @@ export async function POST(
 
     return ok({
       task: toIngestionTaskResponse(updatedTask.task),
+      ocrEngineRequested: ocrPolicy.requested,
+      ocrEngineEffective: ocrPolicy.effective,
+      ocrEngineLocked: ocrPolicy.locked,
+      ocrEnginePolicyReason: ocrPolicy.reason,
       scanJob: {
         id: updatedTask.scanJob.id,
         status: updatedTask.scanJob.status,

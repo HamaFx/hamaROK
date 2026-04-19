@@ -1591,16 +1591,20 @@ def _handle_ingestion_message(msg: Dict[str, Any]) -> bool:
             'metadata': {'queueType': payload.get('type')},
         }
         start_response = _post_internal(f'/api/v2/internal/ingestion-tasks/{task_id}/start', start_payload)
-        task = (start_response.get('data') or {}).get('task') or {}
+        start_data = start_response.get('data') or {}
+        task = start_data.get('task') or {}
         artifact = task.get('artifact') or {}
         artifact_url = artifact.get('url')
         hint = task.get('archetypeHint')
+        task_engine = str(start_data.get('ocrEngineEffective') or OCR_ENGINE).strip().lower()
+        if task_engine not in ('mistral', 'legacy'):
+            task_engine = OCR_ENGINE
 
         if not artifact_url:
             raise RuntimeError('task artifact URL is missing')
 
         started = time.time()
-        if OCR_ENGINE == 'legacy':
+        if task_engine == 'legacy':
             image = _download_image(artifact_url)
             height, width = image.shape[:2]
             variants = _preprocess_variants(image)
@@ -1624,6 +1628,7 @@ def _handle_ingestion_message(msg: Dict[str, Any]) -> bool:
                     'ranking': ranking,
                     'metadata': {
                         'worker': 'legacy-local',
+                        'ocrEngine': task_engine,
                         'ocrDurationMs': ocr_duration_ms,
                     },
                 }
@@ -1637,6 +1642,7 @@ def _handle_ingestion_message(msg: Dict[str, Any]) -> bool:
                     'profile': profile,
                     'metadata': {
                         'worker': 'legacy-local',
+                        'ocrEngine': task_engine,
                         'ocrDurationMs': ocr_duration_ms,
                     },
                 }
@@ -1670,6 +1676,7 @@ def _handle_ingestion_message(msg: Dict[str, Any]) -> bool:
                     'ranking': ranking,
                     'metadata': {
                         'worker': 'mistral-server',
+                        'ocrEngine': task_engine,
                         'ocrDurationMs': ocr_duration_ms,
                         **extraction_metadata,
                     },
@@ -1684,6 +1691,7 @@ def _handle_ingestion_message(msg: Dict[str, Any]) -> bool:
                     'profile': profile,
                     'metadata': {
                         'worker': 'mistral-server',
+                        'ocrEngine': task_engine,
                         'ocrDurationMs': ocr_duration_ms,
                         **extraction_metadata,
                     },

@@ -70,6 +70,13 @@ export interface AwsOcrControlStatus {
   instanceId: string | null;
   instanceState: string | null;
   uploadMode?: 'queue_first' | 'client_legacy';
+  ocrPolicy?: {
+    requested: 'mistral' | 'legacy';
+    effective: 'mistral' | 'legacy';
+    reason: 'workspace_override' | 'env_default' | 'legacy_blocked';
+    legacyAllowed: boolean;
+    locked: boolean;
+  };
 }
 
 export interface ScanJobResponse {

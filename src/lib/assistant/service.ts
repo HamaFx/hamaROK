@@ -2555,6 +2555,198 @@ type AssistantReadExecution = {
   error?: string;
 };
 
+type AssistantAnalysisTableRow = Record<string, string>;
+
+type AssistantAnalysisTable = {
+  key: string;
+  title: string;
+  source: 'leaderboard' | 'actions';
+  columns: string[];
+  rows: AssistantAnalysisTableRow[];
+};
+
+function normalizeDisplayText(value: unknown, max = 120): string {
+  return String(value ?? '')
+    .normalize('NFKC')
+    .replace(/\p{C}+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, max);
+}
+
+function stringifyAnalysisCell(value: unknown, max = 120): string {
+  if (value == null) return '-';
+  if (typeof value === 'string') {
+    return normalizeDisplayText(value, max) || '-';
+  }
+  if (typeof value === 'number' || typeof value === 'bigint' || typeof value === 'boolean') {
+    return String(value);
+  }
+  if (Array.isArray(value)) {
+    return normalizeDisplayText(value.map((entry) => String(entry ?? '')).join(', '), max) || '-';
+  }
+  if (typeof value === 'object') {
+    return normalizeDisplayText(JSON.stringify(value), max) || '-';
+  }
+  return normalizeDisplayText(value, max) || '-';
+}
+
+function toLeaderboardAnalysisRows(readExecutions: AssistantReadExecution[]): AssistantAnalysisTableRow[] {
+  const rows: AssistantAnalysisTableRow[] = [];
+
+  for (const execution of readExecutions) {
+    if (execution.error) continue;
+    const payload = asJsonObject(execution.result);
+    const list =
+      execution.actionType === 'read_compare'
+        ? Array.isArray(payload.leaderboard)
+          ? payload.leaderboard
+          : []
+        : Array.isArray(payload.rows)
+          ? payload.rows
+          : [];
+
+    for (const entry of list.slice(0, 40)) {
+      const row = asJsonObject(entry);
+      const player = stringifyAnalysisCell(
+        row.governorNameRaw ||
+          row.governorName ||
+          row.name ||
+          row.governorNameNormalized
+      );
+      const governorId = stringifyAnalysisCell(
+        row.governorId || row.governorGameId || row.governorDbId || row.linkedGovernorId
+      );
+      const alliance = stringifyAnalysisCell(
+        row.allianceRaw || row.alliance || row.linkedAlliance || row.allianceTag
+      );
+      const metric = stringifyAnalysisCell(
+        row.metricValue ||
+          row.metricRaw ||
+          row.deltaKillPoints ||
+          row.deltaPower ||
+          row.deltaDeads ||
+          row.score
+      );
+      const rank = stringifyAnalysisCell(row.sourceRank || row.rank || row.position);
+      const confidence = stringifyAnalysisCell(row.confidence || row.identityConfidence || '-');
+      if (player === '-' && governorId === '-') continue;
+
+      rows.push({
+        Rank: rank,
+        Player: player,
+        'Governor ID': governorId,
+        Alliance: alliance,
+        Metric: metric,
+        Confidence: confidence,
+      });
+      if (rows.length >= 20) {
+        return rows;
+      }
+    }
+  }
+
+  return rows;
+}
+
+function toActionAnalysisRows(plannedActions: AssistantActionInput[]): AssistantAnalysisTableRow[] {
+  return plannedActions.slice(0, 20).map((action) => {
+    const request = action as unknown as Record<string, unknown>;
+    const actionType = String(request.type || action.type || 'action');
+    const player = stringifyAnalysisCell(
+      request.name || request.governorName || request.governorDbId || request.governorId
+    );
+    const governorId = stringifyAnalysisCell(
+      request.governorId || request.newGovernorId || request.governorDbId
+    );
+    const eventValue = stringifyAnalysisCell(request.eventId || request.eventName || '-');
+    let fields = '-';
+
+    if (actionType === 'register_player') {
+      fields = stringifyAnalysisCell(
+        ['name', 'governorId', 'alliance']
+          .filter((key) => request[key] != null && String(request[key] || '').trim())
+          .join(', ')
+      );
+    } else if (actionType === 'update_player') {
+      fields = stringifyAnalysisCell(
+        ['name', 'alliance', 'newGovernorId']
+          .filter((key) => request[key] != null && String(request[key] || '').trim())
+          .join(', ')
+      );
+    } else if (actionType === 'record_profile_stats') {
+      fields = stringifyAnalysisCell(
+        ['power', 'killPoints', 't4Kills', 't5Kills', 'deads']
+          .filter((key) => request[key] != null && String(request[key] || '').trim())
+          .join(', ')
+      );
+    } else if (actionType === 'create_event') {
+      fields = stringifyAnalysisCell(['name', 'description', 'startsAt', 'endsAt'].filter((key) => request[key] != null && String(request[key] || '').trim()).join(', '));
+    } else if (actionType === 'delete_event' || actionType === 'delete_player') {
+      fields = 'destructive';
+    }
+
+    return {
+      Action: actionType,
+      Player: player,
+      'Governor ID': governorId,
+      Fields: fields || '-',
+      Event: eventValue,
+      Status: 'pending_confirmation',
+    };
+  });
+}
+
+function buildAssistantAnalysisTables(args: {
+  readExecutions: AssistantReadExecution[];
+  plannedActions: AssistantActionInput[];
+}): AssistantAnalysisTable[] {
+  const tables: AssistantAnalysisTable[] = [];
+  const leaderboardRows = toLeaderboardAnalysisRows(args.readExecutions);
+  if (leaderboardRows.length > 0) {
+    tables.push({
+      key: 'leaderboard_analysis',
+      title: 'Leaderboard Analysis',
+      source: 'leaderboard',
+      columns: ['Rank', 'Player', 'Governor ID', 'Alliance', 'Metric', 'Confidence'],
+      rows: leaderboardRows,
+    });
+  }
+
+  const actionRows = toActionAnalysisRows(args.plannedActions);
+  if (actionRows.length > 0) {
+    tables.push({
+      key: 'write_plan_actions',
+      title: 'Proposed Register/Update Actions',
+      source: 'actions',
+      columns: ['Action', 'Player', 'Governor ID', 'Fields', 'Event', 'Status'],
+      rows: actionRows,
+    });
+  }
+
+  return tables;
+}
+
+function formatAnalysisTablesMarkdown(tables: AssistantAnalysisTable[]): string {
+  if (tables.length === 0) return '';
+  const blocks = tables.map((table) => {
+    const header = `| ${table.columns.join(' | ')} |`;
+    const separator = `| ${table.columns.map(() => '---').join(' | ')} |`;
+    const body = table.rows
+      .slice(0, 12)
+      .map((row) => {
+        const cells = table.columns.map((column) =>
+          stringifyAnalysisCell(row[column] || '-', 120).replace(/\|/g, '\\|')
+        );
+        return `| ${cells.join(' | ')} |`;
+      })
+      .join('\n');
+    return [`${table.title}:`, header, separator, body].filter(Boolean).join('\n');
+  });
+
+  return blocks.join('\n\n');
+}
+
 function summarizeReadExecution(execution: AssistantReadExecution): string {
   if (execution.error) {
     return `${execution.actionType}: error=${execution.error}`;
@@ -4969,6 +5161,15 @@ export async function postAssistantMessage(args: {
     ].join('\n\n');
   }
 
+  const analysisTables = buildAssistantAnalysisTables({
+    readExecutions,
+    plannedActions,
+  });
+  const tableMarkdown = formatAnalysisTablesMarkdown(analysisTables);
+  if (tableMarkdown) {
+    assistantText = [assistantText, tableMarkdown].filter(Boolean).join('\n\n');
+  }
+
   const suggestions = buildAssistantSuggestions({
     suggestionMode: settings.assistantConfig.suggestionMode,
     suggestionSignalThreshold: presetPolicy.suggestionSignalThreshold,
@@ -5032,6 +5233,7 @@ export async function postAssistantMessage(args: {
             droppedActions,
             clarificationHints,
             suggestions,
+            analysisTables,
             analyzerMode,
             contextPack: contextPack.text,
             contextDiagnostics: contextPack.diagnostics,

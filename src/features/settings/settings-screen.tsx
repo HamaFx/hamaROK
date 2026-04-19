@@ -49,6 +49,11 @@ interface SettingsConfig {
   kpPerPowerRatio: number;
   deadPerPowerRatio: number;
   discordWebhook: string;
+  ocrEngine: 'mistral' | 'legacy';
+  ocrEngineEffective: 'mistral' | 'legacy';
+  ocrEngineLocked: boolean;
+  ocrEnginePolicyReason: 'workspace_override' | 'env_default' | 'legacy_blocked';
+  accessRole: 'OWNER' | 'EDITOR' | 'VIEWER';
   weekResetUtcOffset: string;
   assistantConfig: AssistantConfigState;
 }
@@ -86,6 +91,11 @@ const DEFAULTS: SettingsConfig = {
   kpPerPowerRatio: 0.3,
   deadPerPowerRatio: 0.02,
   discordWebhook: '',
+  ocrEngine: 'mistral',
+  ocrEngineEffective: 'mistral',
+  ocrEngineLocked: false,
+  ocrEnginePolicyReason: 'env_default',
+  accessRole: 'OWNER',
   weekResetUtcOffset: '+00:00',
   assistantConfig: {
     screenshotAnalyzerDefault: 'hybrid',
@@ -216,6 +226,24 @@ export default function SettingsPage() {
           kpPerPowerRatio: settingsData.kpPerPowerRatio ?? DEFAULTS.kpPerPowerRatio,
           deadPerPowerRatio: settingsData.deadPerPowerRatio ?? DEFAULTS.deadPerPowerRatio,
           discordWebhook: settingsData.discordWebhook ?? DEFAULTS.discordWebhook,
+          ocrEngine:
+            settingsData.ocrEngine === 'legacy'
+              ? 'legacy'
+              : 'mistral',
+          ocrEngineEffective:
+            settingsData.ocrEngineEffective === 'legacy'
+              ? 'legacy'
+              : 'mistral',
+          ocrEngineLocked: Boolean(settingsData.ocrEngineLocked),
+          ocrEnginePolicyReason:
+            settingsData.ocrEnginePolicyReason === 'workspace_override' ||
+            settingsData.ocrEnginePolicyReason === 'legacy_blocked'
+              ? settingsData.ocrEnginePolicyReason
+              : 'env_default',
+          accessRole:
+            settingsData.accessRole === 'VIEWER' || settingsData.accessRole === 'EDITOR'
+              ? settingsData.accessRole
+              : 'OWNER',
           weekResetUtcOffset:
             typeof settingsData.weekResetUtcOffset === 'string'
               ? settingsData.weekResetUtcOffset
@@ -376,10 +404,19 @@ export default function SettingsPage() {
         },
       });
 
-      const settingsBody = {
-        ...config,
+      const settingsBody: Record<string, unknown> = {
+        t4Weight: config.t4Weight,
+        t5Weight: config.t5Weight,
+        deadWeight: config.deadWeight,
+        kpPerPowerRatio: config.kpPerPowerRatio,
+        deadPerPowerRatio: config.deadPerPowerRatio,
+        discordWebhook: config.discordWebhook,
+        weekResetUtcOffset: config.weekResetUtcOffset,
         assistantConfig: assistantConfigPayload,
       };
+      if (config.accessRole === 'OWNER') {
+        settingsBody.ocrEngine = config.ocrEngine;
+      }
 
       const [settingsRes, standardsRes] = await Promise.all([
         fetch(`/api/v2/workspaces/${workspaceId}/settings`, {
@@ -830,6 +867,43 @@ export default function SettingsPage() {
           title="AI Assistant"
           subtitle="Tune analyzer strategy, context behavior, and custom instructions."
         >
+          <div className="mb-5 grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <label className="text-xs text-tier-3">OCR Engine</label>
+              <select
+                className="h-11 w-full rounded-2xl border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] px-3 text-sm text-tier-1 disabled:opacity-60"
+                value={config.ocrEngine}
+                onChange={(event) =>
+                  setConfig((prev) => ({
+                    ...prev,
+                    ocrEngine: event.target.value === 'legacy' ? 'legacy' : 'mistral',
+                  }))
+                }
+                disabled={config.accessRole !== 'OWNER'}
+              >
+                <option value="mistral">Mistral (default)</option>
+                <option value="legacy">Legacy OCR (emergency fallback)</option>
+              </select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs text-tier-3">Effective OCR Engine</label>
+              <div className="h-11 rounded-2xl border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] px-3 text-sm text-tier-1 flex items-center justify-between">
+                <span className="font-medium">{config.ocrEngineEffective}</span>
+                <StatusPill
+                  label={config.ocrEngineLocked ? 'Locked' : config.ocrEnginePolicyReason === 'workspace_override' ? 'Workspace Override' : 'Default'}
+                  tone={config.ocrEngineEffective === 'legacy' ? 'warn' : 'info'}
+                />
+              </div>
+            </div>
+          </div>
+          <p className="mb-5 text-xs text-tier-3">
+            {config.accessRole !== 'OWNER'
+              ? 'Only OWNER can change OCR engine. Your role can still edit other AI settings.'
+              : config.ocrEngineLocked
+                ? 'Legacy OCR is requested but blocked until ALLOW_LEGACY_OCR=true in environment.'
+                : 'Mistral remains the primary OCR path. Legacy is for emergency rollback only.'}
+          </p>
+
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
               <label className="text-xs text-tier-3">Screenshot Analyzer Default</label>

@@ -81,6 +81,18 @@ if ! rg -q '"name":"mistral","ok":true' /tmp/rok-health.json; then
 fi
 echo "OK: mistral readiness is present and healthy"
 
+if ! rg -q '"requestedEngine":"' /tmp/rok-health.json; then
+  echo "Health payload missing OCR requestedEngine diagnostics." >&2
+  cat /tmp/rok-health.json >&2
+  exit 1
+fi
+if ! rg -q '"locked":' /tmp/rok-health.json; then
+  echo "Health payload missing OCR lock diagnostics." >&2
+  cat /tmp/rok-health.json >&2
+  exit 1
+fi
+echo "OK: OCR policy diagnostics are present"
+
 if ! rg -q '"name":"embedding"' /tmp/rok-health.json; then
   echo "Health payload missing embedding readiness check." >&2
   cat /tmp/rok-health.json >&2

@@ -113,8 +113,22 @@ export function UploadWorkerPanel({
             <ShieldCheck className="size-4" />
             <strong className="text-sm text-tier-1">AWS Mistral Worker</strong>
             <StatusPill label={workerLabel} tone={workerTone} />
+            <StatusPill
+              label={`Engine ${awsOcrControl?.ocrPolicy?.effective || 'mistral'}`}
+              tone={awsOcrControl?.ocrPolicy?.effective === 'legacy' ? 'warn' : 'info'}
+            />
           </div>
           <p className="text-sm text-tier-3">Queue-driven Mistral extraction. Use Start Worker to warm up before uploads.</p>
+          {awsOcrControl?.ocrPolicy ? (
+            <p className="mt-1 text-xs text-tier-3">
+              Requested: {awsOcrControl.ocrPolicy.requested}
+              {awsOcrControl.ocrPolicy.locked
+                ? ' • legacy blocked by ALLOW_LEGACY_OCR=false'
+                : awsOcrControl.ocrPolicy.reason === 'workspace_override'
+                  ? ' • workspace override active'
+                  : ' • env default'}
+            </p>
+          ) : null}
           <FilterBar className="mt-3">
             <Button
               onClick={onStartWorker}
@@ -259,27 +273,41 @@ export function UploadProcessingPanel({
   onOpenRankingReview: () => void;
   onRunBatch: () => void;
 }) {
-  if (!scanJobState || (scanJobState.status !== 'REVIEW' && scanJobState.status !== 'FAILED')) {
+  if (!scanJobState) {
+    return null;
+  }
+  const terminal =
+    scanJobState.status === 'REVIEW' ||
+    scanJobState.status === 'FAILED' ||
+    scanJobState.status === 'COMPLETED';
+  const hasBatchCandidates = entries.some(
+    (entry) => (entry.status === 'completed' || entry.status === 'duplicate') && Boolean(entry.artifactId)
+  );
+  if (!terminal && !hasBatchCandidates) {
     return null;
   }
 
+  const subtitle = terminal
+    ? scanJobState.status === 'FAILED'
+      ? 'Some rows failed. Review completed rows and retry failed screenshots.'
+      : 'Mistral extraction is complete. Continue in the review queues or run Assistant batch.'
+    : 'Completed rows are ready. You can run Assistant batch now while uploads continue.';
+
   return (
     <Panel
-      title="Processing Finished"
-      subtitle={
-        scanJobState.status === 'REVIEW'
-          ? 'Mistral extraction is complete. Continue in the review queues.'
-          : 'Some rows failed. Review completed rows and retry failed screenshots.'
-      }
+      title={terminal ? 'Processing Finished' : 'Batch Ready'}
+      subtitle={subtitle}
       actions={
         <div className="flex flex-col sm:flex-row w-full gap-2">
-          <Button
-            variant="outline"
-            className="w-full sm:w-auto rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1"
-            onClick={onRunBatch}
-          >
-            Run AI Batch
-          </Button>
+          {hasBatchCandidates ? (
+            <Button
+              variant="outline"
+              className="w-full sm:w-auto rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1"
+              onClick={onRunBatch}
+            >
+              Run AI Batch
+            </Button>
+          ) : null}
           <Button
             variant="outline"
             className="w-full sm:w-auto rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1"

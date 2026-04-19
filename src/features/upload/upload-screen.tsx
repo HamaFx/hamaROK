@@ -949,6 +949,13 @@ export default function UploadPage() {
 
   const openAssistantFromUpload = useCallback(() => {
     if (!workspaceId) return;
+    if (!scanJobId) {
+      setSubmitMessage({
+        type: 'error',
+        text: 'Scan job is still initializing. Try AI batch again in a few seconds.',
+      });
+      return;
+    }
     const contextArtifacts = entries
       .filter((entry) => {
         if (!(entry.status === 'completed' || entry.status === 'duplicate')) return false;
@@ -980,7 +987,15 @@ export default function UploadPage() {
     });
 
     router.push(`/assistant?handoff=${encodeURIComponent(token)}`);
-  }, [workspaceId, entries, scanJobId, completedProfileRows, completedRankingRows, scanJobState?.status, router]);
+  }, [
+    workspaceId,
+    entries,
+    scanJobId,
+    completedProfileRows,
+    completedRankingRows,
+    scanJobState?.status,
+    router,
+  ]);
 
   return (
     <div className="space-y-4 sm:space-y-5 lg:space-y-6">
