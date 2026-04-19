@@ -600,7 +600,7 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
       <SessionGate ready={workspaceReady} loading={sessionLoading} error={sessionError}>
         
         {/* Template Header (Hard Black & Blurred) */}
-        <header className="flex h-14 shrink-0 items-center justify-between border-b border-white/10 bg-black/95 px-4 backdrop-blur z-20 shadow-xl">
+        <header className="flex h-[calc(3.5rem+env(safe-area-inset-top))] shrink-0 items-center justify-between border-b border-white/10 bg-black/95 px-4 pb-1 pt-[env(safe-area-inset-top)] backdrop-blur z-20 shadow-xl">
           <div className="flex items-center gap-3">
              <Link href="/" className="mr-1">
                 <Button variant="ghost" size="icon" className="size-9 text-muted-foreground hover:bg-white/10 hover:text-foreground transition-colors">
