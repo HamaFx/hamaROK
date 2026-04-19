@@ -798,8 +798,22 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
                 <div className="w-full max-w-2xl flex flex-col gap-8 pb-32">
                    
                    {/* Operational Status (Pinned top of thread if active) */}
-                   {(controller.batchRun || controller.handoffContext || pendingPlan) && (
+                   {(controller.error || controller.notice || controller.batchRun || controller.handoffContext || pendingPlan) && (
                       <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-top-2 duration-700">
+                         {controller.error && (
+                            <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-xs shadow-sm backdrop-blur-sm">
+                               <p className="font-bold uppercase tracking-[0.06em] text-rose-300">Assistant Error</p>
+                               <p className="mt-1 text-rose-100">{controller.error}</p>
+                            </div>
+                         )}
+
+                         {controller.notice && !controller.error && (
+                            <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-xs shadow-sm backdrop-blur-sm">
+                               <p className="font-bold uppercase tracking-[0.06em] text-emerald-300">Assistant Notice</p>
+                               <p className="mt-1 text-emerald-100">{controller.notice}</p>
+                            </div>
+                         )}
+
                          {controller.handoffContext && (
                             <div className="rounded-2xl border border-sky-500/20 bg-sky-500/5 px-4 py-3 text-xs shadow-sm backdrop-blur-sm">
                                <p className="font-bold text-sky-600 dark:text-sky-400 tracking-tight uppercase mb-0.5 opacity-80">Imported Context</p>
