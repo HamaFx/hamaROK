@@ -137,7 +137,7 @@ function MobileMoreNav() {
 
   return (
     <Drawer>
-      <nav className="fixed inset-x-2.5 bottom-[calc(env(safe-area-inset-bottom)+12px)] z-40 grid h-[64px] grid-cols-5 rounded-[24px] glass-panel px-1.5 text-tier-3 shadow-[0_8px_32px_rgba(0,229,255,0.15)] min-[390px]:inset-x-4 min-[390px]:h-[70px] min-[390px]:px-2 lg:hidden">
+      <nav className="fixed inset-x-2.5 bottom-[calc(env(safe-area-inset-bottom)+12px)] z-40 grid h-[64px] grid-cols-5 rounded-[24px] glass-panel px-1.5 text-tier-3 shadow-[0_8px_32px_rgba(0,229,255,0.15)] min-[430px]:inset-x-4 min-[430px]:h-[70px] min-[430px]:px-2 lg:hidden">
         {MOBILE_PRIMARY_NAV.map((item) => {
           const Icon = item.icon;
           const active = isActivePath(pathname, item.href);
@@ -146,12 +146,12 @@ function MobileMoreNav() {
               key={item.href}
               href={item.href}
               className={cn(
-                'flex h-full flex-col items-center justify-center gap-1 rounded-[20px] px-1 text-xs font-medium tracking-wide transition-colors',
-                'gap-0.5 rounded-[18px] text-xs min-[390px]:gap-1 min-[390px]:rounded-[20px] min-[390px]:text-xs',
+                'flex h-full flex-col items-center justify-center gap-1 rounded-[20px] px-1 text-xs font-medium tracking-wide transition-colors min-h-[44px] min-w-[44px]',
+                'gap-0.5 rounded-[18px] text-xs min-[430px]:gap-1 min-[430px]:rounded-[20px] min-[430px]:text-xs',
                 active ? 'bg-[color:color-mix(in_oklab,var(--primary)_15%,transparent)] text-tier-1 shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--primary)_40%,transparent),0_0_12px_color-mix(in_oklab,var(--primary)_20%,transparent)]' : 'text-tier-3'
               )}
             >
-              <Icon className="size-3.5 min-[390px]:size-4" />
+              <Icon className="size-3.5 min-[430px]:size-4" />
               <span>{item.mobileLabel ?? item.label}</span>
             </Link>
           );
@@ -159,9 +159,9 @@ function MobileMoreNav() {
         <DrawerTrigger asChild>
           <Button
             variant="ghost"
-            className="flex h-full flex-col items-center justify-center gap-0.5 rounded-[18px] px-1 text-xs font-medium tracking-wide text-tier-3 hover:bg-[color:var(--surface-3)] hover:text-tier-1 min-[390px]:gap-1 min-[390px]:rounded-[20px] min-[390px]:text-xs"
+            className="flex h-full flex-col items-center justify-center gap-0.5 rounded-[18px] px-1 text-xs font-medium tracking-wide text-tier-3 hover:bg-[color:var(--surface-3)] hover:text-tier-1 min-[430px]:gap-1 min-[430px]:rounded-[20px] min-[430px]:text-xs min-h-[44px] min-w-[44px]"
           >
-            <Menu className="size-3.5 min-[390px]:size-4" />
+            <Menu className="size-3.5 min-[430px]:size-4" />
             <span>More</span>
           </Button>
         </DrawerTrigger>

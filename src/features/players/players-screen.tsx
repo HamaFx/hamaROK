@@ -855,35 +855,37 @@ export default function PlayersScreen() {
 
         {/* Filters */}
         <FilterBar density="balanced-compact">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-tier-3" />
-            <Input
-              id="player-search"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search by name or ID…"
-              className="min-h-11 rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] pl-9 text-tier-1 placeholder:text-tier-4"
-            />
-          </div>
-          <Select
-            value={allianceFilter || ALL_VALUE}
-            onValueChange={(val) => setAllianceFilter(val === ALL_VALUE ? '' : val)}
-          >
-            <SelectTrigger
-              id="alliance-filter"
-              className="min-h-11 w-44 rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-2"
+          <div className="flex flex-row items-center gap-2 w-full flex-nowrap">
+            <div className="relative flex-1 min-w-0">
+              <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-tier-3" />
+              <Input
+                id="player-search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search by name or ID…"
+                className="min-h-11 w-full rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] pl-9 text-tier-1 placeholder:text-tier-4"
+              />
+            </div>
+            <Select
+              value={allianceFilter || ALL_VALUE}
+              onValueChange={(val) => setAllianceFilter(val === ALL_VALUE ? '' : val)}
             >
-              <SelectValue placeholder="All Alliances" />
-            </SelectTrigger>
-            <SelectContent className="border-[color:var(--stroke-soft)] bg-card text-tier-1">
-              <SelectItem value={ALL_VALUE}>All Alliances</SelectItem>
-              {alliances.map((a) => (
-                <SelectItem key={a} value={a}>
-                  {a}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+              <SelectTrigger
+                id="alliance-filter"
+                className="min-h-11 w-[130px] shrink-0 rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-2"
+              >
+                <SelectValue placeholder="All Alliances" />
+              </SelectTrigger>
+              <SelectContent className="border-[color:var(--stroke-soft)] bg-card text-tier-1">
+                <SelectItem value={ALL_VALUE}>All Alliances</SelectItem>
+                {alliances.map((a) => (
+                  <SelectItem key={a} value={a}>
+                    {a}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </FilterBar>
 
         {/* Error */}
@@ -909,7 +911,7 @@ export default function PlayersScreen() {
             }
           />
         ) : (
-          <div className="rounded-[24px] border border-white/[0.05] bg-white/[0.015] p-2 shadow-2xl overflow-hidden">
+          <div className="rounded-[24px] border border-white/[0.05] bg-white/[0.015] p-2 shadow-2xl overflow-x-auto">
             <DataTableLite
               columns={columns}
               rows={filteredRows}

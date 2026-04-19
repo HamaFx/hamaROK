@@ -460,7 +460,7 @@ export default function HomeScreen() {
         </Panel>
 
         {/* 2. GLOBAL INSIGHTS - SHRUNK SQUARE CARDS (Moved lower as requested) */}
-        <section className="grid grid-cols-2 min-[440px]:grid-cols-4 gap-3">
+        <section className="grid grid-cols-2 min-[430px]:grid-cols-4 gap-2 min-[430px]:gap-3">
           <KpiSquare 
             label="Kingdom Power" 
             value={weeklyInsights ? formatCompactNumber(weeklyInsights.totalPowerGrowth) : "—"} 

@@ -330,39 +330,60 @@ function PendingIdentityCard({
   const candidates = parseCandidates(row.candidateGovernorIds);
 
   return (
-    <div className="rounded-2xl border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] p-3">
-      <div className="mb-2 flex items-center justify-between gap-2">
+    <div className="rounded-2xl border border-amber-500/20 bg-gradient-to-b from-amber-500/5 to-transparent p-4 shadow-lg relative overflow-hidden">
+      <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-amber-400/0 via-amber-400/50 to-amber-400/0" />
+      
+      <div className="mb-3 flex items-center justify-between gap-2">
         <StatusPill label={row.status} tone={row.status === 'RESOLVED' ? 'good' : row.status === 'DENIED' ? 'bad' : 'warn'} />
-        <span className="text-[11px] text-tier-3">{new Date(row.createdAt).toLocaleString()}</span>
+        <span className="text-[11px] text-tier-4 font-mono">{new Date(row.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
       </div>
 
-      <div className="space-y-1 text-sm text-tier-2">
-        <p>
-          <span className="text-tier-3">Governor:</span> {row.governorNameRaw || '(unknown)'}
-          {row.governorIdRaw ? ` (${row.governorIdRaw})` : ''}
-        </p>
-        {row.reason ? (
-          <p className="flex items-center gap-1 text-amber-100">
-            <AlertTriangle className="size-3.5" />
-            {row.reason}
-          </p>
-        ) : null}
+      <div className="mb-4 space-y-1.5">
+        <p className="text-[11px] uppercase tracking-wider text-amber-200/70 font-semibold">Unmapped Identity</p>
+        <div className="flex flex-col gap-1 rounded-xl bg-black/20 p-3 border border-white/5">
+          <p className="text-lg font-heading text-amber-100 drop-shadow-sm">{row.governorNameRaw || '(unknown)'}</p>
+          {row.governorIdRaw ? <p className="text-xs font-mono text-amber-200/60">ID: {row.governorIdRaw}</p> : null}
+          {row.reason ? (
+            <p className="mt-1 flex items-center gap-1.5 text-xs text-rose-300 bg-rose-500/10 px-2 py-1 rounded inline-flex w-fit border border-rose-500/20">
+              <AlertTriangle className="size-3" />
+              {row.reason}
+            </p>
+          ) : null}
+        </div>
       </div>
 
       {candidates.length > 0 ? (
-        <div className="mt-2 rounded-lg border border-[color:var(--stroke-soft)] bg-[color:var(--surface-4)] p-2 text-xs text-tier-2">
-          {candidates.map((candidate) => (
-            <p key={candidate.governorDbId}>
-              {candidate.governorName} ({candidate.governorGameId}) - db: {candidate.governorDbId}
-            </p>
-          ))}
+        <div className="mb-4">
+           <p className="text-[11px] uppercase tracking-wider text-tier-4 font-semibold mb-2">Candidate Matches</p>
+           <div className="flex flex-col gap-1.5">
+             {candidates.map((candidate) => (
+               <button
+                 key={candidate.governorDbId}
+                 type="button"
+                 onClick={() => setDraft({ ...draft, governorDbId: candidate.governorDbId })}
+                 className={cn(
+                   "text-left rounded-xl border p-2.5 text-sm transition-all flex items-center justify-between",
+                   draft.governorDbId === candidate.governorDbId 
+                     ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-100" 
+                     : "border-white/10 bg-[color:var(--surface-3)] text-tier-2 hover:bg-[color:var(--surface-4)]"
+                 )}
+               >
+                 <div>
+                   <p className="font-semibold">{candidate.governorName}</p>
+                   <p className="text-[11px] font-mono opacity-60">Game ID: {candidate.governorGameId}</p>
+                 </div>
+                 {draft.governorDbId === candidate.governorDbId && <Check className="size-4 text-emerald-400" />}
+               </button>
+             ))}
+           </div>
         </div>
       ) : null}
 
       {row.status === 'PENDING' ? (
-        <div className="mt-3 space-y-2">
+        <div className="space-y-3 border-t border-white/10 pt-4">
+           <p className="text-[11px] uppercase tracking-wider text-tier-4 font-semibold">Resolution</p>
           <Input
-            placeholder="Governor DB ID"
+            placeholder="Manual Governor DB ID"
             value={draft.governorDbId}
             onChange={(event) =>
               setDraft({
@@ -370,20 +391,11 @@ function PendingIdentityCard({
                 governorDbId: event.target.value,
               })
             }
-          />
-          <Input
-            placeholder="Event ID (optional)"
-            value={draft.eventId}
-            onChange={(event) =>
-              setDraft({
-                ...draft,
-                eventId: event.target.value,
-              })
-            }
+            className="border-white/10 bg-[color:var(--surface-4)]"
           />
           <Textarea
             rows={2}
-            placeholder="Resolution note (optional)"
+            placeholder="Internal note (optional)..."
             value={draft.note}
             onChange={(event) =>
               setDraft({
@@ -391,14 +403,15 @@ function PendingIdentityCard({
                 note: event.target.value,
               })
             }
+            className="border-white/10 bg-[color:var(--surface-4)] text-sm resize-none"
           />
           <Button
-            className="rounded-full bg-[color:var(--primary)] text-primary-foreground hover:opacity-90"
+            className="w-full rounded-xl bg-amber-500 text-amber-950 hover:bg-amber-400 shadow-[0_0_15px_rgba(245,158,11,0.2)] font-bold mt-2"
             onClick={() => onResolve(row.id)}
             disabled={Boolean(busyPendingId)}
           >
             <Check data-icon="inline-start" />
-            {busyPendingId === row.id ? 'Resolving...' : 'Resolve Identity'}
+            {busyPendingId === row.id ? 'Resolving...' : 'Confirm Resolution'}
           </Button>
         </div>
       ) : null}
@@ -436,6 +449,7 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
   } = useWorkspaceSession();
 
   const [showMobileContext, setShowMobileContext] = useState(false);
+  const [showMobileConversations, setShowMobileConversations] = useState(false);
   const [contextTab, setContextTab] = useState<ContextTab>('plans');
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -582,24 +596,23 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
   );
 
   return (
-    <div className="space-y-4 sm:space-y-5 lg:space-y-6">
-      <PageHero
-        title="Assistant"
-        subtitle="Operational cockpit for screenshot analysis, read-surface queries, and one-step execution of full write plans."
-        badges={['Mistral OCR', 'Read Tools Auto-Run', 'Single Plan Confirmation']}
-        actions={
-          <Button
-            variant="outline"
-            className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] xl:hidden"
-            onClick={() => setShowMobileContext((prev) => !prev)}
-          >
-            <PanelRight data-icon="inline-start" />
-            {showMobileContext ? 'Hide Context' : 'Show Context'}
-          </Button>
-        }
-      />
-
+    <div className="flex flex-col w-full h-[calc(100dvh-120px)] lg:h-[calc(100dvh-130px)] mt-[-10px] relative">
       <SessionGate ready={workspaceReady} loading={sessionLoading} error={sessionError}>
+        {/* Mobile Header */}
+        <div className="flex lg:hidden items-center justify-between bg-[color:var(--surface-3)] border border-[color:var(--stroke-soft)] rounded-2xl p-3 mb-2 shrink-0">
+          <div className="flex items-center gap-2">
+            <Bot className="size-5 text-sky-400" />
+            <h1 className="font-heading text-base font-bold text-tier-1">Assistant</h1>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" className="rounded-full px-3 h-8" onClick={() => setShowMobileConversations((p) => !p)}>
+               History
+            </Button>
+            <Button variant="outline" size="sm" className="rounded-full px-3 h-8" onClick={() => setShowMobileContext((p) => !p)}>
+               Context
+            </Button>
+          </div>
+        </div>
         {controller.error ? <InlineError message={controller.error} /> : null}
 
         {controller.handoffContext ? (
@@ -616,120 +629,161 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
         ) : null}
 
         {(controller.batchRun || controller.batchScanJobId || controller.handoffContext) ? (
-          <Panel
-            title="AI Batch Runner"
-            subtitle="Process scan-job screenshots one-by-one with safe auto-confirm."
-            actions={
-              <div className="flex flex-wrap gap-2">
+          <div className="rounded-2xl border border-sky-500/20 bg-sky-950/20 p-5 shadow-2xl relative overflow-hidden">
+            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-sky-500/0 via-sky-400/50 to-sky-500/0" />
+            <div className="mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h3 className="font-heading text-lg font-bold text-sky-100 flex items-center gap-2">
+                  <Bot className="size-5 text-sky-400" />
+                  AI Batch Runner
+                </h3>
+                <p className="text-sm text-sky-200/70 mt-1">Autonomous sequential OCR extraction and data entry.</p>
+              </div>
+              <div className="flex flex-wrap gap-2 items-center">
                 <Input
                   value={controller.batchScanJobId}
                   onChange={(event) => controller.setBatchScanJobId(event.target.value)}
                   placeholder="Scan Job ID"
-                  className="h-9 w-[250px]"
+                  className="h-9 w-[180px] bg-black/20 border-sky-500/20 text-sky-100 placeholder:text-sky-100/30"
                 />
                 <Button
-                  className="rounded-full bg-[color:var(--primary)] text-primary-foreground hover:opacity-90"
+                  size="sm"
+                  className="rounded-xl bg-sky-500 text-sky-950 hover:bg-sky-400 font-bold shadow-[0_0_15px_rgba(14,165,233,0.3)]"
                   onClick={() => void controller.startBatchRun()}
                   disabled={controller.startingBatch}
                 >
-                  <Play data-icon="inline-start" />
-                  {controller.startingBatch ? 'Starting...' : 'Start Batch'}
+                  <Play className="size-3.5 mr-1.5" />
+                  {controller.startingBatch ? 'Starting...' : 'Start'}
                 </Button>
                 <Button
+                  size="sm"
                   variant="outline"
-                  className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)]"
+                  className="rounded-xl border-sky-400/30 bg-sky-500/10 text-sky-200 hover:bg-sky-500/20 font-bold"
                   onClick={() => void controller.runBatchStep()}
                   disabled={controller.steppingBatch || !controller.batchRun}
                 >
-                  <Workflow data-icon="inline-start" />
-                  {controller.steppingBatch ? 'Running Step...' : 'Run Next Step'}
+                  <Workflow className="size-3.5 mr-1.5" />
+                  {controller.steppingBatch ? 'Running...' : 'Run Step'}
                 </Button>
               </div>
-            }
-          >
+            </div>
+
             {controller.batchRun ? (
-              <div className="space-y-3">
-                <div className="grid gap-2 sm:grid-cols-5">
-                  <StatusChip label="Status" value={controller.batchRun.status} />
-                  <StatusChip label="Processed" value={`${controller.batchRun.processedCount}/${controller.batchRun.totalArtifacts}`} />
-                  <StatusChip label="Remaining" value={controller.batchRun.remainingCount} />
-                  <StatusChip label="Auto Confirmed" value={controller.batchRun.autoConfirmedCount} />
-                  <StatusChip label="Flagged" value={controller.batchRun.pendingManualCount} />
+              <div className="space-y-5">
+                <div className="bg-black/30 rounded-xl p-4 border border-sky-500/10">
+                  <div className="flex justify-between items-end mb-2">
+                    <span className="text-xs uppercase tracking-wider text-sky-300/70 font-semibold">Progress</span>
+                    <span className="text-sm font-mono text-sky-200">{controller.batchRun.processedCount} / {controller.batchRun.totalArtifacts}</span>
+                  </div>
+                  <div className="h-2 w-full bg-black/50 rounded-full overflow-hidden border border-white/5">
+                    <div 
+                      className="h-full bg-sky-400 shadow-[0_0_10px_rgba(56,189,248,0.8)] transition-all duration-500" 
+                      style={{ width: `${controller.batchRun.totalArtifacts > 0 ? (controller.batchRun.processedCount / controller.batchRun.totalArtifacts) * 100 : 0}%` }} 
+                    />
+                  </div>
+                  <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div className="bg-[color:var(--surface-3)] rounded-lg p-2.5 border border-white/5 flex flex-col items-center">
+                       <span className="text-[10px] uppercase text-tier-4 mb-1">Status</span>
+                       <StatusPill label={controller.batchRun.status} tone={controller.batchRun.status === 'COMPLETED' ? 'good' : 'info'} />
+                    </div>
+                    <div className="bg-[color:var(--surface-3)] rounded-lg p-2.5 border border-white/5 flex flex-col items-center">
+                       <span className="text-[10px] uppercase text-tier-4 mb-1">Auto Confirmed</span>
+                       <span className="text-sm font-mono text-emerald-400 font-bold">{controller.batchRun.autoConfirmedCount}</span>
+                    </div>
+                    <div className="bg-[color:var(--surface-3)] rounded-lg p-2.5 border border-white/5 flex flex-col items-center">
+                       <span className="text-[10px] uppercase text-tier-4 mb-1">Needs Manual</span>
+                       <span className="text-sm font-mono text-amber-400 font-bold">{controller.batchRun.pendingManualCount}</span>
+                    </div>
+                    <div className="bg-[color:var(--surface-3)] rounded-lg p-2.5 border border-white/5 flex flex-col items-center">
+                       <span className="text-[10px] uppercase text-tier-4 mb-1">Remaining</span>
+                       <span className="text-sm font-mono text-sky-200 font-bold">{controller.batchRun.remainingCount}</span>
+                    </div>
+                  </div>
                 </div>
-                <p className="text-xs text-tier-3">
-                  Scan job: <span className="text-tier-1">{controller.batchRun.scanJobId}</span>
-                  {controller.batchRun.nextArtifact ? (
-                    <>
-                      {' '}• Next: <span className="text-tier-1">{controller.batchRun.nextArtifact.fileName}</span>
-                    </>
-                  ) : null}
-                </p>
+
                 {controller.batchRun.flagged.length > 0 ? (
-                  <div className="space-y-2 rounded-xl border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] p-3">
-                    <p className="text-sm font-medium text-tier-1">Flagged Items</p>
-                    {controller.batchRun.flagged.slice(-8).reverse().map((row, index) => (
-                      <div
-                        key={`${row.artifactId}-${index}`}
-                        className="rounded-lg border border-[color:var(--stroke-soft)] bg-[color:var(--surface-4)] px-2.5 py-2 text-xs"
-                      >
-                        <p className="font-medium text-tier-1">{row.fileName}</p>
-                        <p className="text-amber-100">{batchFlagReasonLabel(row.reason)}</p>
-                        {row.planId ? <p className="text-tier-3">Plan: {row.planId}</p> : null}
-                        {row.details ? <p className="text-tier-3">{row.details}</p> : null}
-                      </div>
-                    ))}
+                  <div className="space-y-2 rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
+                    <p className="text-xs uppercase tracking-wider text-amber-400 font-semibold mb-3 flex items-center gap-2">
+                       <AlertTriangle className="size-3.5" /> Action Required Queue
+                    </p>
+                    <div className="grid gap-2">
+                      {controller.batchRun.flagged.slice(-5).reverse().map((row, index) => (
+                        <div
+                          key={`${row.artifactId}-${index}`}
+                          className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-lg border border-amber-500/10 bg-black/40 px-3 py-2 text-xs"
+                        >
+                          <div className="flex items-center gap-2">
+                             <FileImage className="size-3.5 text-tier-4" />
+                             <span className="font-mono text-tier-2">{row.fileName}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-amber-200/80 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">{batchFlagReasonLabel(row.reason)}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 ) : null}
               </div>
             ) : (
-              <p className="text-sm text-tier-3">
-                Start a batch with a scan job ID to process upload artifacts sequentially.
-              </p>
+              <div className="bg-black/20 rounded-xl p-8 border border-sky-500/10 text-center">
+                <Workflow className="size-8 text-sky-500/30 mx-auto mb-3" />
+                <p className="text-sm text-sky-200/50 font-medium">Start a batch with a scan job ID to process artifacts sequentially.</p>
+              </div>
             )}
-          </Panel>
+          </div>
         ) : null}
 
         {pendingPlan ? (
-          <div className="sticky top-2 z-20 rounded-2xl border border-amber-300/20 bg-amber-300/10 px-4 py-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="space-y-1">
-                <p className="text-sm font-medium text-amber-100">Pending write plan ready</p>
-                <p className="text-xs text-amber-100/80">{shorten(pendingPlan.summary, 140)}</p>
+          <div className="sticky top-4 z-40 mx-auto max-w-4xl rounded-2xl border border-amber-500/30 bg-black/80 backdrop-blur-xl px-5 py-4 shadow-[0_12px_40px_rgba(245,158,11,0.15)] ring-1 ring-amber-400/20">
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div className="space-y-1 text-center sm:text-left">
+                <div className="flex items-center justify-center sm:justify-start gap-2">
+                  <div className="size-2 rounded-full bg-amber-400 animate-pulse shadow-[0_0_8px_rgba(251,191,36,0.8)]" />
+                  <p className="text-sm font-bold text-amber-200 uppercase tracking-widest">Action Required</p>
+                </div>
+                <p className="text-[13px] text-amber-100/90 leading-snug max-w-lg">{shorten(pendingPlan.summary, 120)}</p>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2 justify-center">
                 <StatusPill label={`${pendingPlan.actions.length} actions`} tone="warn" />
                 {destructiveCount(pendingPlan) > 0 ? (
-                  <StatusPill label={`${destructiveCount(pendingPlan)} destructive`} tone="bad" />
+                  <span className="rounded-md bg-rose-500/20 px-2 py-0.5 text-xs font-bold uppercase tracking-wider text-rose-300 border border-rose-500/30">Destructive</span>
                 ) : null}
-                <Button
-                  size="sm"
-                  className="rounded-full bg-emerald-500 text-emerald-950 hover:bg-emerald-400"
-                  onClick={() => void controller.confirmPlan(pendingPlan.id)}
-                  disabled={Boolean(controller.busyPlanId)}
-                >
-                  <Check data-icon="inline-start" />
-                  Confirm Latest Plan
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="rounded-full border-rose-300/35 text-rose-100 hover:bg-rose-500/15"
-                  onClick={() => void controller.denyPlan(pendingPlan.id)}
-                  disabled={Boolean(controller.busyPlanId)}
-                >
-                  <X data-icon="inline-start" />
-                  Deny
-                </Button>
+                <div className="flex items-center gap-1.5 ml-2">
+                  <Button
+                    size="sm"
+                    className="rounded-xl bg-emerald-500 text-emerald-950 hover:bg-emerald-400 font-bold shadow-[0_0_15px_rgba(16,185,129,0.25)]"
+                    onClick={() => void controller.confirmPlan(pendingPlan.id)}
+                    disabled={Boolean(controller.busyPlanId)}
+                  >
+                    <Check className="size-4 mr-1" />
+                    Confirm
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="rounded-xl border-rose-500/30 bg-rose-500/10 text-rose-200 hover:bg-rose-500/20 font-bold"
+                    onClick={() => void controller.denyPlan(pendingPlan.id)}
+                    disabled={Boolean(controller.busyPlanId)}
+                  >
+                    <X className="size-4 mr-1" />
+                    Deny
+                  </Button>
+                </div>
               </div>
             </div>
           </div>
         ) : null}
 
-        <div className="grid gap-4 xl:grid-cols-[300px_minmax(0,1fr)_390px]">
+        <div className="flex flex-1 min-h-0 gap-4 relative overflow-hidden">
+          <div className={cn(
+            "absolute inset-y-0 left-0 z-40 w-full sm:w-[320px] lg:static lg:w-[300px] lg:flex lg:translate-x-0 transition-transform bg-[color:var(--surface-1)]",
+            showMobileConversations ? "translate-x-0" : "-translate-x-full"
+          )}>
           <Panel
             title="Conversations"
             subtitle="Workspace threads"
-            className="xl:sticky xl:top-4 xl:max-h-[calc(100dvh-164px)] xl:overflow-y-auto"
+            className="w-full h-full border-none shadow-none flex flex-col p-4 bg-transparent overflow-y-auto"
             actions={
               <Button
                 variant="outline"
@@ -793,35 +847,26 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
               </div>
             </div>
           </Panel>
+          </div>
 
-          <Panel
-            title="Chat"
-            subtitle="Send instructions, screenshots, and handoff artifacts."
-            className="xl:min-h-[calc(100dvh-164px)]"
-          >
-            <div className="flex min-h-[560px] flex-col gap-3 lg:min-h-[620px] xl:h-[calc(100dvh-250px)]">
-              <div className="rounded-xl border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] px-3 py-2 text-xs text-tier-2">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-1.5">
-                    <MessageSquare className="size-3.5" />
-                    <span>
-                      Active thread:{' '}
-                      <span className="font-medium text-tier-1">
-                        {shorten(
-                          controller.conversations.find((row) => row.id === controller.selectedConversationId)?.title || 'Untitled Conversation',
-                          52
-                        )}
-                      </span>
-                    </span>
-                  </div>
-                  <span>{controller.history?.messages?.length || 0} messages</span>
-                </div>
+          <div className="flex-1 flex flex-col min-w-0 bg-[color:var(--surface-2)] border border-[color:var(--stroke-soft)] rounded-2xl shadow-xl overflow-hidden relative">
+            <div className="flex items-center justify-between p-4 border-b border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] shrink-0">
+              <div className="flex items-center gap-2">
+                <MessageSquare className="size-5 text-sky-400" />
+                <span className="font-heading text-base font-bold text-tier-1">
+                  {shorten(
+                    controller.conversations.find((row) => row.id === controller.selectedConversationId)?.title || 'Untitled Conversation',
+                    52
+                  )}
+                </span>
               </div>
+              <span className="text-xs font-medium text-tier-3 bg-[color:var(--surface-4)] px-2.5 py-1 rounded-full">{controller.history?.messages?.length || 0} messages</span>
+            </div>
 
-              <div
-                ref={timelineRef}
-                className="flex-1 space-y-2 overflow-y-auto rounded-2xl border border-[color:var(--stroke-soft)] bg-[color:var(--surface-2)] p-3"
-              >
+            <div
+              ref={timelineRef}
+              className="flex-1 overflow-y-auto p-4 space-y-4 relative scroll-smooth"
+            >
                 {controller.loadingHistory ? (
                   <p className="text-sm text-tier-3">Loading messages...</p>
                 ) : !controller.history?.messages?.length ? (
@@ -895,42 +940,33 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
                   </div>
                 ) : null}
 
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-xs text-tier-3">Tip: Press Ctrl/Cmd + Enter to send.</p>
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-white/5">
+                  <p className="text-xs text-tier-3 font-mono opacity-70">Tip: Press Ctrl/Cmd + Enter to send.</p>
                   <Button
-                    className="rounded-full bg-[color:var(--primary)] text-primary-foreground hover:opacity-90"
+                    className="rounded-xl bg-sky-500 text-sky-950 hover:bg-sky-400 font-bold px-5 shadow-[0_0_15px_rgba(14,165,233,0.3)]"
                     onClick={() => void controller.submitMessage()}
                     disabled={controller.sendingMessage || controller.loadingHistory}
                   >
-                    <Send data-icon="inline-start" />
+                    <Send className="size-4 mr-1.5" />
                     {controller.sendingMessage ? 'Sending...' : 'Send'}
                   </Button>
                 </div>
               </div>
-            </div>
-          </Panel>
-
-          <Panel
-            title="Context"
-            subtitle="Plans, pending identity resolutions, and execution traces."
-            className="hidden xl:block xl:sticky xl:top-4 xl:max-h-[calc(100dvh-164px)] xl:overflow-y-auto"
-          >
-            {contextTabs}
-          </Panel>
-        </div>
-
-        {showMobileContext ? (
-          <div className="fixed inset-x-0 bottom-0 top-[12%] z-40 overflow-y-auto border-t border-[color:var(--stroke-soft)] bg-[color:var(--surface-1)] p-4 shadow-2xl xl:hidden">
-            <div className="mb-3 flex items-center justify-between">
-              <p className="font-heading text-sm text-tier-1">Assistant Context</p>
-              <Button variant="outline" className="rounded-full" onClick={() => setShowMobileContext(false)}>
-                <X data-icon="inline-start" />
-                Close
-              </Button>
-            </div>
-            {contextTabs}
           </div>
-        ) : null}
+
+          <div className={cn(
+            "absolute inset-y-0 right-0 z-40 w-full sm:w-[400px] xl:static xl:w-[360px] xl:flex xl:translate-x-0 transition-transform bg-[color:var(--surface-1)]",
+            showMobileContext ? "translate-x-0" : "translate-x-full"
+          )}>
+            <Panel
+              title="Context"
+              subtitle="Plans, resolutions, and traces."
+              className="w-full h-full border-none shadow-none flex flex-col p-4 bg-transparent overflow-y-auto"
+            >
+              {contextTabs}
+            </Panel>
+          </div>
+        </div>
       </SessionGate>
     </div>
   );

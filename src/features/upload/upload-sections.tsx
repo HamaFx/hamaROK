@@ -272,29 +272,29 @@ export function UploadProcessingPanel({
           : 'Some rows failed. Review completed rows and retry failed screenshots.'
       }
       actions={
-        <FilterBar>
+        <div className="flex flex-col sm:flex-row w-full gap-2">
           <Button
             variant="outline"
-            className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1"
+            className="w-full sm:w-auto rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1"
             onClick={onRunBatch}
           >
             Run AI Batch
           </Button>
           <Button
             variant="outline"
-            className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1"
+            className="w-full sm:w-auto rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1"
             onClick={onOpenReview}
           >
             OCR Review ({completedProfileRows})
           </Button>
           <Button
             variant="outline"
-            className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1"
+            className="w-full sm:w-auto rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1"
             onClick={onOpenRankingReview}
           >
             Ranking Review ({completedRankingRows})
           </Button>
-        </FilterBar>
+        </div>
       }
     >
       <p className="text-sm text-tier-3">
