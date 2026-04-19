@@ -22,6 +22,12 @@ Mistral:
 - `MISTRAL_API_KEY`
 - `MISTRAL_BASE_URL` (optional, defaults to `https://api.mistral.ai`)
 
+Embedding:
+
+- `WorkspaceSettings.assistantConfig.embedding` controls retrieval/indexing behavior
+- default model: `mistral-embed-2312`
+- required vector dimension for this build: `1024`
+
 AWS OCR control:
 
 - `UPLOAD_MODE=queue_first`
@@ -42,6 +48,7 @@ Checks expected when healthy:
 
 - `env.ok = true`
 - `mistral.ok = true` (when `OCR_ENGINE=mistral`)
+- `embedding.ok = true`
 - `database.ok = true`
 - `weekly_schema.ok = true`
 
@@ -73,6 +80,16 @@ npx vercel deploy --prod --yes
 ```bash
 curl -i https://hamarok.vercel.app/api/healthz
 curl -I https://hamarok.vercel.app/assistant
+curl -i "https://hamarok.vercel.app/api/v2/workspaces/<workspaceId>/embeddings/status"
+```
+
+5. (Recommended after schema/model upgrades) run embedding backfill:
+
+```bash
+curl -X POST "https://hamarok.vercel.app/api/v2/workspaces/<workspaceId>/embeddings/backfill" \
+  -H "Authorization: Bearer <workspace-access-token>"
+curl -X POST "https://hamarok.vercel.app/api/v2/jobs/run?workspaceId=<workspaceId>" \
+  -H "Authorization: Bearer <workspace-access-token>"
 ```
 
 ## AWS Infra Scripts
@@ -106,3 +123,4 @@ curl -I https://hamarok.vercel.app/assistant
 
 - Emergency OCR rollback: set `OCR_ENGINE=legacy`.
 - Assistant endpoints and ingestion contracts remain active under rollback.
+- If embedding services degrade, assistant/ranking identity logic falls back to deterministic + fuzzy matching paths.

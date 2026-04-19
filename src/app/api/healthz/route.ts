@@ -11,7 +11,7 @@ import { getWeeklySchemaCapability } from '@/lib/weekly-schema-guard';
 export const dynamic = 'force-dynamic';
 
 interface ReadinessCheck {
-  name: 'env' | 'database' | 'weekly_schema' | 'mistral';
+  name: 'env' | 'database' | 'weekly_schema' | 'mistral' | 'embedding';
   ok: boolean;
   message?: string;
 }
@@ -31,6 +31,9 @@ export async function GET() {
   let env: ReturnType<typeof getEnv> | null = null;
   let uploadMode: 'queue_first' | 'client_legacy' | null = null;
   let ocrEngine: 'mistral' | 'legacy' | null = null;
+  let embeddingInstalled: boolean | null = null;
+  let embeddingConfigValid: boolean | null = null;
+  let embeddingInvalidWorkspaceCount = 0;
 
   try {
     env = validateRuntimeEnv();
@@ -78,6 +81,55 @@ export async function GET() {
     });
   }
 
+  try {
+    const { prisma } = await import('@/lib/prisma');
+    const [extension] = await prisma.$queryRaw<Array<{ installed: boolean }>>`
+      SELECT EXISTS (
+        SELECT 1
+        FROM pg_extension
+        WHERE extname = 'vector'
+      ) AS installed
+    `;
+    const installed = Boolean(extension?.installed);
+    const hasMistralKey = Boolean(env?.MISTRAL_API_KEY);
+    const [configSummary] = await prisma.$queryRaw<Array<{ invalid_count: number }>>`
+      SELECT COUNT(*)::int AS invalid_count
+      FROM "WorkspaceSettings"
+      WHERE "assistantConfig" IS NOT NULL
+        AND "assistantConfig"->'embedding'->>'dimension' IS NOT NULL
+        AND (
+          NOT ("assistantConfig"->'embedding'->>'dimension' ~ '^[0-9]+$')
+          OR ("assistantConfig"->'embedding'->>'dimension')::int <> 1024
+        )
+    `;
+    embeddingInvalidWorkspaceCount = Number(configSummary?.invalid_count || 0);
+    const configValid = embeddingInvalidWorkspaceCount === 0;
+    embeddingConfigValid = configValid;
+    const embeddingReady = installed && hasMistralKey && configValid;
+    embeddingInstalled = installed;
+    checks.push({
+      name: 'embedding',
+      ok: embeddingReady,
+      message: !installed
+        ? 'pgvector extension is not installed.'
+        : !hasMistralKey
+          ? 'MISTRAL_API_KEY is missing for embedding calls.'
+          : !configValid
+            ? `Embedding config invalid in ${embeddingInvalidWorkspaceCount} workspace(s) (dimension must be 1024).`
+            : undefined,
+    });
+    if (!embeddingReady) {
+      ready = false;
+    }
+  } catch (error) {
+    ready = false;
+    checks.push({
+      name: 'embedding',
+      ok: false,
+      message: toErrorMessage(error),
+    });
+  }
+
   let weeklySchema: Awaited<ReturnType<typeof getWeeklySchemaCapability>> | null = null;
   try {
     weeklySchema = await getWeeklySchemaCapability({ forceRefresh: true });
@@ -113,6 +165,11 @@ export async function GET() {
   if (env && (env.OCR_ENGINE ?? 'mistral') === 'mistral' && !env.MISTRAL_API_KEY) {
     warnings.push('MISTRAL_API_KEY is not configured while OCR_ENGINE=mistral.');
   }
+  if (embeddingConfigValid === false) {
+    warnings.push(
+      `Embedding configuration invalid for ${embeddingInvalidWorkspaceCount} workspace(s): dimension must stay at 1024.`
+    );
+  }
 
   return NextResponse.json(
     {
@@ -136,6 +193,12 @@ export async function GET() {
           engine: ocrEngine || (env?.OCR_ENGINE ?? 'mistral'),
           mistralConfigured: Boolean(env?.MISTRAL_API_KEY),
           mistralBaseUrl: env?.MISTRAL_BASE_URL || 'https://api.mistral.ai',
+        },
+        embedding: {
+          vectorExtensionInstalled: embeddingInstalled,
+          mistralKeyReady: Boolean(env?.MISTRAL_API_KEY),
+          configValid: embeddingConfigValid,
+          invalidWorkspaceCount: embeddingInvalidWorkspaceCount,
         },
         weeklySchema: weeklySchema
           ? {

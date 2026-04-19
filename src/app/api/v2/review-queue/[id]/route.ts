@@ -1,6 +1,8 @@
 import { NextRequest } from 'next/server';
 import {
   AnomalySeverity,
+  EmbeddingCorpus,
+  EmbeddingTaskOperation,
   MetricObservationSourceType,
   OcrExtractionStatus,
   Prisma,
@@ -31,6 +33,7 @@ import { scanJobCacheTag, workspaceCacheTags } from '@/lib/cache-scopes';
 import { splitGovernorNameAndAlliance } from '@/lib/alliances';
 import { ensureWeeklyEventForWorkspace } from '@/lib/weekly-events';
 import { assertWeeklySchemaCapability, isWeeklySchemaCapabilityError } from '@/lib/weekly-schema-guard';
+import { enqueueEmbeddingTaskSafe } from '@/lib/embeddings/service';
 import {
   METRIC_KEY_KILL_POINTS,
   METRIC_KEY_POWER,
@@ -879,6 +882,17 @@ export async function PATCH(
       ...Object.values(workspaceCacheTags(extraction.scanJob.workspaceId)),
       scanJobCacheTag(extraction.scanJobId),
     ]);
+
+    await enqueueEmbeddingTaskSafe({
+      workspaceId: extraction.scanJob.workspaceId,
+      corpus: EmbeddingCorpus.OCR_EXTRACTIONS,
+      operation: EmbeddingTaskOperation.UPSERT,
+      entityType: 'ocr_extraction',
+      entityId: result.extraction.id,
+      payload: {
+        reason: 'review_queue_update',
+      },
+    });
 
     return ok({
       id: result.extraction.id,

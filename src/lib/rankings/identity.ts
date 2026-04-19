@@ -1,5 +1,6 @@
 import { Prisma, RankingIdentityStatus } from '@prisma/client';
 import { splitGovernorNameAndAlliance } from '@/lib/alliances';
+import { resolveGovernorByEmbeddingFallback } from '@/lib/embeddings/service';
 import { resolveGovernorBySimilarityTx } from '@/lib/governor-similarity';
 import { normalizeGovernorAlias } from './normalize';
 
@@ -49,12 +50,79 @@ export async function resolveRankingIdentity(
     suggestionLimit: 5,
   });
 
-  const suggestions = similarity.candidates.map((candidate) => ({
-    governorId: candidate.governorDbId,
-    governorGameId: candidate.governorGameId,
-    name: candidate.governorName,
-    source: candidate.mode === 'exact_alias' ? ('alias' as const) : ('name' as const),
-  }));
+  let embeddingFallback:
+    | Awaited<ReturnType<typeof resolveGovernorByEmbeddingFallback>>
+    | null = null;
+  if (similarity.status !== 'resolved') {
+    try {
+      embeddingFallback = await resolveGovernorByEmbeddingFallback({
+        workspaceId: args.workspaceId,
+        query: canonicalName,
+        suggestionLimit: 5,
+        autoLinkThreshold: similarity.autoThreshold,
+      });
+    } catch {
+      embeddingFallback = null;
+    }
+  }
+
+  const suggestionMap = new Map<
+    string,
+    {
+      governorId: string;
+      governorGameId: string;
+      name: string;
+      source: 'alias' | 'name';
+      score: number;
+    }
+  >();
+  for (const candidate of similarity.candidates) {
+    suggestionMap.set(candidate.governorDbId, {
+      governorId: candidate.governorDbId,
+      governorGameId: candidate.governorGameId,
+      name: candidate.governorName,
+      source: candidate.mode === 'exact_alias' ? ('alias' as const) : ('name' as const),
+      score: candidate.score,
+    });
+  }
+  for (const candidate of embeddingFallback?.candidates || []) {
+    const existing = suggestionMap.get(candidate.governorDbId);
+    if (!existing || candidate.score > existing.score) {
+      suggestionMap.set(candidate.governorDbId, {
+        governorId: candidate.governorDbId,
+        governorGameId: candidate.governorGameId,
+        name: candidate.governorName,
+        source: 'name',
+        score: candidate.score,
+      });
+    }
+  }
+
+  const suggestions = [...suggestionMap.values()]
+    .sort(
+      (a, b) =>
+        b.score - a.score ||
+        a.name.localeCompare(b.name) ||
+        a.governorId.localeCompare(b.governorId)
+    )
+    .slice(0, 5)
+    .map((candidate) => ({
+      governorId: candidate.governorId,
+      governorGameId: candidate.governorGameId,
+      name: candidate.name,
+      source: candidate.source,
+    }));
+
+  if (embeddingFallback?.status === 'resolved') {
+    return {
+      status: RankingIdentityStatus.AUTO_LINKED,
+      governorId: embeddingFallback.governor.governorDbId,
+      governorGameId: embeddingFallback.governor.governorGameId,
+      reason: 'embedding-fallback-high-confidence',
+      normalizedName,
+      suggestions,
+    };
+  }
 
   if (similarity.status === 'resolved') {
     const reason =
@@ -77,7 +145,10 @@ export async function resolveRankingIdentity(
     status: RankingIdentityStatus.UNRESOLVED,
     governorId: null,
     governorGameId: null,
-    reason: similarity.status === 'ambiguous' ? 'ambiguous' : 'no-unique-match',
+    reason:
+      similarity.status === 'ambiguous' || embeddingFallback?.status === 'ambiguous'
+        ? 'ambiguous'
+        : 'no-unique-match',
     normalizedName,
     suggestions,
   };

@@ -48,6 +48,9 @@ describe('ranking normalize helpers', () => {
 
   it('normalizes governor aliases with punctuation and spaces removed', () => {
     expect(normalizeGovernorAlias('[GODt] Gd Hama')).toBe('godtgdhama');
+    expect(normalizeGovernorAlias('Łukasz')).toBe('lukasz');
+    expect(normalizeGovernorAlias('Игрок №1')).toBe('игрок1');
+    expect(normalizeGovernorAlias('José 王者')).toBe('jose王者');
   });
 
   it('parses numeric metrics as bigint', () => {

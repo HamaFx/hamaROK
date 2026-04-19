@@ -5,6 +5,7 @@ import {
   extractFunctionCalls,
   extractPendingToolCalls,
   runMistralOcr,
+  runMistralStructuredOutput,
   startMistralConversation,
 } from '@/lib/mistral/client';
 
@@ -206,5 +207,61 @@ describe('mistral client parsers', () => {
       type: 'text',
       text: 'hello',
     });
+  });
+
+  it('merges structured response_format with custom completion args', async () => {
+    process.env.MISTRAL_API_KEY = 'test-key';
+    process.env.MISTRAL_BASE_URL = 'https://api.mistral.ai';
+
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          object: 'conversation.response',
+          conversation_id: 'conv_structured',
+          outputs: [
+            {
+              type: 'message.output',
+              content: '{"ok":true}',
+            },
+          ],
+          usage: {},
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      )
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const structured = await runMistralStructuredOutput<{ ok: boolean }>({
+      instructions: 'Return JSON',
+      input: 'hello',
+      schemaName: 'demo_schema',
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['ok'],
+        properties: {
+          ok: { type: 'boolean' },
+        },
+      },
+      completionArgs: {
+        tool_choice: 'auto',
+        parallel_tool_calls: false,
+      },
+      metadata: {
+        callsite: 'test',
+      },
+      store: false,
+    });
+
+    expect(structured.parsed.ok).toBe(true);
+
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    const body = JSON.parse(String(init.body || '{}')) as Record<string, unknown>;
+    expect(body.metadata).toMatchObject({ callsite: 'test' });
+    expect(body.completion_args).toMatchObject({
+      tool_choice: 'auto',
+      parallel_tool_calls: false,
+    });
+    expect((body.completion_args as Record<string, unknown>).response_format).toBeTruthy();
   });
 });

@@ -3,12 +3,24 @@ import { OcrExtractionStatus } from '@prisma/client';
 import {
   MistralImageInput,
   MistralOcrResponse,
+  MistralJsonResponseFormat,
   runMistralOcr,
   runMistralStructuredOutput,
 } from '@/lib/mistral/client';
+import { buildAdaptiveContextPack } from '@/lib/assistant/context-engine';
+import {
+  parseAssistantConfigFromJson,
+  type AssistantConfig,
+} from '@/lib/assistant/config';
+import { composeAssistantInstructions } from '@/lib/assistant/instruction-framework';
 
 const ENGINE_VERSION = 'mistral-ocr-latest+mistral-large-latest';
 const PRIMARY_KINGDOM_NUMBER = '4057';
+const INGESTION_SYSTEM_GUARDRAILS = [
+  'You are extracting deterministic data from Rise of Kingdoms screenshots.',
+  'Never fabricate identifiers, names, or metric values.',
+  'Prefer empty values over guesses when confidence is low.',
+];
 
 const rankingTypeMetricMap: Record<string, string> = {
   individual_power: 'power',
@@ -170,6 +182,56 @@ function buildOcrPrompt(ocr: MistralOcrResponse, archetypeHint?: string | null):
     '',
     pages,
   ].join('\n');
+}
+
+function buildExtractionInstructionBundle(args: {
+  callsite: 'ingestion_extraction' | 'ocr_diagnostics';
+  assistantConfig: AssistantConfig;
+  archetypeHint?: string | null;
+  ocr: MistralOcrResponse;
+  promptInput: string;
+}) {
+  const contextPack = buildAdaptiveContextPack({
+    callsite: args.callsite,
+    preset: args.assistantConfig.instructionPreset,
+    mode: args.assistantConfig.contextMode,
+    sources: [
+      {
+        id: 'task_summary',
+        title: 'Extraction Task',
+        critical: true,
+        priority: 100,
+        content: [
+          `Archetype hint: ${sanitizePrintable(args.archetypeHint || 'unknown', 120) || 'unknown'}`,
+          `OCR model: ${sanitizePrintable(args.ocr.model, 120) || 'mistral-ocr-latest'}`,
+          `Pages detected: ${Array.isArray(args.ocr.pages) ? args.ocr.pages.length : 0}`,
+        ].join('\n'),
+      },
+      {
+        id: 'ocr_preview',
+        title: 'OCR Preview',
+        critical: true,
+        priority: 90,
+        content: args.promptInput,
+        summary: args.promptInput.slice(0, 2500),
+      },
+    ],
+  });
+  const instructionBundle = composeAssistantInstructions({
+    callsite: args.callsite,
+    immutableSystemSafety: INGESTION_SYSTEM_GUARDRAILS,
+    workspaceConfig: args.assistantConfig,
+    taskContext: [
+      `Preset: ${args.assistantConfig.instructionPreset}`,
+      `Context budget: ${contextPack.diagnostics.estimatedTokens}/${contextPack.diagnostics.budgetTokens} tokens`,
+      `Callsite: ${args.callsite}`,
+    ].join('\n'),
+  });
+
+  return {
+    contextPack,
+    instructionBundle,
+  };
 }
 
 function toProfilePayload(extraction: StructuredExtraction, ocr: MistralOcrResponse) {
@@ -335,6 +397,8 @@ export async function runMistralIngestionExtraction(args: {
   archetypeHint?: string | null;
   ocrModel?: string;
   extractionModel?: string;
+  assistantConfig?: unknown;
+  callsite?: 'ingestion_extraction' | 'ocr_diagnostics';
 }): Promise<
   | {
       ingestionDomain: 'PROFILE_SNAPSHOT';
@@ -351,20 +415,47 @@ export async function runMistralIngestionExtraction(args: {
       ocr: MistralOcrResponse;
     }
 > {
+  const assistantConfig = parseAssistantConfigFromJson(args.assistantConfig);
+  const callsite = args.callsite || 'ingestion_extraction';
   const ocr = await runMistralOcr({
     image: args.image,
     model: args.ocrModel || 'mistral-ocr-latest',
     includeImageBase64: false,
+    documentAnnotationFormat: {
+      type: 'json_schema',
+      json_schema: {
+        name: 'rok_screenshot_annotation',
+        strict: true,
+        schema: extractionJsonSchema,
+      },
+    } as MistralJsonResponseFormat,
+    documentAnnotationPrompt:
+      'Return strict JSON values for screenshot fields and ranking rows according to the schema.',
   });
 
   const promptInput = buildOcrPrompt(ocr, args.archetypeHint);
+  const { contextPack, instructionBundle } = buildExtractionInstructionBundle({
+    callsite,
+    assistantConfig,
+    archetypeHint: args.archetypeHint,
+    ocr,
+    promptInput,
+  });
   const structured = await runMistralStructuredOutput<StructuredExtraction>({
-    instructions:
-      'You are an extraction engine for Rise of Kingdoms screenshots. Return only accurate structured values from OCR text.',
+    instructions: instructionBundle.text,
     input: promptInput,
     schemaName: 'rok_screenshot_extraction',
     schema: extractionJsonSchema,
     model: args.extractionModel || 'mistral-large-latest',
+    completionArgs: {
+      tool_choice: 'auto',
+      parallel_tool_calls: false,
+    },
+    metadata: {
+      callsite,
+      instructionSections: instructionBundle.metadata.sectionOrder,
+      contextDiagnostics: contextPack.diagnostics,
+    },
     store: false,
   });
 
@@ -376,6 +467,10 @@ export async function runMistralIngestionExtraction(args: {
     ocrModel: ocr.model,
     extractionModel: args.extractionModel || 'mistral-large-latest',
     pages: ocr.pages?.length || 0,
+    callsite,
+    instructionPreset: assistantConfig.instructionPreset,
+    instructionSections: instructionBundle.metadata.sectionOrder,
+    contextDiagnostics: contextPack.diagnostics,
   };
 
   if (archetype === 'ranking_board') {
@@ -404,8 +499,12 @@ export async function runMistralDiagnostics(args: {
   archetypeHint?: string | null;
   ocrModel?: string;
   extractionModel?: string;
+  assistantConfig?: unknown;
 }) {
-  const result = await runMistralIngestionExtraction(args);
+  const result = await runMistralIngestionExtraction({
+    ...args,
+    callsite: 'ocr_diagnostics',
+  });
 
   if (result.ingestionDomain === 'RANKING_CAPTURE') {
     return {

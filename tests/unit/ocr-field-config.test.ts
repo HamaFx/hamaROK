@@ -33,4 +33,11 @@ describe('ocr field constraints', () => {
     const long = `${'A'.repeat(25)} ${'B'.repeat(25)}`;
     expect(sanitizeGovernorName(long).length).toBe(40);
   });
+
+  it('preserves multilingual governor names and diacritics', () => {
+    const name = 'Łukasz 王者 Игрок-1';
+    const sanitized = sanitizeGovernorName(name);
+    expect(sanitized).toBe('Łukasz 王者 Игрок-1');
+    expect(validateNormalizedValue('governorName', sanitized).valid).toBe(true);
+  });
 });

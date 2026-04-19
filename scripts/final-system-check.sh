@@ -81,6 +81,18 @@ if ! rg -q '"name":"mistral","ok":true' /tmp/rok-health.json; then
 fi
 echo "OK: mistral readiness is present and healthy"
 
+if ! rg -q '"name":"embedding"' /tmp/rok-health.json; then
+  echo "Health payload missing embedding readiness check." >&2
+  cat /tmp/rok-health.json >&2
+  exit 1
+fi
+if ! rg -q '"name":"embedding","ok":true' /tmp/rok-health.json; then
+  echo "Health payload reports embedding readiness failure." >&2
+  cat /tmp/rok-health.json >&2
+  exit 1
+fi
+echo "OK: embedding readiness is present and healthy"
+
 ASSISTANT_PAGE_CODE="$(curl -s -o /tmp/rok-assistant.html -w '%{http_code}' "$APP_URL/assistant")"
 if [[ "$ASSISTANT_PAGE_CODE" != "200" ]]; then
   echo "Assistant page check failed ($APP_URL/assistant -> $ASSISTANT_PAGE_CODE)." >&2

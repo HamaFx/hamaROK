@@ -97,6 +97,23 @@ Selected enums:
 - `ExportJobStatus`
 - `DeliveryStatus`
 
+## G) Embedding Domain
+
+- `EmbeddingDocument`
+- `EmbeddingTask`
+
+Selected enums:
+
+- `EmbeddingCorpus`
+- `EmbeddingTaskOperation`
+- `EmbeddingTaskStatus`
+
+Notes:
+
+- `EmbeddingDocument.embedding` is a pgvector column (`Unsupported("vector")` in Prisma schema)
+- HNSW cosine index is created in migration for retrieval performance
+- Embedding records are workspace-scoped and linked by corpus/entity/entityId/chunk
+
 ## Key Relationship Anchors
 
 1. `Workspace` is root scope for almost all entities.
@@ -105,6 +122,7 @@ Selected enums:
 4. `RankingRun` -> `RankingRow` -> `RankingSnapshot` forms ranking reconciliation chain.
 5. `AssistantPlan` -> `AssistantAction` provides auditable execution records.
 6. `AssistantPendingIdentity` bridges unresolved stats writes and later resolution.
+7. `EmbeddingTask` asynchronously feeds `EmbeddingDocument` to keep retrieval fresh after writes.
 
 ## Mutation Consistency Rule
 
@@ -118,3 +136,4 @@ This prevents drift between assistant and direct API behavior.
 
 - Apply schema via `npx prisma migrate deploy` in deployed environments.
 - Treat `PRECONDITION_FAILED` API errors as migration mismatch indicators.
+- Ensure `pgvector` extension migration is applied before enabling embedding retrieval paths.

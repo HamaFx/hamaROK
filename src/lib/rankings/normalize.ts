@@ -114,11 +114,35 @@ export function validateStrictRankingTypeMetricPair(
 }
 
 export function normalizeGovernorAlias(value: string): string {
+  const foldMap: Record<string, string> = {
+    ß: 'ss',
+    ẞ: 'ss',
+    ø: 'o',
+    Ø: 'o',
+    ł: 'l',
+    Ł: 'l',
+    đ: 'd',
+    Đ: 'd',
+    ð: 'd',
+    Ð: 'd',
+    þ: 'th',
+    Þ: 'th',
+    æ: 'ae',
+    Æ: 'ae',
+    œ: 'oe',
+    Œ: 'oe',
+    ı: 'i',
+    İ: 'i',
+  };
+
   return String(value || '')
+    .replace(/№/g, '')
+    .normalize('NFKC')
+    .replace(/[ßẞøØłŁđĐðÐþÞæÆœŒıİ]/g, (char) => foldMap[char] || char)
     .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\p{M}+/gu, '')
     .toLowerCase()
-    .replace(/[^a-z0-9]/g, '');
+    .replace(/[^\p{L}\p{N}]/gu, '');
 }
 
 export function normalizeGovernorDisplayName(value: string): string {

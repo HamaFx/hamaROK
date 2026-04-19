@@ -30,12 +30,16 @@ All routes currently present in `src/app/api/**` with methods.
 | `/api/v2/workspaces/[id]/settings` | `GET`, `POST` |
 | `/api/v2/workspaces/[id]/links` | `GET`, `POST` |
 | `/api/v2/workspaces/[id]/links/[linkId]` | `DELETE` |
+| `/api/v2/workspaces/[id]/embeddings/backfill` | `POST` |
+| `/api/v2/workspaces/[id]/embeddings/status` | `GET` |
+| `/api/v2/workspaces/[id]/embeddings/reindex` | `POST` |
 
 ## Assistant
 
 | Route | Methods |
 |---|---|
 | `/api/v2/assistant/conversations` | `GET`, `POST` |
+| `/api/v2/assistant/conversations/[id]` | `PATCH` |
 | `/api/v2/assistant/conversations/[id]/messages` | `GET`, `POST` |
 | `/api/v2/assistant/conversations/cleanup` | `POST` |
 | `/api/v2/assistant/plans/[id]/confirm` | `POST` |
@@ -136,3 +140,4 @@ All routes currently present in `src/app/api/**` with methods.
 - Domain write rules: `src/lib/domain/workspace-actions.ts`
 - Ingestion helpers: `src/lib/ingestion-service.ts`
 - External model client: `src/lib/mistral/client.ts`
+- Embedding indexing/retrieval: `src/lib/embeddings/service.ts`

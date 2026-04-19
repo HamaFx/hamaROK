@@ -53,6 +53,7 @@ export async function POST(
       select: {
         ocrModel: true,
         assistantModel: true,
+        assistantConfig: true,
       },
     });
 
@@ -78,6 +79,7 @@ export async function POST(
       archetypeHint: body.archetypeHint || task.archetypeHint || undefined,
       ocrModel: settings?.ocrModel || undefined,
       extractionModel: settings?.assistantModel || undefined,
+      assistantConfig: settings?.assistantConfig || undefined,
     });
 
     return ok({

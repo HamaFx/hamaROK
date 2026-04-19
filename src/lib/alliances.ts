@@ -93,7 +93,11 @@ export function formatAllianceLabel(alliance: Pick<TrackedAlliance, 'tag' | 'nam
 
 export function sanitizeGovernorNameForAlliance(value: string): string {
   return String(value || '')
-    .replace(/[^\x20-\x7E]/g, ' ')
+    .normalize('NFKC')
+    .replace(/[’‘´]/g, "'")
+    .replace(/[“”]/g, '"')
+    .replace(/\p{C}+/gu, ' ')
+    .replace(/[^\p{L}\p{N}\p{M} _\-\[\]()#.'":|/\\*+&!?@,`~^]/gu, '')
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 64);
@@ -101,8 +105,11 @@ export function sanitizeGovernorNameForAlliance(value: string): string {
 
 export function sanitizeAllianceDisplay(value: string): string {
   return String(value || '')
-    .replace(/[^\x20-\x7E]/g, ' ')
-    .replace(/[^A-Za-z0-9 _\-\[\]()#.'":|/\\*+&!?@]/g, '')
+    .normalize('NFKC')
+    .replace(/[’‘´]/g, "'")
+    .replace(/[“”]/g, '"')
+    .replace(/\p{C}+/gu, ' ')
+    .replace(/[^\p{L}\p{N}\p{M} _\-\[\]()#.'":|/\\*+&!?@,`~^]/gu, '')
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 80);

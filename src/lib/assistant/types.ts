@@ -30,6 +30,7 @@ export const ASSISTANT_READ_ACTION_TYPES = [
   'read_activity_weekly',
   'read_analytics',
   'read_compare',
+  'read_semantic_search',
 ] as const;
 
 export type AssistantActionType = (typeof ASSISTANT_ACTION_TYPES)[number];
@@ -282,6 +283,20 @@ export const readCompareActionSchema = z.object({
   topN: z.number().int().min(3).max(50).optional().nullable(),
 });
 
+export const readSemanticSearchActionSchema = z.object({
+  type: z.literal('read_semantic_search'),
+  query: z.string().min(1).max(320),
+  corpora: z
+    .array(
+      z.enum(['GOVERNOR_IDENTITY', 'EVENTS', 'OCR_EXTRACTIONS', 'RANKING', 'ASSISTANT_AUDIT'])
+    )
+    .max(5)
+    .optional()
+    .nullable(),
+  mode: z.enum(['hybrid', 'semantic', 'lexical']).optional().nullable(),
+  limit: boundedLimitSchema,
+});
+
 export const assistantReadActionSchema = z.union([
   readWorkspaceOverviewActionSchema,
   readGovernorsActionSchema,
@@ -297,6 +312,7 @@ export const assistantReadActionSchema = z.union([
   readActivityWeeklyActionSchema,
   readAnalyticsActionSchema,
   readCompareActionSchema,
+  readSemanticSearchActionSchema,
 ]);
 
 export const assistantToolActionSchema = z.union([

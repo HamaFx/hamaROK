@@ -11,6 +11,8 @@
 - OCR engine default: `mistral`
 - OCR model default: `mistral-ocr-latest`
 - Assistant model default: `mistral-large-latest`
+- Embedding model default: `mistral-embed-2312`
+- Embedding vector dimension: `1024` (`pgvector`)
 - Similarity auto-link threshold: `0.93`
 - Legacy OCR path: available only for emergency rollback (`OCR_ENGINE=legacy`)
 
@@ -21,7 +23,8 @@
 3. `src/app/api/healthz/route.ts`
 4. `src/lib/assistant/service.ts`
 5. `src/lib/domain/workspace-actions.ts`
-6. `prisma/schema.prisma`
+6. `src/lib/embeddings/service.ts`
+7. `prisma/schema.prisma`
 
 ## Required Local Commands
 
@@ -47,7 +50,8 @@ npm run build
 3. Assistant writes require plan confirmation except explicit batch safe auto-confirm policy.
 4. Pending identity flow must be preserved for ambiguous/unresolved governor matches.
 5. Upload ingestion must continue populating OCR Review and Rank Review queues.
-6. Never hardcode secrets.
+6. Embedding fallback is additive only (deterministic/fuzzy matching remains primary).
+7. Never hardcode secrets.
 
 ## Where to Edit by Intent
 
@@ -57,4 +61,5 @@ npm run build
 - Ingestion task sync: `src/lib/ingestion-service.ts`
 - OCR extraction: `src/lib/ocr/mistral-extraction.ts`
 - Similarity matching: `src/lib/governor-similarity.ts`
+- Embedding retrieval/indexing: `src/lib/embeddings/service.ts`
 - Ranking merge/review logic: `src/lib/rankings/service.ts`

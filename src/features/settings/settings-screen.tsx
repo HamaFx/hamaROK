@@ -13,11 +13,14 @@ import { parseAssistantConfigFromJson, serializeAssistantConfig } from '@/lib/as
 type AssistantAnalyzerMode = 'hybrid' | 'ocr_pipeline' | 'vision_model';
 type AssistantContextMode = 'smart' | 'full' | 'prompt_only';
 type AssistantSuggestionMode = 'signal' | 'always' | 'on_demand';
+type AssistantInstructionPreset = 'conservative' | 'balanced' | 'aggressive';
+type AssistantEmbeddingRetrievalMode = 'hybrid' | 'semantic' | 'lexical';
 
 interface AssistantConfigState {
   screenshotAnalyzerDefault: AssistantAnalyzerMode;
   contextMode: AssistantContextMode;
   suggestionMode: AssistantSuggestionMode;
+  instructionPreset: AssistantInstructionPreset;
   visionModel: string;
   batchEnabled: boolean;
   batchThreshold: number;
@@ -28,6 +31,15 @@ interface AssistantConfigState {
   instructionDoRules: string;
   instructionDontRules: string;
   rawInstruction: string;
+  embeddingEnabled: boolean;
+  embeddingModel: string;
+  embeddingDimension: number;
+  embeddingRetrievalMode: AssistantEmbeddingRetrievalMode;
+  embeddingMaxCandidates: number;
+  embeddingFallbackOnly: boolean;
+  embeddingAutoLinkThreshold: number;
+  embeddingBatchEnabled: boolean;
+  embeddingBatchThreshold: number;
 }
 
 interface SettingsConfig {
@@ -79,6 +91,7 @@ const DEFAULTS: SettingsConfig = {
     screenshotAnalyzerDefault: 'hybrid',
     contextMode: 'smart',
     suggestionMode: 'signal',
+    instructionPreset: 'balanced',
     visionModel: 'mistral-large-latest',
     batchEnabled: true,
     batchThreshold: 80,
@@ -89,6 +102,15 @@ const DEFAULTS: SettingsConfig = {
     instructionDoRules: '',
     instructionDontRules: '',
     rawInstruction: '',
+    embeddingEnabled: true,
+    embeddingModel: 'mistral-embed-2312',
+    embeddingDimension: 1024,
+    embeddingRetrievalMode: 'hybrid',
+    embeddingMaxCandidates: 24,
+    embeddingFallbackOnly: true,
+    embeddingAutoLinkThreshold: 0.93,
+    embeddingBatchEnabled: true,
+    embeddingBatchThreshold: 80,
   },
 };
 
@@ -202,6 +224,7 @@ export default function SettingsPage() {
             screenshotAnalyzerDefault: assistantConfig.screenshotAnalyzerDefault,
             contextMode: assistantConfig.contextMode,
             suggestionMode: assistantConfig.suggestionMode,
+            instructionPreset: assistantConfig.instructionPreset,
             visionModel: assistantConfig.visionModel,
             batchEnabled: assistantConfig.batch.enabled,
             batchThreshold: assistantConfig.batch.threshold,
@@ -212,6 +235,15 @@ export default function SettingsPage() {
             instructionDoRules: toRuleText(assistantConfig.instructionProfile.doRules),
             instructionDontRules: toRuleText(assistantConfig.instructionProfile.dontRules),
             rawInstruction: assistantConfig.rawInstruction,
+            embeddingEnabled: assistantConfig.embedding.enabled,
+            embeddingModel: assistantConfig.embedding.model,
+            embeddingDimension: assistantConfig.embedding.dimension,
+            embeddingRetrievalMode: assistantConfig.embedding.retrievalMode,
+            embeddingMaxCandidates: assistantConfig.embedding.maxCandidates,
+            embeddingFallbackOnly: assistantConfig.embedding.fallbackOnly,
+            embeddingAutoLinkThreshold: assistantConfig.embedding.autoLinkThreshold,
+            embeddingBatchEnabled: assistantConfig.embedding.batch.enabled,
+            embeddingBatchThreshold: assistantConfig.embedding.batch.threshold,
           },
         });
 
@@ -303,6 +335,7 @@ export default function SettingsPage() {
         screenshotAnalyzerDefault: config.assistantConfig.screenshotAnalyzerDefault,
         contextMode: config.assistantConfig.contextMode,
         suggestionMode: config.assistantConfig.suggestionMode,
+        instructionPreset: config.assistantConfig.instructionPreset,
         visionModel: config.assistantConfig.visionModel,
         batch: {
           enabled: config.assistantConfig.batchEnabled,
@@ -319,6 +352,28 @@ export default function SettingsPage() {
           dontRules: parseRuleText(config.assistantConfig.instructionDontRules),
         },
         rawInstruction: config.assistantConfig.rawInstruction,
+        embedding: {
+          enabled: config.assistantConfig.embeddingEnabled,
+          model: config.assistantConfig.embeddingModel,
+          dimension: Math.max(64, Math.min(4096, Number(config.assistantConfig.embeddingDimension) || 1024)),
+          retrievalMode: config.assistantConfig.embeddingRetrievalMode,
+          maxCandidates: Math.max(
+            1,
+            Math.min(200, Number(config.assistantConfig.embeddingMaxCandidates) || 24)
+          ),
+          fallbackOnly: config.assistantConfig.embeddingFallbackOnly,
+          autoLinkThreshold: Math.max(
+            0.7,
+            Math.min(1, Number(config.assistantConfig.embeddingAutoLinkThreshold) || 0.93)
+          ),
+          batch: {
+            enabled: config.assistantConfig.embeddingBatchEnabled,
+            threshold: Math.max(
+              20,
+              Math.min(100000, Number(config.assistantConfig.embeddingBatchThreshold) || 80)
+            ),
+          },
+        },
       });
 
       const settingsBody = {
@@ -450,6 +505,7 @@ export default function SettingsPage() {
 
   const assistantInstructionPreview = useMemo(() => {
     const lines: string[] = [];
+    lines.push(`Preset: ${config.assistantConfig.instructionPreset}`);
     if (config.assistantConfig.instructionGoal.trim()) {
       lines.push(`Goal: ${config.assistantConfig.instructionGoal.trim()}`);
     }
@@ -467,6 +523,9 @@ export default function SettingsPage() {
     if (config.assistantConfig.rawInstruction.trim()) {
       lines.push(`Raw instruction:\n${config.assistantConfig.rawInstruction.trim()}`);
     }
+    lines.push(
+      `Embeddings: ${config.assistantConfig.embeddingEnabled ? 'enabled' : 'disabled'} | ${config.assistantConfig.embeddingModel} | ${config.assistantConfig.embeddingRetrievalMode}`
+    );
     return lines.join('\n\n');
   }, [config.assistantConfig]);
 
@@ -824,11 +883,167 @@ export default function SettingsPage() {
             </div>
 
             <div className="space-y-2">
+              <label className="text-xs text-tier-3">Instruction Preset</label>
+              <select
+                className="h-11 w-full rounded-2xl border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] px-3 text-sm text-tier-1"
+                value={config.assistantConfig.instructionPreset}
+                onChange={(event) =>
+                  handleAssistantConfigChange(
+                    'instructionPreset',
+                    event.target.value as AssistantInstructionPreset
+                  )
+                }
+              >
+                <option value="conservative">Conservative</option>
+                <option value="balanced">Balanced</option>
+                <option value="aggressive">Aggressive</option>
+              </select>
+            </div>
+
+            <div className="space-y-2">
               <label className="text-xs text-tier-3">Vision Model</label>
               <Input
                 value={config.assistantConfig.visionModel}
                 onChange={(event) => handleAssistantConfigChange('visionModel', event.target.value)}
                 placeholder="mistral-large-latest"
+                className="rounded-2xl border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs text-tier-3">Embeddings</label>
+              <select
+                className="h-11 w-full rounded-2xl border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] px-3 text-sm text-tier-1"
+                value={config.assistantConfig.embeddingEnabled ? 'enabled' : 'disabled'}
+                onChange={(event) =>
+                  handleAssistantConfigChange('embeddingEnabled', event.target.value === 'enabled')
+                }
+              >
+                <option value="enabled">Enabled</option>
+                <option value="disabled">Disabled</option>
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs text-tier-3">Embedding Model</label>
+              <Input
+                value={config.assistantConfig.embeddingModel}
+                onChange={(event) => handleAssistantConfigChange('embeddingModel', event.target.value)}
+                placeholder="mistral-embed-2312"
+                className="rounded-2xl border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1"
+              />
+            </div>
+          </div>
+
+          <div className="mt-5 grid gap-4 md:grid-cols-3">
+            <div className="space-y-2">
+              <label className="text-xs text-tier-3">Embedding Retrieval Mode</label>
+              <select
+                className="h-11 w-full rounded-2xl border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] px-3 text-sm text-tier-1"
+                value={config.assistantConfig.embeddingRetrievalMode}
+                onChange={(event) =>
+                  handleAssistantConfigChange(
+                    'embeddingRetrievalMode',
+                    event.target.value as AssistantEmbeddingRetrievalMode
+                  )
+                }
+              >
+                <option value="hybrid">Hybrid (vector + lexical)</option>
+                <option value="semantic">Semantic only</option>
+                <option value="lexical">Lexical only</option>
+              </select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs text-tier-3">Embedding Dimension</label>
+              <Input
+                type="number"
+                min={64}
+                max={4096}
+                value={config.assistantConfig.embeddingDimension}
+                onChange={(event) =>
+                  handleAssistantConfigChange(
+                    'embeddingDimension',
+                    Math.max(64, Math.min(4096, Number(event.target.value || 1024)))
+                  )
+                }
+                className="rounded-2xl border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs text-tier-3">Embedding Max Candidates</label>
+              <Input
+                type="number"
+                min={1}
+                max={200}
+                value={config.assistantConfig.embeddingMaxCandidates}
+                onChange={(event) =>
+                  handleAssistantConfigChange(
+                    'embeddingMaxCandidates',
+                    Math.max(1, Math.min(200, Number(event.target.value || 24)))
+                  )
+                }
+                className="rounded-2xl border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1"
+              />
+            </div>
+          </div>
+
+          <div className="mt-4 grid gap-4 md:grid-cols-4">
+            <div className="space-y-2">
+              <label className="text-xs text-tier-3">Embedding Fallback Only</label>
+              <select
+                className="h-11 w-full rounded-2xl border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] px-3 text-sm text-tier-1"
+                value={config.assistantConfig.embeddingFallbackOnly ? 'true' : 'false'}
+                onChange={(event) =>
+                  handleAssistantConfigChange('embeddingFallbackOnly', event.target.value === 'true')
+                }
+              >
+                <option value="true">True</option>
+                <option value="false">False</option>
+              </select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs text-tier-3">Auto-link Threshold</label>
+              <Input
+                type="number"
+                min={0.7}
+                max={1}
+                step={0.01}
+                value={config.assistantConfig.embeddingAutoLinkThreshold}
+                onChange={(event) =>
+                  handleAssistantConfigChange(
+                    'embeddingAutoLinkThreshold',
+                    Math.max(0.7, Math.min(1, Number(event.target.value || 0.93)))
+                  )
+                }
+                className="rounded-2xl border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs text-tier-3">Embedding Batch Enabled</label>
+              <select
+                className="h-11 w-full rounded-2xl border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] px-3 text-sm text-tier-1"
+                value={config.assistantConfig.embeddingBatchEnabled ? 'enabled' : 'disabled'}
+                onChange={(event) =>
+                  handleAssistantConfigChange('embeddingBatchEnabled', event.target.value === 'enabled')
+                }
+              >
+                <option value="enabled">Enabled</option>
+                <option value="disabled">Disabled</option>
+              </select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs text-tier-3">Embedding Batch Threshold</label>
+              <Input
+                type="number"
+                min={20}
+                max={100000}
+                value={config.assistantConfig.embeddingBatchThreshold}
+                onChange={(event) =>
+                  handleAssistantConfigChange(
+                    'embeddingBatchThreshold',
+                    Math.max(20, Math.min(100000, Number(event.target.value || 80)))
+                  )
+                }
                 className="rounded-2xl border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1"
               />
             </div>

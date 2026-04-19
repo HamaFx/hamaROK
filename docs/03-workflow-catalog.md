@@ -79,11 +79,15 @@ Goal: ingest rankboard screenshots, resolve identities, and maintain canonical r
 Goal: improve linking quality when OCR names are imperfect.
 
 - Shared resolver: `src/lib/governor-similarity.ts`
+- Embedding fallback resolver: `src/lib/embeddings/service.ts` (`resolveGovernorByEmbeddingFallback`)
 - Current policy:
   - exact ID/alias/name first
   - fuzzy fallback
-  - auto-link only when exactly one candidate >= `0.93`
-  - multi-high => ambiguous
+  - embedding fallback runs only after deterministic/fuzzy unresolved or ambiguous
+  - embedding auto-link requires both:
+    - top composite confidence `>= 0.93`
+    - margin over second candidate `>= 0.04`
+  - multi-high or low margin => ambiguous
   - no-high => unresolved with suggestions
 - Used by:
   - assistant mutation resolution
@@ -102,6 +106,9 @@ Goal: user sends text/images, assistant proposes executable typed actions.
   - `POST /api/v2/assistant/pending-identities/:id/resolve`
 - Core service:
   - `src/lib/assistant/service.ts`
+- Read tools:
+  - includes typed semantic search tool (`read_semantic_search`)
+  - retrieval source is workspace-scoped embedding corpora
 
 ## 8) Assistant Batch Flow (Manual Start)
 
@@ -137,3 +144,22 @@ Goal: expose decision surfaces from snapshot and ranking data.
 - Assistant log cleanup endpoint: `POST /api/v2/assistant/conversations/cleanup`
 - Metrics sync drain endpoint: `POST /api/v2/sync/metrics/drain`
 - Cron/ops trigger endpoint: `POST /api/v2/jobs/run`
+
+## 11) Embedding Indexing and Retrieval
+
+Goal: maintain searchable vector corpus for assistant context + identity fallback.
+
+- APIs:
+  - `POST /api/v2/workspaces/:id/embeddings/backfill`
+  - `GET /api/v2/workspaces/:id/embeddings/status`
+  - `POST /api/v2/workspaces/:id/embeddings/reindex`
+  - `POST /api/v2/jobs/run` (processes embedding tasks)
+- Indexed corpora:
+  - `governor_identity`
+  - `events`
+  - `ocr_extractions`
+  - `ranking`
+  - `assistant_audit`
+- Owners:
+  - `src/lib/embeddings/service.ts`
+  - `src/lib/mistral/client.ts` (`/v1/embeddings`, batch/file helpers)

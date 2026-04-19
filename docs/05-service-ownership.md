@@ -60,7 +60,28 @@ Key exports:
 - `GOVERNOR_SIMILARITY_AUTO_THRESHOLD`
 - `resolveGovernorBySimilarityTx`
 
-## 4) Ranking Engine (`src/lib/rankings/service.ts`)
+## 4) Embedding Index and Retrieval (`src/lib/embeddings/service.ts`)
+
+Responsibilities:
+
+- enqueue embedding indexing tasks from domain changes
+- process embedding task queue (`UPSERT`, `DELETE`, `BACKFILL`)
+- manage vector upsert/delete in `EmbeddingDocument`
+- semantic/lexical hybrid retrieval
+- embedding-based governor fallback resolution
+- workspace backfill/reindex/status services
+
+Key exports (selected):
+
+- `enqueueEmbeddingTaskSafe`
+- `processEmbeddingTasks`
+- `searchWorkspaceEmbeddings`
+- `resolveGovernorByEmbeddingFallback`
+- `enqueueWorkspaceEmbeddingBackfill`
+- `reindexWorkspaceEmbeddings`
+- `getWorkspaceEmbeddingStatus`
+
+## 5) Ranking Engine (`src/lib/rankings/service.ts`)
 
 Responsibilities:
 
@@ -82,7 +103,7 @@ Key exports (selected):
 - `listCanonicalRankings`
 - `getRankingSummary`
 
-## 5) Ingestion Orchestration (`src/lib/ingestion-service.ts`)
+## 6) Ingestion Orchestration (`src/lib/ingestion-service.ts`)
 
 Responsibilities:
 
@@ -99,7 +120,7 @@ Key exports:
 - `toIngestionTaskResponse`
 - `mergeJson`
 
-## 6) OCR Extraction Pipeline (`src/lib/ocr/mistral-extraction.ts`)
+## 7) OCR Extraction Pipeline (`src/lib/ocr/mistral-extraction.ts`)
 
 Responsibilities:
 
@@ -112,13 +133,15 @@ Key exports:
 - `runMistralIngestionExtraction`
 - `runMistralDiagnostics`
 
-## 7) Mistral API Layer (`src/lib/mistral/client.ts`)
+## 8) Mistral API Layer (`src/lib/mistral/client.ts`)
 
 Responsibilities:
 
 - OCR API calls
 - conversation create/append/fetch
 - structured output execution
+- embedding API calls (`/v1/embeddings`)
+- batch/files helpers for large embedding runs
 - tool call extraction helpers
 - retry/timeout/error normalization
 
@@ -129,19 +152,23 @@ Key exports:
 - `appendMistralConversation`
 - `getMistralConversationMessages`
 - `runMistralStructuredOutput`
+- `runMistralEmbeddings`
+- `uploadMistralFile`
+- `createMistralBatchJob`
+- `pollMistralBatchJobUntilTerminal`
 - `extractFunctionCalls`
 - `extractPendingToolCalls`
 
-## 8) Runtime + Auth + API Infrastructure
+## 9) Runtime + Auth + API Infrastructure
 
 - Env schema/defaults: `src/lib/env.ts`
-- Health/readiness route: `src/app/api/healthz/route.ts`
+- Health/readiness route: `src/app/api/healthz/route.ts` (includes embedding readiness)
 - Workspace auth: `src/lib/workspace-auth.ts`
 - Service auth: `src/lib/service-auth.ts`
 - API response envelope: `src/lib/api-response.ts`
 - Prisma singleton: `src/lib/prisma.ts`
 
-## 9) UI Controller Ownership
+## 10) UI Controller Ownership
 
 - Assistant state/controller: `src/features/assistant/use-assistant-controller.ts`
 - Assistant UI surface: `src/features/assistant/assistant-screen.tsx`

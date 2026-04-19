@@ -1,5 +1,7 @@
 import { NextRequest } from 'next/server';
 import {
+  EmbeddingCorpus,
+  EmbeddingTaskOperation,
   IngestionDomain,
   IngestionTaskStatus,
   OcrExtractionStatus,
@@ -25,6 +27,7 @@ import {
   normalizeOcrNumericDigits,
   validateStrictRankingTypeMetricPair,
 } from '@/lib/rankings/normalize';
+import { enqueueEmbeddingTaskSafe } from '@/lib/embeddings/service';
 
 const rowSchema = z.object({
   sourceRank: z.number().int().min(1).max(5000).optional().nullable(),
@@ -639,6 +642,18 @@ export async function POST(
         ...Object.values(workspaceCacheTags(task.workspaceId)),
         scanJobCacheTag(task.scanJobId),
       ]);
+
+      await enqueueEmbeddingTaskSafe({
+        workspaceId: task.workspaceId,
+        corpus: EmbeddingCorpus.OCR_EXTRACTIONS,
+        operation: EmbeddingTaskOperation.UPSERT,
+        entityType: 'ocr_extraction',
+        entityId: result.extraction.id,
+        payload: {
+          reason: 'ingestion_task_complete_profile',
+          taskId: task.id,
+        },
+      });
 
       return ok({
         task: toIngestionTaskResponse(result.task),

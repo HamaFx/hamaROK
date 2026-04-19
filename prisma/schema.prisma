@@ -149,6 +149,8 @@ model Workspace {
   assistantPlans             AssistantPlan[]
   assistantActions           AssistantAction[]
   assistantPendingIdentities AssistantPendingIdentity[]
+  embeddingDocuments         EmbeddingDocument[]
+  embeddingTasks             EmbeddingTask[]
 
   @@index([createdAt])
 }
@@ -534,6 +536,72 @@ enum AssistantPendingIdentityStatus {
   PENDING
   RESOLVED
   DENIED
+}
+
+enum EmbeddingCorpus {
+  GOVERNOR_IDENTITY
+  EVENTS
+  OCR_EXTRACTIONS
+  RANKING
+  ASSISTANT_AUDIT
+}
+
+enum EmbeddingTaskOperation {
+  UPSERT
+  DELETE
+  BACKFILL
+}
+
+enum EmbeddingTaskStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+model EmbeddingDocument {
+  id         String          @id @default(cuid())
+  workspaceId String
+  corpus     EmbeddingCorpus
+  entityType String
+  entityId   String
+  chunkIndex Int
+  content    String
+  contentHash String
+  model      String
+  dimensions Int
+  embedding  Unsupported("vector")
+  metadata   Json?
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+  workspace  Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, corpus, entityType, entityId, chunkIndex, model])
+  @@index([workspaceId, corpus, entityType, entityId])
+  @@index([workspaceId, corpus, createdAt])
+}
+
+model EmbeddingTask {
+  id          String                 @id @default(cuid())
+  workspaceId String
+  corpus      EmbeddingCorpus
+  operation   EmbeddingTaskOperation
+  entityType  String
+  entityId    String?
+  payload     Json?
+  status      EmbeddingTaskStatus    @default(PENDING)
+  attemptCount Int                   @default(0)
+  availableAt DateTime               @default(now())
+  startedAt   DateTime?
+  completedAt DateTime?
+  lastError   String?
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+  workspace   Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, status, availableAt, createdAt])
+  @@index([workspaceId, corpus, entityType, entityId])
+  @@index([status, availableAt])
 }
 
 model IngestionTask {

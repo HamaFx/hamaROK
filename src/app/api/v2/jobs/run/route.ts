@@ -9,6 +9,7 @@ import {
 import { cleanupExpiredIdempotencyKeys } from '@/lib/idempotency';
 import { archiveStaleRankingRuns } from '@/lib/rankings/service';
 import { cleanupAssistantLogs } from '@/lib/assistant/service';
+import { processEmbeddingTasks } from '@/lib/embeddings/service';
 
 export async function POST(request: NextRequest) {
   try {
@@ -28,12 +29,20 @@ export async function POST(request: NextRequest) {
       return fail(auth.code, auth.message, auth.code === 'UNAUTHORIZED' ? 401 : 403);
     }
 
-    const [exportsResult, deliveryResult, cleanedIdempotency, archivedRankings, cleanedAssistant] = await Promise.all([
+    const [
+      exportsResult,
+      deliveryResult,
+      cleanedIdempotency,
+      archivedRankings,
+      cleanedAssistant,
+      embeddingResult,
+    ] = await Promise.all([
       processQueuedExports({ workspaceId, limit: 15 }),
       processDiscordDeliveries({ workspaceId, limit: 30 }),
       cleanupExpiredIdempotencyKeys(),
       archiveStaleRankingRuns({ workspaceId, olderThanDays: 45, limit: 300 }),
       cleanupAssistantLogs({ workspaceId, fallbackRetentionDays: 180 }),
+      processEmbeddingTasks({ workspaceId, limit: 36 }),
     ]);
 
     return ok({
@@ -44,6 +53,7 @@ export async function POST(request: NextRequest) {
       },
       rankings: archivedRankings,
       assistant: cleanedAssistant,
+      embeddings: embeddingResult,
     });
   } catch (error) {
     return handleApiError(error);

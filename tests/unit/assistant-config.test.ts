@@ -5,6 +5,7 @@ import {
   normalizeAssistantConfig,
   normalizeThreadAssistantConfig,
   resolveAssistantAnalyzerMode,
+  resolveAssistantPresetPolicy,
 } from '@/lib/assistant/config';
 
 describe('assistant config', () => {
@@ -72,5 +73,31 @@ describe('assistant config', () => {
     expect(compiled).toContain('Do not guess IDs');
     expect(compiled).toContain('Thread instruction:');
     expect(compiled).toContain('OCR queue cleanup');
+  });
+
+  it('maps presets to deterministic policy knobs', () => {
+    const conservative = resolveAssistantPresetPolicy('conservative');
+    const balanced = resolveAssistantPresetPolicy('balanced');
+    const aggressive = resolveAssistantPresetPolicy('aggressive');
+
+    expect(conservative.maxReadToolLoops).toBeLessThan(balanced.maxReadToolLoops);
+    expect(aggressive.maxReadToolLoops).toBeGreaterThan(balanced.maxReadToolLoops);
+    expect(conservative.contextBudgets.assistantPlanner).toBeLessThan(
+      balanced.contextBudgets.assistantPlanner
+    );
+    expect(aggressive.contextBudgets.assistantPlanner).toBeGreaterThan(
+      balanced.contextBudgets.assistantPlanner
+    );
+  });
+
+  it('preserves freeform instruction newlines while removing control chars', () => {
+    const normalized = normalizeAssistantConfig({
+      rawInstruction: 'Line 1\n\nLine 2\u0000',
+    });
+
+    expect(normalized.rawInstruction).toContain('Line 1');
+    expect(normalized.rawInstruction).toContain('\n');
+    expect(normalized.rawInstruction).toContain('Line 2');
+    expect(normalized.rawInstruction).not.toContain('\u0000');
   });
 });

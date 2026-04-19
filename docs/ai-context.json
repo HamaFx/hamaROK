@@ -14,7 +14,10 @@
     "ocrEngine": "mistral",
     "ocrModel": "mistral-ocr-latest",
     "assistantModel": "mistral-large-latest",
-    "similarityAutoThreshold": 0.93
+    "embeddingModel": "mistral-embed-2312",
+    "embeddingDimension": 1024,
+    "similarityAutoThreshold": 0.93,
+    "embeddingMarginThreshold": 0.04
   },
   "keyFiles": {
     "agentRules": "AGENTS.md",
@@ -24,6 +27,7 @@
     "workspaceActions": "src/lib/domain/workspace-actions.ts",
     "similarityResolver": "src/lib/governor-similarity.ts",
     "rankingsService": "src/lib/rankings/service.ts",
+    "embeddingsService": "src/lib/embeddings/service.ts",
     "ingestionService": "src/lib/ingestion-service.ts",
     "mistralClient": "src/lib/mistral/client.ts",
     "mistralExtraction": "src/lib/ocr/mistral-extraction.ts",
@@ -48,6 +52,7 @@
     "health": "/api/healthz",
     "assistant": [
       "/api/v2/assistant/conversations",
+      "/api/v2/assistant/conversations/:id",
       "/api/v2/assistant/conversations/:id/messages",
       "/api/v2/assistant/plans/:id/confirm",
       "/api/v2/assistant/plans/:id/deny",
@@ -55,6 +60,11 @@
       "/api/v2/assistant/batches",
       "/api/v2/assistant/batches/:id",
       "/api/v2/assistant/batches/:id/step"
+    ],
+    "embeddings": [
+      "/api/v2/workspaces/:id/embeddings/backfill",
+      "/api/v2/workspaces/:id/embeddings/status",
+      "/api/v2/workspaces/:id/embeddings/reindex"
     ],
     "ingestionInternal": [
       "/api/v2/internal/ingestion-tasks/:taskId/start",

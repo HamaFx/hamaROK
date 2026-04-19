@@ -161,6 +161,26 @@ describe('governor similarity resolver', () => {
 
     expect(result.status).toBe('unresolved');
   });
+
+  it('matches diacritic and multilingual variants through normalized fuzzy scoring', async () => {
+    const tx = buildTx({
+      governors: [
+        { id: 'g1', workspaceId: 'w1', governorId: '100', name: 'Łukasz' },
+        { id: 'g2', workspaceId: 'w1', governorId: '200', name: 'Игрок王者' },
+      ],
+    });
+
+    const result = await resolveGovernorBySimilarityTx(tx as never, {
+      workspaceId: 'w1',
+      governorNameRaw: 'Lukasz',
+      autoThreshold: 0.93,
+    });
+
+    expect(result.status).toBe('resolved');
+    if (result.status !== 'resolved') return;
+    expect(result.governor.governorDbId).toBe('g1');
+    expect(result.governor.score).toBeGreaterThanOrEqual(0.93);
+  });
 });
 
 describe('assistant batch safety policy', () => {

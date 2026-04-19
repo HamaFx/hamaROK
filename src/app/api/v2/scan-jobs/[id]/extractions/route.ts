@@ -1,6 +1,8 @@
 import { NextRequest } from 'next/server';
 import {
   ArtifactType,
+  EmbeddingCorpus,
+  EmbeddingTaskOperation,
   OcrExtractionStatus,
   OcrProvider,
   Prisma,
@@ -13,6 +15,7 @@ import { ok, fail, handleApiError, readJson } from '@/lib/api-response';
 import { authorizeWorkspaceAccess } from '@/lib/workspace-auth';
 import { getFallbackOcrDailyLimit, isFallbackOcrEnabled } from '@/lib/env';
 import { dispatchOcrWork } from '@/lib/aws/ocr-dispatch';
+import { enqueueEmbeddingTaskSafe } from '@/lib/embeddings/service';
 
 const extractionSchema = z.object({
   provider: z.nativeEnum(OcrProvider).default(OcrProvider.TESSERACT),
@@ -246,6 +249,17 @@ export async function POST(
         status: extraction.status,
         confidence: extraction.confidence,
         lowConfidence: extraction.lowConfidence,
+      },
+    });
+
+    await enqueueEmbeddingTaskSafe({
+      workspaceId: job.workspaceId,
+      corpus: EmbeddingCorpus.OCR_EXTRACTIONS,
+      operation: EmbeddingTaskOperation.UPSERT,
+      entityType: 'ocr_extraction',
+      entityId: extraction.id,
+      payload: {
+        reason: 'scan_job_extraction_created',
       },
     });
 

@@ -5,6 +5,8 @@ import {
   AssistantMessageRole,
   AssistantPendingIdentityStatus,
   AssistantPlanStatus,
+  EmbeddingCorpus,
+  EmbeddingTaskOperation,
   EventType,
   IngestionTaskStatus,
   OcrExtractionStatus,
@@ -67,14 +69,21 @@ import {
 } from '@/lib/assistant/types';
 import {
   assistantAnalyzerModeSchema,
-  buildAssistantInstructionText,
   normalizeThreadAssistantConfig,
   parseAssistantConfigFromJson,
   resolveAssistantAnalyzerMode,
+  resolveAssistantPresetPolicy,
   serializeThreadAssistantConfig,
   type AssistantAnalyzerMode,
   type AssistantConfig,
 } from '@/lib/assistant/config';
+import { buildAdaptiveContextPack } from '@/lib/assistant/context-engine';
+import { composeAssistantInstructions } from '@/lib/assistant/instruction-framework';
+import {
+  enqueueEmbeddingTaskSafe,
+  resolveGovernorByEmbeddingFallback,
+  searchWorkspaceEmbeddings,
+} from '@/lib/embeddings/service';
 
 export type { AssistantAnalyzerMode } from '@/lib/assistant/config';
 
@@ -90,7 +99,7 @@ const DEFAULT_MAX_READ_ACTIONS_PER_TURN = 12;
 const MAX_READ_ACTIONS_PER_TURN_HARD = 30;
 const DEFAULT_MAX_READ_ROWS = 60;
 const MAX_READ_ROWS_HARD = 200;
-const MAX_READ_TOOL_LOOPS = 4;
+const MAX_READ_TOOL_LOOPS_HARD = 8;
 const MAX_EVIDENCE_IMAGES = 6;
 const ATTACHMENT_EXTRACTION_CONCURRENCY = 2;
 const HYBRID_FALLBACK_CONFIDENCE_PCT = 85;
@@ -129,6 +138,10 @@ const ASSISTANT_MISTRAL_GUARDRAILS: Array<Record<string, unknown>> = [
     },
   },
 ];
+const ASSISTANT_TOOL_COMPLETION_ARGS: Record<string, unknown> = {
+  tool_choice: 'auto',
+  parallel_tool_calls: false,
+};
 
 export function evaluateAssistantBatchAutoConfirm(actions: Array<{ type?: unknown }>) {
   const actionTypes = actions
@@ -147,6 +160,18 @@ export function evaluateAssistantBatchAutoConfirm(actions: Array<{ type?: unknow
 function sanitizePrintable(value: unknown, max = 3000): string {
   return String(value ?? '')
     .replace(/[^\x20-\x7E]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, max);
+}
+
+function sanitizeHumanText(value: unknown, max = 120): string {
+  return String(value ?? '')
+    .normalize('NFKC')
+    .replace(/[’‘´]/g, "'")
+    .replace(/[“”]/g, '"')
+    .replace(/\p{C}+/gu, ' ')
+    .replace(/[^\p{L}\p{N}\p{M} _\-\[\]()#.'":|/\\*+&!?@,`~^]/gu, '')
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, max);
@@ -192,7 +217,7 @@ function normalizeEventName(value: unknown): string {
 }
 
 function normalizeGovernorName(value: unknown): string {
-  return sanitizePrintable(value, 80);
+  return sanitizeHumanText(value, 80);
 }
 
 async function readAssistantSettings(workspaceId: string) {
@@ -486,6 +511,41 @@ function mistralReadTools(): MistralTool[] {
             eventA: { type: 'string' },
             eventB: { type: 'string' },
             topN: { type: ['integer', 'null'] },
+          },
+        },
+      },
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'read_semantic_search',
+        description:
+          'Run semantic + lexical retrieval over workspace textual corpora (governors, events, OCR, ranking, assistant audit).',
+        strict: false,
+        parameters: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['query'],
+          properties: {
+            query: { type: 'string' },
+            corpora: {
+              type: ['array', 'null'],
+              items: {
+                type: 'string',
+                enum: [
+                  'GOVERNOR_IDENTITY',
+                  'EVENTS',
+                  'OCR_EXTRACTIONS',
+                  'RANKING',
+                  'ASSISTANT_AUDIT',
+                ],
+              },
+            },
+            mode: {
+              type: ['string', 'null'],
+              enum: ['hybrid', 'semantic', 'lexical'],
+            },
+            limit: { type: ['integer', 'null'] },
           },
         },
       },
@@ -1830,112 +1890,325 @@ async function buildWorkspaceContext(workspaceId: string) {
   };
 }
 
+type AssistantContextSourceDiagnostic = {
+  id: string;
+  title: string;
+  reason?: string;
+  tokens?: number;
+  priority?: number;
+  critical?: boolean;
+  truncated?: boolean;
+};
+
+function deriveAssistantIntentSignals(userText: string) {
+  const normalized = String(userText || '').toLowerCase();
+  return {
+    queue: /\bqueue|review|scan job|ingestion\b/.test(normalized),
+    ranking: /\branking|leaderboard|rank\b/.test(normalized),
+    stats: /\bstats?|power|kill|t4|t5|deads?\b/.test(normalized),
+    playerMutation: /\bregister|player|governor|update|rename|alliance\b/.test(normalized),
+    events: /\bevent|weekly|kvk|mge|osiris\b/.test(normalized),
+  };
+}
+
 async function buildAssistantContextPack(args: {
   workspaceId: string;
   contextMode: AssistantConfig['contextMode'];
   rowsLimit: number;
-}): Promise<string> {
+  instructionPreset: AssistantConfig['instructionPreset'];
+  userText: string;
+  evidence: AttachmentEvidence[];
+}): Promise<{
+  text: string;
+  diagnostics: {
+    selectedSources: AssistantContextSourceDiagnostic[];
+    droppedSources: AssistantContextSourceDiagnostic[];
+    estimatedTokens: number;
+    budgetTokens: number;
+    budgetTier: AssistantConfig['instructionPreset'];
+    mode: AssistantConfig['contextMode'];
+    callsite: 'assistant_planner';
+    signals: Record<string, unknown>;
+  };
+}> {
+  const intent = deriveAssistantIntentSignals(args.userText);
+  const profileEvidenceCount = args.evidence.filter(
+    (row) => String(row.metadata?.screenArchetype || '').trim() === 'governor_profile'
+  ).length;
+  const rankingEvidenceCount = args.evidence.filter(
+    (row) => String(row.metadata?.screenArchetype || '').trim() === 'ranking_board'
+  ).length;
   if (args.contextMode === 'prompt_only') {
-    return '';
+    return {
+      text: '',
+      diagnostics: {
+        selectedSources: [],
+        droppedSources: [],
+        estimatedTokens: 0,
+        budgetTokens: 0,
+        budgetTier: args.instructionPreset,
+        mode: args.contextMode,
+        callsite: 'assistant_planner',
+        signals: {
+          ...intent,
+          queuePressure: 0,
+          scanBacklog: 0,
+          profileEvidenceCount,
+          rankingEvidenceCount,
+        },
+      },
+    };
   }
 
-  const [governorCount, eventCount, openWeeklyEvent, scanJobs, rankingRuns, pendingIdentities] =
-    await Promise.all([
-      prisma.governor.count({ where: { workspaceId: args.workspaceId } }),
-      prisma.event.count({ where: { workspaceId: args.workspaceId } }),
-      prisma.event.findFirst({
-        where: {
-          workspaceId: args.workspaceId,
-          eventType: EventType.WEEKLY,
-          isClosed: false,
-        },
-        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-        select: {
-          id: true,
-          name: true,
-          weekKey: true,
-        },
-      }),
-      prisma.scanJob.findMany({
-        where: { workspaceId: args.workspaceId },
-        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-        take: Math.min(8, args.rowsLimit),
-        select: {
-          id: true,
-          status: true,
-          totalFiles: true,
-          processedFiles: true,
-          createdAt: true,
-        },
-      }),
-      prisma.rankingRun.findMany({
-        where: { workspaceId: args.workspaceId },
-        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-        take: Math.min(8, args.rowsLimit),
-        select: {
-          id: true,
-          status: true,
-          rankingType: true,
-          metricKey: true,
-          createdAt: true,
-        },
-      }),
-      prisma.assistantPendingIdentity.count({
-        where: {
-          workspaceId: args.workspaceId,
-          status: AssistantPendingIdentityStatus.PENDING,
-        },
-      }),
-    ]);
+  const [
+    governorCount,
+    eventCount,
+    openWeeklyEvent,
+    scanJobs,
+    rankingRuns,
+    pendingIdentities,
+    pendingPlans,
+    unresolvedIdentityRows,
+  ] = await Promise.all([
+    prisma.governor.count({ where: { workspaceId: args.workspaceId } }),
+    prisma.event.count({ where: { workspaceId: args.workspaceId } }),
+    prisma.event.findFirst({
+      where: {
+        workspaceId: args.workspaceId,
+        eventType: EventType.WEEKLY,
+        isClosed: false,
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      select: {
+        id: true,
+        name: true,
+        weekKey: true,
+      },
+    }),
+    prisma.scanJob.findMany({
+      where: { workspaceId: args.workspaceId },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: Math.min(8, args.rowsLimit),
+      select: {
+        id: true,
+        status: true,
+        totalFiles: true,
+        processedFiles: true,
+        createdAt: true,
+      },
+    }),
+    prisma.rankingRun.findMany({
+      where: { workspaceId: args.workspaceId },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: Math.min(8, args.rowsLimit),
+      select: {
+        id: true,
+        status: true,
+        rankingType: true,
+        metricKey: true,
+        createdAt: true,
+      },
+    }),
+    prisma.assistantPendingIdentity.count({
+      where: {
+        workspaceId: args.workspaceId,
+        status: AssistantPendingIdentityStatus.PENDING,
+      },
+    }),
+    prisma.assistantPlan.count({
+      where: {
+        workspaceId: args.workspaceId,
+        status: AssistantPlanStatus.PENDING,
+      },
+    }),
+    prisma.assistantPendingIdentity.findMany({
+      where: {
+        workspaceId: args.workspaceId,
+        status: AssistantPendingIdentityStatus.PENDING,
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: Math.min(8, args.rowsLimit),
+      select: {
+        id: true,
+        governorIdRaw: true,
+        governorNameRaw: true,
+        reason: true,
+        createdAt: true,
+      },
+    }),
+  ]);
 
-  const lines = [
-    `Counts: governors=${governorCount}, events=${eventCount}, pendingIdentity=${pendingIdentities}`,
+  const scanBacklog = scanJobs.reduce(
+    (sum, row) => sum + Math.max(0, Number(row.totalFiles) - Number(row.processedFiles)),
+    0
+  );
+  const queuePressure = scanBacklog + pendingIdentities;
+
+  const baseSummary = [
+    `Counts: governors=${governorCount}, events=${eventCount}, pendingIdentity=${pendingIdentities}, pendingPlans=${pendingPlans}`,
     openWeeklyEvent
       ? `Open weekly event: ${openWeeklyEvent.id} | ${openWeeklyEvent.name} | week=${openWeeklyEvent.weekKey || '-'}`
       : 'Open weekly event: none',
-    `Recent scan jobs:\n${
-      scanJobs.length > 0
-        ? scanJobs
-            .map(
-              (row) =>
-                `${row.id} | ${row.status} | ${row.processedFiles}/${row.totalFiles} | ${row.createdAt.toISOString()}`
-            )
-            .join('\n')
-        : '(none)'
-    }`,
-    `Recent ranking runs:\n${
-      rankingRuns.length > 0
-        ? rankingRuns
-            .map(
-              (row) =>
-                `${row.id} | ${row.status} | ${row.rankingType}/${row.metricKey} | ${row.createdAt.toISOString()}`
-            )
-            .join('\n')
-        : '(none)'
-    }`,
+    `Evidence mix: attachments=${args.evidence.length}, profileEvidence=${profileEvidenceCount}, rankingEvidence=${rankingEvidenceCount}`,
+    `Queue pressure: backlog=${scanBacklog}, unresolvedIdentity=${pendingIdentities}`,
+  ].join('\n');
+
+  const scanJobsBlock =
+    scanJobs.length > 0
+      ? scanJobs
+          .map(
+            (row) =>
+              `${row.id} | ${row.status} | ${row.processedFiles}/${row.totalFiles} | ${row.createdAt.toISOString()}`
+          )
+          .join('\n')
+      : '(none)';
+  const rankingRunsBlock =
+    rankingRuns.length > 0
+      ? rankingRuns
+          .map(
+            (row) =>
+              `${row.id} | ${row.status} | ${row.rankingType}/${row.metricKey} | ${row.createdAt.toISOString()}`
+          )
+          .join('\n')
+      : '(none)';
+  const unresolvedBlock =
+    unresolvedIdentityRows.length > 0
+      ? unresolvedIdentityRows
+          .map(
+            (row) =>
+              `${row.id} | id=${row.governorIdRaw || '-'} | name=${row.governorNameRaw || '-'} | ${
+                row.reason || 'unknown'
+              } | ${row.createdAt.toISOString()}`
+          )
+          .join('\n')
+      : '(none)';
+
+  const contextSources = [
+    {
+      id: 'workspace_summary',
+      title: 'Workspace Summary',
+      content: baseSummary,
+      critical: true,
+      priority: 100,
+    },
+    {
+      id: 'queue_health',
+      title: 'Queue Health',
+      content: `Recent scan jobs:\n${scanJobsBlock}\n\nRecent ranking runs:\n${rankingRunsBlock}`,
+      summary: `Scan jobs=${scanJobs.length}, ranking runs=${rankingRuns.length}, backlog=${scanBacklog}.`,
+      critical: intent.queue || intent.ranking || queuePressure > 8,
+      priority: intent.queue || intent.ranking ? 95 : queuePressure > 8 ? 80 : 60,
+    },
+    {
+      id: 'pending_identities',
+      title: 'Pending Identities',
+      content: `Pending identity rows:\n${unresolvedBlock}`,
+      summary:
+        pendingIdentities > 0
+          ? `Pending identities: ${pendingIdentities}. Recent unresolved rows are available in tools.`
+          : 'No pending identities.',
+      critical: pendingIdentities > 0 || intent.stats || intent.playerMutation,
+      priority: pendingIdentities > 0 ? 92 : 40,
+    },
   ];
+
+  let semanticHitCount = 0;
+  let semanticMode: string | null = null;
+  try {
+    const semantic = await searchWorkspaceEmbeddings({
+      workspaceId: args.workspaceId,
+      query: args.userText,
+      corpora: [
+        EmbeddingCorpus.GOVERNOR_IDENTITY,
+        EmbeddingCorpus.EVENTS,
+        EmbeddingCorpus.RANKING,
+        EmbeddingCorpus.OCR_EXTRACTIONS,
+        EmbeddingCorpus.ASSISTANT_AUDIT,
+      ],
+      maxCandidates: Math.max(6, Math.min(20, Math.floor(args.rowsLimit / 2))),
+    });
+
+    semanticHitCount = semantic.hits.length;
+    semanticMode = semantic.diagnostics.mode;
+    if (semantic.hits.length > 0) {
+      const lines = semantic.hits.map((hit, index) => {
+        const snippet = sanitizePrintable(hit.content, 220);
+        return `${index + 1}. ${hit.corpus}/${hit.entityType}/${hit.entityId} | sim=${hit.similarity.toFixed(
+          3
+        )} | ${snippet}`;
+      });
+      contextSources.push({
+        id: 'semantic_retrieval',
+        title: 'Semantic Retrieval',
+        content: `Embedding candidates:\\n${lines.join('\\n')}`,
+        summary: `Semantic hits: ${semantic.hits.length} (mode=${semantic.diagnostics.mode}).`,
+        critical: intent.playerMutation || intent.stats || intent.ranking || intent.events,
+        priority: intent.playerMutation || intent.stats ? 88 : 64,
+      });
+    }
+  } catch {
+    // Keep deterministic context pack even when embedding search is unavailable.
+  }
 
   if (args.contextMode === 'full') {
     const workspaceContext = await buildWorkspaceContext(args.workspaceId);
-    const governors = workspaceContext.governors
-      .slice(0, Math.min(160, args.rowsLimit * 4))
-      .map((row) => `${row.id} | ${row.governorId} | ${row.name} | ${row.alliance || '-'}`)
-      .join('\n');
-    const events = workspaceContext.events
-      .slice(0, Math.min(48, args.rowsLimit))
-      .map(
-        (row) =>
-          `${row.id} | ${row.name} | ${row.eventType}${row.weekKey ? ` | week:${row.weekKey}` : ''}${
-            row.isClosed ? ' | closed' : ' | open'
-          }`
-      )
-      .join('\n');
-
-    lines.push(`Known governors:\n${governors || '(none)'}`);
-    lines.push(`Known events:\n${events || '(none)'}`);
+    contextSources.push({
+      id: 'governor_catalog',
+      title: 'Governor Catalog',
+      content: workspaceContext.governors
+        .slice(0, Math.min(160, args.rowsLimit * 4))
+        .map((row) => `${row.id} | ${row.governorId} | ${row.name} | ${row.alliance || '-'}`)
+        .join('\n'),
+      summary: `Governor rows available: ${workspaceContext.governors.length}.`,
+      critical: intent.playerMutation || intent.stats,
+      priority: intent.playerMutation || intent.stats ? 86 : 45,
+    });
+    contextSources.push({
+      id: 'event_catalog',
+      title: 'Event Catalog',
+      content: workspaceContext.events
+        .slice(0, Math.min(48, args.rowsLimit))
+        .map(
+          (row) =>
+            `${row.id} | ${row.name} | ${row.eventType}${row.weekKey ? ` | week:${row.weekKey}` : ''}${
+              row.isClosed ? ' | closed' : ' | open'
+            }`
+        )
+        .join('\n'),
+      summary: `Event rows available: ${workspaceContext.events.length}.`,
+      critical: intent.events || intent.stats,
+      priority: intent.events ? 85 : 40,
+    });
   }
 
-  return lines.join('\n\n');
+  const packed = buildAdaptiveContextPack({
+    callsite: 'assistant_planner',
+    preset: args.instructionPreset,
+    mode: args.contextMode,
+    sources: contextSources,
+  });
+
+  return {
+    text: packed.text,
+    diagnostics: {
+      selectedSources: packed.diagnostics.selectedSources,
+      droppedSources: packed.diagnostics.droppedSources,
+      estimatedTokens: packed.diagnostics.estimatedTokens,
+      budgetTokens: packed.diagnostics.budgetTokens,
+      budgetTier: packed.diagnostics.budgetTier,
+      mode: packed.diagnostics.mode,
+      callsite: 'assistant_planner',
+      signals: {
+        ...intent,
+        queuePressure,
+        scanBacklog,
+        profileEvidenceCount,
+        rankingEvidenceCount,
+        semanticHitCount,
+        semanticMode,
+      },
+    },
+  };
 }
 
 function buildFallbackPlanningPrompt(args: {
@@ -2233,6 +2506,43 @@ function preflightWriteActions(
     accepted,
     dropped,
   };
+}
+
+function buildClarificationHints(args: {
+  droppedActions: Array<{ index: number; type: string; reason: string }>;
+  readExecutions: AssistantReadExecution[];
+  evidenceDiagnostics: Array<Record<string, unknown>>;
+}): string[] {
+  const hints: string[] = [];
+  const reasons = new Set(args.droppedActions.map((row) => row.reason));
+  if (reasons.has('missing_governor_identifier') || reasons.has('missing_identifier')) {
+    hints.push('Provide governorId/governorDbId or an exact governor name for player-targeted actions.');
+  }
+  if (reasons.has('missing_patch_fields')) {
+    hints.push('Specify at least one field to update (name, alliance, or new governorId).');
+  }
+  if (reasons.has('missing_event_identifier')) {
+    hints.push('Specify eventId or an exact event name before requesting delete_event.');
+  }
+  if (reasons.has('missing_event_name')) {
+    hints.push('Provide an event name for create_event.');
+  }
+  if (reasons.has('missing_governor_id')) {
+    hints.push('Register player actions need a numeric governorId.');
+  }
+
+  const failedEvidenceCount = args.evidenceDiagnostics.filter(
+    (entry) => String(entry.strategy || '').trim() === 'failed'
+  ).length;
+  if (failedEvidenceCount > 0) {
+    hints.push(`Extraction failed for ${failedEvidenceCount} attachment(s); retry or run manual OCR review.`);
+  }
+
+  if (args.readExecutions.length === 0 && args.droppedActions.length > 0) {
+    hints.push('Ask me to run reads first (governors/events/queues) so I can resolve missing identifiers.');
+  }
+
+  return hints.slice(0, 5);
 }
 
 type AssistantReadExecution = {
@@ -2920,6 +3230,57 @@ async function executeReadAction(args: {
         };
       }
 
+      case 'read_semantic_search': {
+        const limit = clampLimit(args.action.limit, Math.min(defaultRowsLimit, 20), 80);
+        const corpora = Array.isArray(args.action.corpora)
+          ? args.action.corpora
+              .map((row) => String(row || '').trim().toUpperCase())
+              .filter((row): row is EmbeddingCorpus =>
+                [
+                  EmbeddingCorpus.GOVERNOR_IDENTITY,
+                  EmbeddingCorpus.EVENTS,
+                  EmbeddingCorpus.OCR_EXTRACTIONS,
+                  EmbeddingCorpus.RANKING,
+                  EmbeddingCorpus.ASSISTANT_AUDIT,
+                ].includes(row as EmbeddingCorpus)
+              )
+          : undefined;
+        const modeRaw = String(args.action.mode || '').trim();
+        const mode =
+          modeRaw === 'semantic' || modeRaw === 'lexical' || modeRaw === 'hybrid'
+            ? modeRaw
+            : undefined;
+
+        const result = await searchWorkspaceEmbeddings({
+          workspaceId: args.workspaceId,
+          query: args.action.query,
+          corpora,
+          mode,
+          maxCandidates: limit,
+        });
+
+        return {
+          actionType: args.action.type,
+          request: args.action,
+          summary: `Semantic search returned ${result.hits.length} candidate(s).`,
+          result: {
+            diagnostics: result.diagnostics,
+            rows: result.hits.map((hit) => ({
+              documentId: hit.documentId,
+              corpus: hit.corpus,
+              entityType: hit.entityType,
+              entityId: hit.entityId,
+              chunkIndex: hit.chunkIndex,
+              similarity: hit.similarity,
+              fusedScore: hit.fusedScore,
+              content: hit.content.slice(0, 1200),
+              metadata: hit.metadata,
+            })),
+          },
+          durationMs: Date.now() - startedAt,
+        };
+      }
+
       default:
         throw new ApiHttpError('VALIDATION_ERROR', 'Unsupported assistant read action.', 400);
     }
@@ -2996,6 +3357,7 @@ type SuggestionCard = {
 
 function buildAssistantSuggestions(args: {
   suggestionMode: AssistantConfig['suggestionMode'];
+  suggestionSignalThreshold: number;
   userText: string;
   plannedActions: AssistantActionInput[];
   readExecutions: AssistantReadExecution[];
@@ -3064,7 +3426,13 @@ function buildAssistantSuggestions(args: {
   }
 
   if (args.suggestionMode === 'signal') {
-    return rows.slice(0, 5);
+    const threshold = Math.max(0, Math.min(100, Number(args.suggestionSignalThreshold || 50)));
+    return rows
+      .filter((row) => {
+        const score = row.priority === 'high' ? 90 : row.priority === 'medium' ? 60 : 30;
+        return score >= threshold;
+      })
+      .slice(0, 5);
   }
   if (rows.length === 0) {
     rows.push({
@@ -3170,7 +3538,7 @@ function normalizeVisionExtraction(value: unknown): AssistantVisionExtraction {
     confidence: Math.max(0, Math.min(100, Number(row.confidence || 0))),
     governorId: normalizeDigits(row.governorId, 24),
     governorName: normalizeGovernorName(row.governorName),
-    alliance: sanitizePrintable(row.alliance, 80) || null,
+    alliance: sanitizeHumanText(row.alliance, 80) || null,
     power: normalizeDigits(row.power, 24),
     killPoints: normalizeDigits(row.killPoints, 24),
     t4Kills: normalizeDigits(row.t4Kills, 24),
@@ -3215,13 +3583,13 @@ function summarizeExtractionForPrompt(
     const markdown = [
       `Image (${fileName}) extracted as governor profile.`,
       `governorId: ${sanitizePrintable(normalized.governorId || '', 40) || '(unknown)'}`,
-      `governorName: ${sanitizePrintable(normalized.governorName || '', 120) || '(unknown)'}`,
+      `governorName: ${sanitizeHumanText(normalized.governorName || '', 120) || '(unknown)'}`,
       `power: ${sanitizePrintable(normalized.power || '', 30) || '(unknown)'}`,
       `killPoints: ${sanitizePrintable(normalized.killPoints || '', 30) || '(unknown)'}`,
       `t4Kills: ${sanitizePrintable(normalized.t4Kills || '', 30) || '(unknown)'}`,
       `t5Kills: ${sanitizePrintable(normalized.t5Kills || '', 30) || '(unknown)'}`,
       `deads: ${sanitizePrintable(normalized.deads || '', 30) || '(unknown)'}`,
-      `alliance: ${sanitizePrintable(normalized.alliance || '', 80) || '(unknown)'}`,
+      `alliance: ${sanitizeHumanText(normalized.alliance || '', 80) || '(unknown)'}`,
     ].join('\n');
 
     return {
@@ -3248,7 +3616,7 @@ function summarizeExtractionForPrompt(
     'Rows:',
     ...rows.map((row, index) => {
       return `${index + 1}. rank=${sanitizePrintable(row.sourceRank || '-', 20)} | name=${sanitizePrintable(
-        row.governorNameRaw || '',
+        sanitizeHumanText(row.governorNameRaw || '', 80),
         80
       )} | metric=${sanitizePrintable(row.metricValue || row.metricRaw || '', 80)}`;
     }),
@@ -3335,17 +3703,19 @@ function summarizeVisionExtractionForPrompt(
 function shouldRunVisionFallbackForHybrid(args: {
   evidence: AttachmentEvidence | null;
   diagnostics: Record<string, unknown> | null;
+  confidenceThreshold: number;
+  unknownFieldThreshold: number;
 }): boolean {
   if (!args.evidence) return true;
   const strategy = String(args.diagnostics?.strategy || '').trim();
   if (strategy === 'failed') return true;
   const confidence = Number(args.diagnostics?.confidence || args.diagnostics?.classificationConfidence || 0);
-  if (Number.isFinite(confidence) && confidence > 0 && confidence < HYBRID_FALLBACK_CONFIDENCE_PCT) {
+  if (Number.isFinite(confidence) && confidence > 0 && confidence < args.confidenceThreshold) {
     return true;
   }
   const markdown = String(args.evidence.markdown || '');
   const unknownCount = (markdown.match(/\(unknown\)/g) || []).length;
-  return unknownCount >= 3;
+  return unknownCount >= args.unknownFieldThreshold;
 }
 
 async function extractAttachmentEvidence(args: {
@@ -3358,6 +3728,19 @@ async function extractAttachmentEvidence(args: {
 }> {
   const evidence: AttachmentEvidence[] = [];
   const diagnostics: Array<Record<string, unknown>> = [];
+  const presetPolicy = resolveAssistantPresetPolicy(args.settings.assistantConfig.instructionPreset);
+  const fallbackConfidenceThreshold =
+    presetPolicy.extractionFallbackAggressiveness === 'high'
+      ? 92
+      : presetPolicy.extractionFallbackAggressiveness === 'low'
+        ? 72
+        : HYBRID_FALLBACK_CONFIDENCE_PCT;
+  const unknownFieldThreshold =
+    presetPolicy.extractionFallbackAggressiveness === 'high'
+      ? 2
+      : presetPolicy.extractionFallbackAggressiveness === 'low'
+        ? 4
+        : 3;
   const queue = [...args.attachments].slice(0, MAX_EVIDENCE_IMAGES);
   let cursor = 0;
 
@@ -3367,6 +3750,15 @@ async function extractAttachmentEvidence(args: {
       cursor += 1;
       const attachment = queue[index];
       const startedAt = Date.now();
+      const extractionInstructionBundle = composeAssistantInstructions({
+        callsite: 'ingestion_extraction',
+        immutableSystemSafety: ASSISTANT_SYSTEM_GUARDRAILS_TEXT,
+        workspaceConfig: args.settings.assistantConfig,
+        taskContext: [
+          `Attachment: ${sanitizePrintable(attachment.fileName, 180) || 'screenshot'}`,
+          `Analyzer mode: ${args.analyzerMode}`,
+        ].join('\n'),
+      });
 
       const runOcrPipeline = async (): Promise<{
         evidence: AttachmentEvidence | null;
@@ -3380,6 +3772,7 @@ async function extractAttachmentEvidence(args: {
             },
             ocrModel: args.settings.ocrModel,
             extractionModel: args.settings.assistantModel,
+            assistantConfig: args.settings.assistantConfig,
           });
 
           const row = summarizeExtractionForPrompt(attachment.fileName, extracted);
@@ -3417,7 +3810,11 @@ async function extractAttachmentEvidence(args: {
                 },
               } as MistralJsonResponseFormat,
               documentAnnotationPrompt:
-                'Return strict JSON extraction for this game screenshot using the provided schema.',
+                [
+                  extractionInstructionBundle.text,
+                  '',
+                  'Return strict JSON extraction for this screenshot using the provided schema.',
+                ].join('\n'),
             });
 
             const annotationRaw = String(ocr.document_annotation || '').trim();
@@ -3497,11 +3894,18 @@ async function extractAttachmentEvidence(args: {
               mimeType: attachment.mimeType,
             },
             model: args.settings.assistantConfig.visionModel || args.settings.assistantModel,
-            instructions:
-              'Extract structured data from Rise of Kingdoms screenshots. Prefer exact numeric strings and avoid guessing.',
+            instructions: extractionInstructionBundle.text,
             schemaName: 'assistant_vision_extraction',
             schema: assistantVisionExtractionJsonSchema,
             prompt: 'Extract profile or leaderboard metrics for assistant planning.',
+            completionArgs: {
+              tool_choice: 'auto',
+              parallel_tool_calls: false,
+            },
+            metadata: {
+              callsite: 'ingestion_extraction',
+              instructionSections: extractionInstructionBundle.metadata.sectionOrder,
+            },
             store: false,
           });
           const parsed = normalizeVisionExtraction(structured.parsed);
@@ -3550,6 +3954,8 @@ async function extractAttachmentEvidence(args: {
       const shouldFallback = shouldRunVisionFallbackForHybrid({
         evidence: ocrResult.evidence,
         diagnostics: ocrResult.diagnostic,
+        confidenceThreshold: fallbackConfidenceThreshold,
+        unknownFieldThreshold,
       });
       if (shouldFallback) {
         const visionResult = await runVisionPipeline();
@@ -3672,20 +4078,73 @@ async function resolveGovernorForMutationTx(
     };
   }
 
-  const candidates = similarity.candidates.map((candidate) => ({
-    governorDbId: candidate.governorDbId,
-    governorGameId: candidate.governorGameId,
-    governorName: candidate.governorName,
-    score: candidate.score,
-  }));
+  let embeddingFallback:
+    | Awaited<ReturnType<typeof resolveGovernorByEmbeddingFallback>>
+    | null = null;
+  try {
+    embeddingFallback = await resolveGovernorByEmbeddingFallback({
+      workspaceId,
+      query: governorName,
+      suggestionLimit: 8,
+      autoLinkThreshold: similarity.autoThreshold,
+    });
+  } catch {
+    embeddingFallback = null;
+  }
 
-  if (similarity.status === 'ambiguous') {
+  if (embeddingFallback?.status === 'resolved') {
+    return {
+      id: embeddingFallback.governor.governorDbId,
+      governorId: embeddingFallback.governor.governorGameId,
+      name: embeddingFallback.governor.governorName,
+    };
+  }
+
+  const candidateMap = new Map<
+    string,
+    {
+      governorDbId: string;
+      governorGameId: string;
+      governorName: string;
+      score: number;
+    }
+  >();
+  for (const candidate of similarity.candidates) {
+    candidateMap.set(candidate.governorDbId, {
+      governorDbId: candidate.governorDbId,
+      governorGameId: candidate.governorGameId,
+      governorName: candidate.governorName,
+      score: candidate.score,
+    });
+  }
+  for (const candidate of embeddingFallback?.candidates || []) {
+    const existing = candidateMap.get(candidate.governorDbId);
+    if (!existing || candidate.score > existing.score) {
+      candidateMap.set(candidate.governorDbId, {
+        governorDbId: candidate.governorDbId,
+        governorGameId: candidate.governorGameId,
+        governorName: candidate.governorName,
+        score: candidate.score,
+      });
+    }
+  }
+  const candidates = [...candidateMap.values()]
+    .sort(
+      (a, b) =>
+        b.score - a.score ||
+        a.governorName.localeCompare(b.governorName) ||
+        a.governorDbId.localeCompare(b.governorDbId)
+    )
+    .slice(0, 8);
+
+  if (similarity.status === 'ambiguous' || embeddingFallback?.status === 'ambiguous') {
     throw new ApiHttpError(
       'CONFLICT',
       'Multiple high-confidence governors matched this name. Provide governorId or governorDbId.',
       409,
       {
-        threshold: similarity.autoThreshold,
+        threshold: embeddingFallback?.autoLinkThreshold || similarity.autoThreshold,
+        marginThreshold: embeddingFallback?.marginThreshold || undefined,
         candidates,
       }
     );
@@ -3696,7 +4155,8 @@ async function resolveGovernorForMutationTx(
     'Governor name did not match any registered player with high confidence.',
     404,
     {
-      threshold: similarity.autoThreshold,
+      threshold: embeddingFallback?.autoLinkThreshold || similarity.autoThreshold,
+      marginThreshold: embeddingFallback?.marginThreshold || undefined,
       candidates,
     }
   );
@@ -3774,7 +4234,7 @@ async function createPendingIdentityTx(
     candidates: Array<{ governorDbId: string; governorGameId: string; governorName: string }>;
   }
 ): Promise<AssistantPendingIdentity> {
-  return tx.assistantPendingIdentity.create({
+  const pending = await tx.assistantPendingIdentity.create({
     data: {
       workspaceId: args.workspaceId,
       conversationId: args.conversationId,
@@ -3790,8 +4250,23 @@ async function createPendingIdentityTx(
         args.candidates.length > 0
           ? (args.candidates as unknown as Prisma.InputJsonValue)
           : undefined,
+      },
+  });
+
+  await enqueueEmbeddingTaskSafe({
+    client: tx,
+    workspaceId: args.workspaceId,
+    corpus: EmbeddingCorpus.ASSISTANT_AUDIT,
+    operation: EmbeddingTaskOperation.UPSERT,
+    entityType: 'assistant_pending_identity',
+    entityId: pending.id,
+    payload: {
+      reason: 'assistant_pending_identity_created',
+      planId: args.planId,
     },
   });
+
+  return pending;
 }
 
 async function executeActionTx(
@@ -4162,21 +4637,11 @@ export async function postAssistantMessage(args: {
     threadConfig,
     messageOverride: parsedOverride.success ? parsedOverride.data : null,
   });
-  const readRowsLimit = settings.assistantConfig.readLimits.maxRowsPerTool;
-  const readActionsPerTurn = settings.assistantConfig.readLimits.maxToolsPerTurn;
-  const contextPackText = await buildAssistantContextPack({
-    workspaceId: args.workspaceId,
-    contextMode: settings.assistantConfig.contextMode,
-    rowsLimit: readRowsLimit,
-  });
-  const compiledInstructions = buildAssistantInstructionText({
-    baseGuardrails: ASSISTANT_SYSTEM_GUARDRAILS_TEXT,
-    workspaceConfig: settings.assistantConfig,
-    threadConfig,
-  });
-
   const userText = sanitizePrintable(args.text, 8000);
   const stageStartedAt = Date.now();
+  const presetPolicy = resolveAssistantPresetPolicy(settings.assistantConfig.instructionPreset);
+  const readRowsLimit = settings.assistantConfig.readLimits.maxRowsPerTool;
+  const readActionsPerTurn = settings.assistantConfig.readLimits.maxToolsPerTurn;
   const prefetched = Array.isArray(args.prefetchedEvidence) ? args.prefetchedEvidence : [];
   const evidence =
     prefetched.length > 0
@@ -4196,6 +4661,30 @@ export async function postAssistantMessage(args: {
           attachments: args.attachments,
           analyzerMode,
         });
+
+  const contextPack = await buildAssistantContextPack({
+    workspaceId: args.workspaceId,
+    contextMode: settings.assistantConfig.contextMode,
+    rowsLimit: readRowsLimit,
+    instructionPreset: settings.assistantConfig.instructionPreset,
+    userText,
+    evidence: evidence.evidence,
+  });
+  const instructionTaskContext = [
+    `Analyzer mode: ${analyzerMode}`,
+    `Instruction preset: ${settings.assistantConfig.instructionPreset}`,
+    `Evidence attachments: ${args.attachments.length}`,
+    `Context budget: ${contextPack.diagnostics.estimatedTokens}/${contextPack.diagnostics.budgetTokens} tokens`,
+  ].join('\n');
+  const compiledInstructionBundle = composeAssistantInstructions({
+    callsite: 'assistant_planner',
+    immutableSystemSafety: ASSISTANT_SYSTEM_GUARDRAILS_TEXT,
+    workspaceConfig: settings.assistantConfig,
+    threadInstruction: threadConfig.threadInstructions,
+    taskContext: instructionTaskContext,
+  });
+  const compiledInstructions = compiledInstructionBundle.text;
+
   const ocrMarkdownByImage = evidence.evidence
     .map((row) => ({
       fileName: row.fileName,
@@ -4220,7 +4709,10 @@ export async function postAssistantMessage(args: {
       attachments: userMessageAttachments as Prisma.InputJsonValue,
       mistralPayload: {
         stage: 'user_input',
+        analyzerMode,
+        instructionPreset: settings.assistantConfig.instructionPreset,
         evidenceDiagnostics: evidence.diagnostics,
+        contextDiagnostics: contextPack.diagnostics,
       } as Prisma.InputJsonValue,
     },
   });
@@ -4229,21 +4721,32 @@ export async function postAssistantMessage(args: {
     userText,
     attachments: args.attachments,
     ocrMarkdownByImage,
-    contextText: contextPackText,
+    contextText: contextPack.text,
   });
 
   let mistralConversationId = conversation.mistralConversationId || null;
   let initialResponse: MistralConversationResponse;
   const conversationMeta = asJsonObject(conversation.metadata);
   const currentToolProfile = String(conversationMeta.mistralToolProfile || '').trim();
+  const currentInstructionFingerprint = String(
+    conversationMeta.lastInstructionFingerprint || ''
+  ).trim();
+  const instructionFingerprint = crypto
+    .createHash('sha1')
+    .update(compiledInstructions)
+    .digest('hex')
+    .slice(0, 16);
   const shouldRestartConversation =
-    !mistralConversationId || currentToolProfile !== 'phase5_action_tools';
+    !mistralConversationId ||
+    currentToolProfile !== 'phase6_action_tools' ||
+    currentInstructionFingerprint !== instructionFingerprint;
 
   if (mistralConversationId && !shouldRestartConversation) {
     initialResponse = await appendMistralConversation({
       conversationId: mistralConversationId,
       inputs: conversationInputs,
       guardrails: ASSISTANT_MISTRAL_GUARDRAILS,
+      completionArgs: ASSISTANT_TOOL_COMPLETION_ARGS,
       store: true,
     });
   } else {
@@ -4253,6 +4756,14 @@ export async function postAssistantMessage(args: {
       inputs: conversationInputs,
       tools: mistralActionTools(),
       guardrails: ASSISTANT_MISTRAL_GUARDRAILS,
+      completionArgs: ASSISTANT_TOOL_COMPLETION_ARGS,
+      metadata: {
+        callsite: 'assistant_planner',
+        instructionSections: compiledInstructionBundle.metadata.sectionOrder,
+        contextDiagnostics: contextPack.diagnostics,
+        instructionPreset: settings.assistantConfig.instructionPreset,
+        analyzerMode,
+      },
       store: true,
     });
     mistralConversationId = initialResponse.conversation_id;
@@ -4263,9 +4774,17 @@ export async function postAssistantMessage(args: {
   let functionCallPlan = parseActionsFromFunctionCalls(planningResponse);
   const readExecutions: AssistantReadExecution[] = [];
   const resolvedToolCallIds = new Set<string>();
+  const readExecutionCache = new Map<string, AssistantReadExecution>();
+  const maxReadToolLoops = Math.max(
+    1,
+    Math.min(MAX_READ_TOOL_LOOPS_HARD, Number(presetPolicy.maxReadToolLoops || 4))
+  );
+  let loopIterations = 0;
+  let duplicateReadCallsSuppressed = 0;
 
   if (mistralConversationId) {
-    for (let loopIndex = 0; loopIndex < MAX_READ_TOOL_LOOPS; loopIndex += 1) {
+    for (let loopIndex = 0; loopIndex < maxReadToolLoops; loopIndex += 1) {
+      loopIterations = loopIndex + 1;
       const pendingReadCalls = functionCallPlan.readCalls.filter(
         (call) => call.toolCallId && !resolvedToolCallIds.has(call.toolCallId)
       );
@@ -4273,12 +4792,47 @@ export async function postAssistantMessage(args: {
         break;
       }
 
-      const executed = await executeReadActions({
-        workspaceId: args.workspaceId,
-        calls: pendingReadCalls,
-        maxActionsPerTurn: readActionsPerTurn,
-        defaultRowsLimit: readRowsLimit,
-      });
+      const deduplicatedExecutions: AssistantReadExecution[] = [];
+      const uniqueCalls: Array<{ toolCallId: string; action: AssistantReadActionInput }> = [];
+      const fingerprintByToolCallId = new Map<string, string>();
+      for (const call of pendingReadCalls) {
+        const fingerprint = `${call.action.type}:${safeJsonText(call.action, 3_000)}`;
+        fingerprintByToolCallId.set(call.toolCallId, fingerprint);
+        const cached = readExecutionCache.get(fingerprint);
+        if (cached) {
+          deduplicatedExecutions.push({
+            ...cached,
+            toolCallId: call.toolCallId,
+            summary: `${cached.summary} (deduplicated)`,
+            durationMs: 0,
+          });
+          duplicateReadCallsSuppressed += 1;
+          continue;
+        }
+        uniqueCalls.push(call);
+      }
+
+      const executedUnique =
+        uniqueCalls.length > 0
+          ? await executeReadActions({
+              workspaceId: args.workspaceId,
+              calls: uniqueCalls,
+              maxActionsPerTurn: readActionsPerTurn,
+              defaultRowsLimit: readRowsLimit,
+            })
+          : [];
+
+      for (const execution of executedUnique) {
+        if (!execution.toolCallId) continue;
+        const fingerprint = fingerprintByToolCallId.get(String(execution.toolCallId));
+        if (!fingerprint) continue;
+        readExecutionCache.set(fingerprint, execution);
+      }
+
+      const executed = [...deduplicatedExecutions, ...executedUnique];
+      if (executed.length === 0) {
+        break;
+      }
       readExecutions.push(...executed);
 
       const functionResults = executed
@@ -4309,6 +4863,7 @@ export async function postAssistantMessage(args: {
         conversationId: mistralConversationId,
         inputs: functionResults,
         guardrails: ASSISTANT_MISTRAL_GUARDRAILS,
+        completionArgs: ASSISTANT_TOOL_COMPLETION_ARGS,
         store: true,
       });
       functionCallPlan = parseActionsFromFunctionCalls(planningResponse);
@@ -4333,20 +4888,32 @@ export async function postAssistantMessage(args: {
       ocrMarkdownByImage,
       governors: workspaceContext.governors,
       events: workspaceContext.events,
-      readContextText: [contextPackText, readContextText].filter(Boolean).join('\n\n'),
+      readContextText: [contextPack.text, readContextText].filter(Boolean).join('\n\n'),
+    });
+    const fallbackInstructionBundle = composeAssistantInstructions({
+      callsite: 'assistant_structured_fallback',
+      immutableSystemSafety: ASSISTANT_SYSTEM_GUARDRAILS_TEXT,
+      workspaceConfig: settings.assistantConfig,
+      threadInstruction: threadConfig.threadInstructions,
+      taskContext: [
+        `Dropped action count: ${functionCallPlan.droppedCalls.length}`,
+        `Read execution count: ${readExecutions.length}`,
+        `Context selected sources: ${contextPack.diagnostics.selectedSources.length}`,
+      ].join('\n'),
     });
 
     const structured = await runMistralStructuredOutput<AssistantPlanOutput>({
-      instructions: [
-        compiledInstructions,
-        '',
-        'Produce assistantResponse, summary, and actions for workspace mutation planning. Output must follow schema exactly.',
-      ].join('\n'),
+      instructions: fallbackInstructionBundle.text,
       input: fallbackPrompt,
       schemaName: 'assistant_action_plan',
       schema: assistantActionOutputJsonSchema,
       model: settings.assistantModel,
       guardrails: ASSISTANT_MISTRAL_GUARDRAILS,
+      completionArgs: ASSISTANT_TOOL_COMPLETION_ARGS,
+      metadata: {
+        callsite: 'assistant_structured_fallback',
+        instructionSections: fallbackInstructionBundle.metadata.sectionOrder,
+      },
       store: false,
     });
 
@@ -4369,6 +4936,15 @@ export async function postAssistantMessage(args: {
       reason: row.reason,
     })),
   ];
+  const clarificationHints = buildClarificationHints({
+    droppedActions,
+    readExecutions,
+    evidenceDiagnostics: evidence.diagnostics,
+  });
+  const lowContextConfidence =
+    droppedActions.length > 0 &&
+    (readExecutions.length === 0 ||
+      contextPack.diagnostics.droppedSources.length > contextPack.diagnostics.selectedSources.length);
 
   if (!assistantText) {
     assistantText =
@@ -4385,9 +4961,17 @@ export async function postAssistantMessage(args: {
       `Dropped ${droppedActions.length} unsupported/underspecified action(s) during preflight.`,
     ].join('\n\n');
   }
+  if (lowContextConfidence && clarificationHints.length > 0) {
+    assistantText = [
+      assistantText,
+      'I need clarification before proposing reliable writes:',
+      clarificationHints.map((hint, index) => `${index + 1}. ${hint}`).join('\n'),
+    ].join('\n\n');
+  }
 
   const suggestions = buildAssistantSuggestions({
     suggestionMode: settings.assistantConfig.suggestionMode,
+    suggestionSignalThreshold: presetPolicy.suggestionSignalThreshold,
     userText,
     plannedActions,
     readExecutions,
@@ -4416,13 +5000,17 @@ export async function postAssistantMessage(args: {
         metadata: {
           ...originalConversationMetadata,
           threadConfig: serializeThreadAssistantConfig(threadConfig),
-          mistralToolProfile: 'phase5_action_tools',
+          mistralToolProfile: 'phase6_action_tools',
           lastPlanningSource: planningSource,
           lastAnalyzerMode: analyzerMode,
           lastContextMode: settings.assistantConfig.contextMode,
+          lastInstructionPreset: settings.assistantConfig.instructionPreset,
+          lastInstructionFingerprint: instructionFingerprint,
           ocrImages: args.attachments.length,
           lastReadActionCount: readExecutions.length,
           lastDroppedActionCount: droppedActions.length,
+          lastContextDiagnostics: contextPack.diagnostics,
+          lastToolCallPolicy: ASSISTANT_TOOL_COMPLETION_ARGS,
         } as Prisma.InputJsonValue,
       },
     });
@@ -4442,12 +5030,26 @@ export async function postAssistantMessage(args: {
           meta: {
             readExecutions,
             droppedActions,
+            clarificationHints,
             suggestions,
             analyzerMode,
-            contextPack: contextPackText,
+            contextPack: contextPack.text,
+            contextDiagnostics: contextPack.diagnostics,
+            instructionProfile: {
+              preset: settings.assistantConfig.instructionPreset,
+              callsite: compiledInstructionBundle.metadata.callsite,
+              sections: compiledInstructionBundle.metadata.sectionOrder,
+            },
             evidenceDiagnostics: evidence.diagnostics,
+            lowContextConfidence,
             totalLatencyMs: Date.now() - stageStartedAt,
             sourceCallCount: functionCallPlan.rawCalls.length,
+            toolCallPolicy: {
+              ...ASSISTANT_TOOL_COMPLETION_ARGS,
+              maxReadToolLoops,
+              loopIterations,
+              duplicateReadCallsSuppressed,
+            },
           },
         } as unknown as Prisma.InputJsonValue,
       },
@@ -4489,7 +5091,28 @@ export async function postAssistantMessage(args: {
             actions: plannedActions,
             readExecutions,
             droppedActions,
+            clarificationHints,
+            contextDiagnostics: contextPack.diagnostics,
+            instructionPreset: settings.assistantConfig.instructionPreset,
+            toolCallPolicy: {
+              ...ASSISTANT_TOOL_COMPLETION_ARGS,
+              maxReadToolLoops,
+              loopIterations,
+              duplicateReadCallsSuppressed,
+            },
           } as Prisma.InputJsonValue,
+        },
+      });
+
+      await enqueueEmbeddingTaskSafe({
+        client: tx,
+        workspaceId: args.workspaceId,
+        corpus: EmbeddingCorpus.ASSISTANT_AUDIT,
+        operation: EmbeddingTaskOperation.UPSERT,
+        entityType: 'assistant_plan',
+        entityId: createdPlan.id,
+        payload: {
+          reason: 'assistant_plan_created',
         },
       });
 
@@ -4560,8 +5183,21 @@ export async function postAssistantMessage(args: {
         meta: {
           readExecutions,
           droppedActions,
+          clarificationHints,
           suggestions,
           analyzerMode,
+          contextDiagnostics: contextPack.diagnostics,
+          instructionProfile: {
+            preset: settings.assistantConfig.instructionPreset,
+            callsite: compiledInstructionBundle.metadata.callsite,
+            sections: compiledInstructionBundle.metadata.sectionOrder,
+          },
+          toolCallPolicy: {
+            ...ASSISTANT_TOOL_COMPLETION_ARGS,
+            maxReadToolLoops,
+            loopIterations,
+            duplicateReadCallsSuppressed,
+          },
           evidenceDiagnostics: evidence.diagnostics,
         },
       },
@@ -4596,6 +5232,7 @@ async function tryAppendToolConfirmations(args: {
       tool_call_id: toolCallId,
       confirmation: args.confirmation,
     })),
+    completionArgs: ASSISTANT_TOOL_COMPLETION_ARGS,
     store: true,
   });
 }
@@ -5130,6 +5767,21 @@ export async function resolveAssistantPendingIdentity(args: {
       action: updatedAction,
     };
   });
+
+  if (!result.idempotentReplay) {
+    await enqueueEmbeddingTaskSafe({
+      workspaceId: args.workspaceId,
+      corpus: EmbeddingCorpus.ASSISTANT_AUDIT,
+      operation: EmbeddingTaskOperation.UPSERT,
+      entityType: 'assistant_pending_identity',
+      entityId: result.pending.id,
+      payload: {
+        reason: 'pending_identity_resolved',
+        planId: result.pending.planId || null,
+        status: result.pending.status,
+      },
+    });
+  }
 
   return {
     idempotentReplay: result.idempotentReplay,

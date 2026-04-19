@@ -119,6 +119,7 @@ export async function POST(request: NextRequest) {
         select: {
           ocrModel: true,
           assistantModel: true,
+          assistantConfig: true,
         },
       });
 
@@ -135,6 +136,7 @@ export async function POST(request: NextRequest) {
         archetypeHint,
         ocrModel: settings?.ocrModel || undefined,
         extractionModel: settings?.assistantModel || undefined,
+        assistantConfig: settings?.assistantConfig || undefined,
       });
 
       return ok(diagnostics);

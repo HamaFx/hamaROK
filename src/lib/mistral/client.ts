@@ -37,6 +37,20 @@ export interface MistralOcrResponse {
   };
 }
 
+export interface MistralEmbeddingData {
+  object?: string;
+  index: number;
+  embedding: number[] | string;
+}
+
+export interface MistralEmbeddingResponse {
+  object?: string;
+  id?: string;
+  model?: string;
+  data: MistralEmbeddingData[];
+  usage?: Record<string, unknown>;
+}
+
 export type MistralJsonResponseFormat =
   | { type: 'json_object' }
   | {
@@ -416,6 +430,39 @@ export async function runMistralOcr(args: {
   });
 }
 
+export async function runMistralEmbeddings(args: {
+  input: string | string[];
+  model?: string;
+  outputDimension?: number;
+  outputDtype?: 'float' | 'int8' | 'uint8' | 'binary' | 'ubinary';
+  encodingFormat?: 'float' | 'base64';
+  metadata?: Record<string, unknown>;
+  timeoutMs?: number;
+  maxRetries?: number;
+}): Promise<MistralEmbeddingResponse> {
+  const inputRows = Array.isArray(args.input)
+    ? args.input.map((row) => String(row || '').trim()).filter(Boolean)
+    : [String(args.input || '').trim()].filter(Boolean);
+  if (inputRows.length === 0) {
+    throw new MistralApiError('Embedding input is required.', 400, 'VALIDATION_ERROR');
+  }
+
+  return requestJson<MistralEmbeddingResponse>({
+    method: 'POST',
+    path: '/v1/embeddings',
+    timeoutMs: args.timeoutMs,
+    maxRetries: args.maxRetries,
+    body: {
+      model: (args.model || 'mistral-embed-2312').trim(),
+      input: inputRows.length === 1 ? inputRows[0] : inputRows,
+      output_dimension: Number.isFinite(args.outputDimension) ? Number(args.outputDimension) : undefined,
+      output_dtype: args.outputDtype,
+      encoding_format: args.encodingFormat,
+      metadata: args.metadata,
+    },
+  });
+}
+
 export async function startMistralConversation(args: {
   model?: string;
   instructions?: string;
@@ -556,6 +603,8 @@ export async function runMistralStructuredOutput<T>(args: {
   schema: Record<string, unknown>;
   model?: string;
   guardrails?: Array<Record<string, unknown>>;
+  completionArgs?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
   store?: boolean;
 }): Promise<{ response: MistralConversationResponse; parsed: T }> {
   const responseFormat = {
@@ -567,6 +616,10 @@ export async function runMistralStructuredOutput<T>(args: {
         schema: args.schema,
       },
     },
+  } as Record<string, unknown>;
+  const completionArgs = {
+    ...(args.completionArgs || {}),
+    ...responseFormat,
   } as Record<string, unknown>;
 
   const parseStructuredResponse = (response: MistralConversationResponse): T => {
@@ -592,7 +645,8 @@ export async function runMistralStructuredOutput<T>(args: {
       instructions: args.instructions,
       inputs: args.input,
       guardrails: args.guardrails,
-      completionArgs: responseFormat,
+      completionArgs,
+      metadata: args.metadata,
       store: args.store ?? false,
     });
 
@@ -617,10 +671,12 @@ export async function runMistralStructuredOutput<T>(args: {
       inputs: args.input,
       guardrails: args.guardrails,
       completionArgs: {
+        ...(args.completionArgs || {}),
         response_format: {
           type: 'json_object',
         },
       },
+      metadata: args.metadata,
       store: args.store ?? false,
     });
 
@@ -639,6 +695,8 @@ export async function runMistralVisionStructuredExtraction<T>(args: {
   model?: string;
   prompt?: string;
   guardrails?: Array<Record<string, unknown>>;
+  completionArgs?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
   store?: boolean;
 }): Promise<{ response: MistralConversationResponse; parsed: T }> {
   const chunks: Array<Record<string, unknown>> = [];
@@ -661,6 +719,8 @@ export async function runMistralVisionStructuredExtraction<T>(args: {
     schema: args.schema,
     model: args.model,
     guardrails: args.guardrails,
+    completionArgs: args.completionArgs,
+    metadata: args.metadata,
     store: args.store,
   });
 }

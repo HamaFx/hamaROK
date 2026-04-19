@@ -21,6 +21,20 @@ export type AssistantContextMode = z.infer<typeof assistantContextModeSchema>;
 export const assistantSuggestionModeSchema = z.enum(['signal', 'always', 'on_demand']);
 export type AssistantSuggestionMode = z.infer<typeof assistantSuggestionModeSchema>;
 
+export const assistantInstructionPresetSchema = z.enum([
+  'conservative',
+  'balanced',
+  'aggressive',
+]);
+export type AssistantInstructionPreset = z.infer<typeof assistantInstructionPresetSchema>;
+
+export const assistantEmbeddingRetrievalModeSchema = z.enum([
+  'hybrid',
+  'semantic',
+  'lexical',
+]);
+export type AssistantEmbeddingRetrievalMode = z.infer<typeof assistantEmbeddingRetrievalModeSchema>;
+
 const stringOrNullSchema = z.union([z.string(), z.null()]).optional();
 const instructionRulesSchema = z.array(z.string()).max(20).optional();
 
@@ -37,6 +51,7 @@ export const assistantConfigSchema = z.object({
   screenshotAnalyzerDefault: assistantAnalyzerModeSchema.optional(),
   contextMode: assistantContextModeSchema.optional(),
   suggestionMode: assistantSuggestionModeSchema.optional(),
+  instructionPreset: assistantInstructionPresetSchema.optional(),
   visionModel: z.string().min(1).max(120).optional(),
   batch: z
     .object({
@@ -52,12 +67,30 @@ export const assistantConfigSchema = z.object({
     .optional(),
   instructionProfile: assistantInstructionProfileSchema,
   rawInstruction: stringOrNullSchema,
+  embedding: z
+    .object({
+      enabled: z.boolean().optional(),
+      model: z.string().min(1).max(120).optional(),
+      dimension: z.number().int().min(64).max(4096).optional(),
+      retrievalMode: assistantEmbeddingRetrievalModeSchema.optional(),
+      maxCandidates: z.number().int().min(1).max(200).optional(),
+      fallbackOnly: z.boolean().optional(),
+      autoLinkThreshold: z.number().min(0.7).max(1).optional(),
+      batch: z
+        .object({
+          enabled: z.boolean().optional(),
+          threshold: z.number().int().min(20).max(100000).optional(),
+        })
+        .optional(),
+    })
+    .optional(),
 });
 
 export interface AssistantConfig {
   screenshotAnalyzerDefault: AssistantAnalyzerMode;
   contextMode: AssistantContextMode;
   suggestionMode: AssistantSuggestionMode;
+  instructionPreset: AssistantInstructionPreset;
   visionModel: string;
   batch: {
     enabled: boolean;
@@ -74,6 +107,19 @@ export interface AssistantConfig {
     dontRules: string[];
   };
   rawInstruction: string;
+  embedding: {
+    enabled: boolean;
+    model: string;
+    dimension: number;
+    retrievalMode: AssistantEmbeddingRetrievalMode;
+    maxCandidates: number;
+    fallbackOnly: boolean;
+    autoLinkThreshold: number;
+    batch: {
+      enabled: boolean;
+      threshold: number;
+    };
+  };
 }
 
 const DEFAULT_VISION_MODEL = 'mistral-large-latest';
@@ -82,6 +128,7 @@ export const DEFAULT_ASSISTANT_CONFIG: AssistantConfig = {
   screenshotAnalyzerDefault: 'hybrid',
   contextMode: 'smart',
   suggestionMode: 'signal',
+  instructionPreset: 'balanced',
   visionModel: DEFAULT_VISION_MODEL,
   batch: {
     enabled: true,
@@ -98,12 +145,37 @@ export const DEFAULT_ASSISTANT_CONFIG: AssistantConfig = {
     dontRules: [],
   },
   rawInstruction: '',
+  embedding: {
+    enabled: true,
+    model: 'mistral-embed-2312',
+    dimension: 1024,
+    retrievalMode: 'hybrid',
+    maxCandidates: 24,
+    fallbackOnly: true,
+    autoLinkThreshold: 0.93,
+    batch: {
+      enabled: true,
+      threshold: 80,
+    },
+  },
 };
 
 function sanitizePrintable(value: unknown, max = 2000): string {
   return String(value ?? '')
-    .replace(/[^\x20-\x7E]/g, ' ')
+    .normalize('NFKC')
+    .replace(/\p{C}+/gu, ' ')
     .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, max);
+}
+
+function sanitizeFreeform(value: unknown, max = 4000): string {
+  return String(value ?? '')
+    .normalize('NFKC')
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
     .trim()
     .slice(0, max);
 }
@@ -137,6 +209,7 @@ export function normalizeAssistantConfig(value: unknown): AssistantConfig {
       base.screenshotAnalyzerDefault || DEFAULT_ASSISTANT_CONFIG.screenshotAnalyzerDefault,
     contextMode: base.contextMode || DEFAULT_ASSISTANT_CONFIG.contextMode,
     suggestionMode: base.suggestionMode || DEFAULT_ASSISTANT_CONFIG.suggestionMode,
+    instructionPreset: base.instructionPreset || DEFAULT_ASSISTANT_CONFIG.instructionPreset,
     visionModel: sanitizePrintable(base.visionModel, 120) || DEFAULT_ASSISTANT_CONFIG.visionModel,
     batch: {
       enabled:
@@ -166,7 +239,45 @@ export function normalizeAssistantConfig(value: unknown): AssistantConfig {
       doRules: sanitizeRuleList(profile.doRules),
       dontRules: sanitizeRuleList(profile.dontRules),
     },
-    rawInstruction: sanitizePrintable(base.rawInstruction, 4000),
+    rawInstruction: sanitizeFreeform(base.rawInstruction, 4000),
+    embedding: {
+      enabled:
+        typeof base.embedding?.enabled === 'boolean'
+          ? base.embedding.enabled
+          : DEFAULT_ASSISTANT_CONFIG.embedding.enabled,
+      model:
+        sanitizePrintable(base.embedding?.model, 120) || DEFAULT_ASSISTANT_CONFIG.embedding.model,
+      dimension:
+        Number.isFinite(base.embedding?.dimension) && Number(base.embedding?.dimension) > 0
+          ? Number(base.embedding?.dimension)
+          : DEFAULT_ASSISTANT_CONFIG.embedding.dimension,
+      retrievalMode:
+        base.embedding?.retrievalMode || DEFAULT_ASSISTANT_CONFIG.embedding.retrievalMode,
+      maxCandidates:
+        Number.isFinite(base.embedding?.maxCandidates) && Number(base.embedding?.maxCandidates) > 0
+          ? Number(base.embedding?.maxCandidates)
+          : DEFAULT_ASSISTANT_CONFIG.embedding.maxCandidates,
+      fallbackOnly:
+        typeof base.embedding?.fallbackOnly === 'boolean'
+          ? base.embedding.fallbackOnly
+          : DEFAULT_ASSISTANT_CONFIG.embedding.fallbackOnly,
+      autoLinkThreshold:
+        Number.isFinite(base.embedding?.autoLinkThreshold) &&
+        Number(base.embedding?.autoLinkThreshold) > 0
+          ? Number(base.embedding?.autoLinkThreshold)
+          : DEFAULT_ASSISTANT_CONFIG.embedding.autoLinkThreshold,
+      batch: {
+        enabled:
+          typeof base.embedding?.batch?.enabled === 'boolean'
+            ? base.embedding.batch.enabled
+            : DEFAULT_ASSISTANT_CONFIG.embedding.batch.enabled,
+        threshold:
+          Number.isFinite(base.embedding?.batch?.threshold) &&
+          Number(base.embedding?.batch?.threshold) > 0
+            ? Number(base.embedding?.batch?.threshold)
+            : DEFAULT_ASSISTANT_CONFIG.embedding.batch.threshold,
+      },
+    },
   };
 }
 
@@ -175,6 +286,7 @@ export function serializeAssistantConfig(config: AssistantConfig): Record<string
     screenshotAnalyzerDefault: config.screenshotAnalyzerDefault,
     contextMode: config.contextMode,
     suggestionMode: config.suggestionMode,
+    instructionPreset: config.instructionPreset,
     visionModel: config.visionModel,
     batch: {
       enabled: config.batch.enabled,
@@ -191,6 +303,19 @@ export function serializeAssistantConfig(config: AssistantConfig): Record<string
       dontRules: config.instructionProfile.dontRules,
     },
     rawInstruction: config.rawInstruction,
+    embedding: {
+      enabled: config.embedding.enabled,
+      model: config.embedding.model,
+      dimension: config.embedding.dimension,
+      retrievalMode: config.embedding.retrievalMode,
+      maxCandidates: config.embedding.maxCandidates,
+      fallbackOnly: config.embedding.fallbackOnly,
+      autoLinkThreshold: config.embedding.autoLinkThreshold,
+      batch: {
+        enabled: config.embedding.batch.enabled,
+        threshold: config.embedding.batch.threshold,
+      },
+    },
   };
 }
 
@@ -213,7 +338,7 @@ export function normalizeThreadAssistantConfig(value: unknown): ThreadAssistantC
   const parsed = threadAssistantConfigSchema.safeParse(value);
   const data = parsed.success ? parsed.data : {};
   return {
-    threadInstructions: sanitizePrintable(data.threadInstructions, 2000),
+    threadInstructions: sanitizeFreeform(data.threadInstructions, 2000),
     analyzerOverride: data.analyzerOverride || DEFAULT_THREAD_ASSISTANT_CONFIG.analyzerOverride,
   };
 }
@@ -272,7 +397,60 @@ export function buildAssistantInstructionText(args: {
   return [...args.baseGuardrails, ...sections].join('\n\n');
 }
 
+export interface AssistantPresetPolicy {
+  maxReadToolLoops: number;
+  contextBudgets: {
+    assistantPlanner: number;
+    assistantStructuredFallback: number;
+    ingestionExtraction: number;
+    ocrDiagnostics: number;
+  };
+  suggestionSignalThreshold: number;
+  extractionFallbackAggressiveness: 'low' | 'medium' | 'high';
+}
+
+const ASSISTANT_PRESET_POLICIES: Record<AssistantInstructionPreset, AssistantPresetPolicy> = {
+  conservative: {
+    maxReadToolLoops: 2,
+    contextBudgets: {
+      assistantPlanner: 2600,
+      assistantStructuredFallback: 3200,
+      ingestionExtraction: 1400,
+      ocrDiagnostics: 1700,
+    },
+    suggestionSignalThreshold: 70,
+    extractionFallbackAggressiveness: 'low',
+  },
+  balanced: {
+    maxReadToolLoops: 4,
+    contextBudgets: {
+      assistantPlanner: 4200,
+      assistantStructuredFallback: 5200,
+      ingestionExtraction: 1800,
+      ocrDiagnostics: 2200,
+    },
+    suggestionSignalThreshold: 50,
+    extractionFallbackAggressiveness: 'medium',
+  },
+  aggressive: {
+    maxReadToolLoops: 6,
+    contextBudgets: {
+      assistantPlanner: 6200,
+      assistantStructuredFallback: 7600,
+      ingestionExtraction: 2400,
+      ocrDiagnostics: 3000,
+    },
+    suggestionSignalThreshold: 30,
+    extractionFallbackAggressiveness: 'high',
+  },
+};
+
+export function resolveAssistantPresetPolicy(
+  preset: AssistantInstructionPreset
+): AssistantPresetPolicy {
+  return ASSISTANT_PRESET_POLICIES[preset] || ASSISTANT_PRESET_POLICIES.balanced;
+}
+
 export function parseAssistantConfigFromJson(value: unknown): AssistantConfig {
   return normalizeAssistantConfig(asJsonObject(value));
 }
-

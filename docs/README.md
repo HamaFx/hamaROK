@@ -2,6 +2,8 @@
 
 This `docs/` set is optimized for AI agents that need to safely modify this codebase.
 
+Current scope includes assistant orchestration, high-volume ingestion, and Phase 7 embedding integration (`pgvector` + Mistral embeddings + hybrid retrieval).
+
 Read order:
 
 1. `01-agent-quickstart.md`

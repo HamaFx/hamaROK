@@ -1,4 +1,6 @@
 import {
+  EmbeddingCorpus,
+  EmbeddingTaskOperation,
   IngestionDomain,
   MetricObservationSourceType,
   Prisma,
@@ -43,6 +45,7 @@ import {
   RANKING_TYPE_POWER,
   recordMetricObservationTx,
 } from '@/lib/metric-sync';
+import { enqueueEmbeddingTaskSafe } from '@/lib/embeddings/service';
 
 export interface RankingRowInput {
   sourceRank?: number | null;
@@ -1129,6 +1132,18 @@ export async function createRankingRunWithRows(input: CreateRankingRunInput) {
           where: { id: run.id },
           data: {
             status,
+          },
+        });
+
+        await enqueueEmbeddingTaskSafe({
+          client: tx,
+          workspaceId: input.workspaceId,
+          corpus: EmbeddingCorpus.RANKING,
+          operation: EmbeddingTaskOperation.UPSERT,
+          entityType: 'ranking_run',
+          entityId: run.id,
+          payload: {
+            reason: 'ranking_run_created',
           },
         });
 

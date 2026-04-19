@@ -1,5 +1,7 @@
 import {
   AnomalySeverity,
+  EmbeddingCorpus,
+  EmbeddingTaskOperation,
   EventType,
   MetricObservationSourceType,
   Prisma,
@@ -17,6 +19,10 @@ import {
   upsertProfileSnapshotForEventTx,
 } from '@/lib/metric-sync';
 import { detectSnapshotPayloadAnomalies } from '@/lib/anomalies';
+import {
+  enqueueEmbeddingTaskSafe,
+  resolveGovernorByEmbeddingFallback,
+} from '@/lib/embeddings/service';
 
 export type WorkspaceEditorRole = 'EDITOR' | 'OWNER';
 
@@ -84,7 +90,11 @@ function assertString(value: string, label: string): string {
 
 function sanitizeGovernorName(value: string): string {
   return String(value || '')
-    .replace(/[^\x20-\x7E]/g, ' ')
+    .normalize('NFKC')
+    .replace(/[’‘´]/g, "'")
+    .replace(/[“”]/g, '"')
+    .replace(/\p{C}+/gu, ' ')
+    .replace(/[^\p{L}\p{N}\p{M} _\-\[\]()#.'":|/\\*+&!?@,`~^]/gu, '')
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 80);
@@ -92,7 +102,11 @@ function sanitizeGovernorName(value: string): string {
 
 function sanitizeAlliance(value?: string | null): string {
   return String(value || '')
-    .replace(/[^\x20-\x7E]/g, ' ')
+    .normalize('NFKC')
+    .replace(/[’‘´]/g, "'")
+    .replace(/[“”]/g, '"')
+    .replace(/\p{C}+/gu, ' ')
+    .replace(/[^\p{L}\p{N}\p{M} _\-\[\]()#.'":|/\\*+&!?@,`~^]/gu, '')
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 80);
@@ -223,6 +237,18 @@ export async function registerGovernorTx(
     source: existing ? 'registration_update' : 'registration',
   });
 
+  await enqueueEmbeddingTaskSafe({
+    client: tx,
+    workspaceId,
+    corpus: EmbeddingCorpus.GOVERNOR_IDENTITY,
+    operation: EmbeddingTaskOperation.UPSERT,
+    entityType: 'governor',
+    entityId: governor.id,
+    payload: {
+      reason: existing ? 'register_update' : 'register_create',
+    },
+  });
+
   return {
     governor,
     created: !existing,
@@ -305,6 +331,18 @@ export async function updateGovernorTx(
     });
   }
 
+  await enqueueEmbeddingTaskSafe({
+    client: tx,
+    workspaceId,
+    corpus: EmbeddingCorpus.GOVERNOR_IDENTITY,
+    operation: EmbeddingTaskOperation.UPSERT,
+    entityType: 'governor',
+    entityId: updated.id,
+    payload: {
+      reason: 'governor_update',
+    },
+  });
+
   return updated;
 }
 
@@ -341,6 +379,18 @@ export async function deleteGovernorTx(
     where: {
       workspaceId,
       governorId: governorDbId,
+    },
+  });
+
+  await enqueueEmbeddingTaskSafe({
+    client: tx,
+    workspaceId,
+    corpus: EmbeddingCorpus.GOVERNOR_IDENTITY,
+    operation: EmbeddingTaskOperation.DELETE,
+    entityType: 'governor',
+    entityId: governorDbId,
+    payload: {
+      reason: 'governor_delete',
     },
   });
 
@@ -388,6 +438,18 @@ export async function createEventTx(
     },
   });
 
+  await enqueueEmbeddingTaskSafe({
+    client: tx,
+    workspaceId,
+    corpus: EmbeddingCorpus.EVENTS,
+    operation: EmbeddingTaskOperation.UPSERT,
+    entityType: 'event',
+    entityId: created.id,
+    payload: {
+      reason: 'event_create',
+    },
+  });
+
   return created;
 }
 
@@ -412,6 +474,18 @@ export async function deleteEventTx(
 
   await tx.event.delete({
     where: { id: event.id },
+  });
+
+  await enqueueEmbeddingTaskSafe({
+    client: tx,
+    workspaceId,
+    corpus: EmbeddingCorpus.EVENTS,
+    operation: EmbeddingTaskOperation.DELETE,
+    entityType: 'event',
+    entityId: event.id,
+    payload: {
+      reason: 'event_delete',
+    },
   });
 
   return { id: event.id, deleted: true };
@@ -498,18 +572,76 @@ export async function resolveGovernorForStatsTx(
     };
   }
 
-  if (similarity.status === 'ambiguous') {
+  let embeddingFallback:
+    | Awaited<ReturnType<typeof resolveGovernorByEmbeddingFallback>>
+    | null = null;
+  try {
+    embeddingFallback = await resolveGovernorByEmbeddingFallback({
+      workspaceId,
+      query: governorName,
+      suggestionLimit: 6,
+      autoLinkThreshold: similarity.autoThreshold,
+    });
+  } catch {
+    embeddingFallback = null;
+  }
+
+  if (embeddingFallback?.status === 'resolved') {
+    return {
+      status: 'resolved',
+      governor: {
+        governorDbId: embeddingFallback.governor.governorDbId,
+        governorGameId: embeddingFallback.governor.governorGameId,
+        governorName: embeddingFallback.governor.governorName,
+        score: embeddingFallback.governor.score,
+      },
+    };
+  }
+
+  const mergedCandidates = new Map<
+    string,
+    {
+      governorDbId: string;
+      governorGameId: string;
+      governorName: string;
+      score?: number;
+    }
+  >();
+  for (const candidate of candidates) {
+    mergedCandidates.set(candidate.governorDbId, candidate);
+  }
+  for (const candidate of embeddingFallback?.candidates || []) {
+    const existing = mergedCandidates.get(candidate.governorDbId);
+    if (!existing || Number(candidate.score || 0) > Number(existing.score || 0)) {
+      mergedCandidates.set(candidate.governorDbId, {
+        governorDbId: candidate.governorDbId,
+        governorGameId: candidate.governorGameId,
+        governorName: candidate.governorName,
+        score: candidate.score,
+      });
+    }
+  }
+  const merged = [...mergedCandidates.values()]
+    .sort(
+      (a, b) =>
+        Number(b.score || 0) - Number(a.score || 0) ||
+        a.governorName.localeCompare(b.governorName) ||
+        a.governorDbId.localeCompare(b.governorDbId)
+    )
+    .slice(0, 6);
+
+  if (similarity.status === 'ambiguous' || embeddingFallback?.status === 'ambiguous') {
     return {
       status: 'ambiguous',
-      reason: similarity.reason,
-      candidates,
+      reason: embeddingFallback?.status === 'ambiguous' ? embeddingFallback.reason : similarity.reason,
+      candidates: merged,
     };
   }
 
   return {
     status: 'missing',
-    reason: similarity.reason,
-    candidates,
+    reason: embeddingFallback?.reason || similarity.reason,
+    candidates: merged,
   };
 }
 

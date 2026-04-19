@@ -19,7 +19,7 @@ export interface OcrFieldConstraint {
   allowedRegex?: RegExp;
 }
 
-const TEXT_ALLOWED = /^[A-Za-z0-9 _\-\[\]()#.'":|/\\*+&!?@,`~^]{1,40}$/;
+const TEXT_ALLOWED = /^[\p{L}\p{N}\p{M} _\-\[\]()#.'":|/\\*+&!?@,`~^]{1,40}$/u;
 
 export const OCR_FIELD_CONSTRAINTS: Record<OcrFieldKey, OcrFieldConstraint> = {
   governorId: {
@@ -90,7 +90,11 @@ export function parseNumericStrict(raw: string): NumericParse {
 
 export function sanitizeGovernorName(raw: string): string {
   return String(raw ?? '')
-    .replace(/[^A-Za-z0-9 _\-\[\]()#.'":|/\\*+&!?@,`~^]/g, '')
+    .normalize('NFKC')
+    .replace(/[’‘´]/g, "'")
+    .replace(/[“”]/g, '"')
+    .replace(/\p{C}+/gu, ' ')
+    .replace(/[^\p{L}\p{N}\p{M} _\-\[\]()#.'":|/\\*+&!?@,`~^]/gu, '')
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 40);
