@@ -84,6 +84,11 @@ import {
   resolveGovernorByEmbeddingFallback,
   searchWorkspaceEmbeddings,
 } from '@/lib/embeddings/service';
+import {
+  MANUAL_EVENT_CREATE_TYPES,
+  classifyEventType,
+  getEventTypeDisplayLabel,
+} from '@/lib/events/policy';
 
 export type { AssistantAnalyzerMode } from '@/lib/assistant/config';
 
@@ -619,18 +624,18 @@ function mistralActionTools(): MistralTool[] {
       type: 'function',
       function: {
         name: 'create_event',
-        description: 'Create an event in workspace.',
+        description: 'Create a manual event in workspace (eventType: KVK_START, MGE, or OSIRIS).',
         strict: false,
         parameters: {
           type: 'object',
           additionalProperties: false,
-          required: ['name'],
+          required: ['name', 'eventType'],
           properties: {
             name: { type: 'string' },
             description: { type: ['string', 'null'] },
             eventType: {
               type: 'string',
-              enum: ['KVK_START', 'KVK_END', 'MGE', 'OSIRIS', 'WEEKLY', 'CUSTOM'],
+              enum: [...MANUAL_EVENT_CREATE_TYPES],
             },
           },
         },
@@ -2741,6 +2746,7 @@ function preflightWriteActions(
       }
       case 'create_event': {
         if (!normalized.name) reason = 'missing_event_name';
+        else if (!normalized.eventType) reason = 'missing_event_type';
         break;
       }
       case 'delete_event': {
@@ -2790,6 +2796,9 @@ function buildClarificationHints(args: {
   }
   if (reasons.has('missing_event_name')) {
     hints.push('Provide an event name for create_event.');
+  }
+  if (reasons.has('missing_event_type')) {
+    hints.push('Set eventType to one of: KVK_START (KvK), MGE, or OSIRIS.');
   }
   if (reasons.has('missing_governor_id')) {
     hints.push('Register player actions need a numeric governorId.');
@@ -3309,6 +3318,8 @@ async function executeReadAction(args: {
           offset,
           rows: rows.map((row) => ({
             ...row,
+            eventTypeDisplay: getEventTypeDisplayLabel(row.eventType),
+            eventClassification: classifyEventType(row.eventType),
             createdAt: row.createdAt.toISOString(),
           })),
         };
@@ -3367,6 +3378,8 @@ async function executeReadAction(args: {
           name: event.name,
           description: event.description,
           eventType: event.eventType,
+          eventTypeDisplay: getEventTypeDisplayLabel(event.eventType),
+          eventClassification: classifyEventType(event.eventType),
           weekKey: event.weekKey,
           isClosed: event.isClosed,
           startsAt: toIso(event.startsAt),
@@ -4870,7 +4883,7 @@ async function executeActionTx(
         name: normalizeEventName(parsed.name),
         description:
           parsed.description == null ? null : sanitizePrintable(parsed.description, 500),
-        eventType: parsed.eventType || EventType.CUSTOM,
+        eventType: parsed.eventType,
       });
 
       return {
@@ -4879,6 +4892,8 @@ async function executeActionTx(
           actionType: parsed.type,
           event: {
             ...created,
+            eventTypeDisplay: getEventTypeDisplayLabel(created.eventType),
+            eventClassification: classifyEventType(created.eventType),
             startsAt: toIso(created.startsAt),
             endsAt: toIso(created.endsAt),
             createdAt: created.createdAt.toISOString(),

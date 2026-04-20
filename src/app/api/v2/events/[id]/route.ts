@@ -5,6 +5,7 @@ import { fail, handleApiError, ok } from '@/lib/api-response';
 import { getQueryParam } from '@/lib/v2';
 import { prisma } from '@/lib/prisma';
 import { deleteEventTx } from '@/lib/domain/workspace-actions';
+import { classifyEventType, getEventTypeDisplayLabel } from '@/lib/events/policy';
 
 export async function GET(
   request: NextRequest,
@@ -59,6 +60,8 @@ export async function GET(
       name: event.name,
       description: event.description,
       eventType: event.eventType,
+      eventTypeDisplay: getEventTypeDisplayLabel(event.eventType),
+      eventClassification: classifyEventType(event.eventType),
       createdAt: event.createdAt.toISOString(),
       snapshots: event.snapshots.map((snapshot) => ({
         id: snapshot.id,

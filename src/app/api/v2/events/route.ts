@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { EventType, WorkspaceRole } from '@prisma/client';
+import { WorkspaceRole } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { ok, fail, handleApiError, readJson } from '@/lib/api-response';
@@ -7,12 +7,17 @@ import { parsePagination, getQueryParam } from '@/lib/v2';
 import { authorizeWorkspaceAccess } from '@/lib/workspace-auth';
 import { assertWeeklySchemaCapability } from '@/lib/weekly-schema-guard';
 import { createEventTx } from '@/lib/domain/workspace-actions';
+import {
+  MANUAL_EVENT_CREATE_TYPES,
+  classifyEventType,
+  getEventTypeDisplayLabel,
+} from '@/lib/events/policy';
 
 const createEventSchema = z.object({
   workspaceId: z.string().min(1),
   name: z.string().min(2).max(120),
-  description: z.string().max(500).optional(),
-  eventType: z.nativeEnum(EventType).default(EventType.CUSTOM),
+  description: z.string().max(500).nullable().optional(),
+  eventType: z.enum(MANUAL_EVENT_CREATE_TYPES),
 });
 
 export async function GET(request: NextRequest) {
@@ -56,6 +61,8 @@ export async function GET(request: NextRequest) {
         name: event.name,
         description: event.description,
         eventType: event.eventType,
+        eventTypeDisplay: getEventTypeDisplayLabel(event.eventType),
+        eventClassification: classifyEventType(event.eventType),
         workspaceId: event.workspaceId,
         weekKey: event.weekKey || null,
         startsAt: event.startsAt?.toISOString() || null,
@@ -102,6 +109,8 @@ export async function POST(request: NextRequest) {
         name: event.name,
         description: event.description,
         eventType: event.eventType,
+        eventTypeDisplay: getEventTypeDisplayLabel(event.eventType),
+        eventClassification: classifyEventType(event.eventType),
         weekKey: event.weekKey || null,
         startsAt: event.startsAt?.toISOString() || null,
         endsAt: event.endsAt?.toISOString() || null,

@@ -8,6 +8,7 @@ import { invalidateServerCacheTags } from '@/lib/server-cache';
 import { workspaceCacheTags } from '@/lib/cache-scopes';
 import { assertWeeklySchemaCapability } from '@/lib/weekly-schema-guard';
 import { drainMetricSyncBacklogOnRead } from '@/lib/metric-sync';
+import { classifyEventType, getEventTypeDisplayLabel } from '@/lib/events/policy';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -42,6 +43,8 @@ export async function GET(request: NextRequest) {
       name: weekly.name,
       description: weekly.description,
       eventType: weekly.eventType,
+      eventTypeDisplay: getEventTypeDisplayLabel(weekly.eventType),
+      eventClassification: classifyEventType(weekly.eventType),
       workspaceId: weekly.workspaceId,
       weekKey: weekly.weekKey,
       startsAt: weekly.startsAt?.toISOString() || null,

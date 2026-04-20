@@ -1,5 +1,6 @@
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import { EVENT_TYPE_DISPLAY_LABELS } from '@/lib/events/policy';
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -73,10 +74,5 @@ export function formatDate(date: Date | string): string {
 }
 
 export const EVENT_TYPE_LABELS: Record<string, string> = {
-  KVK_START: 'KvK Start',
-  KVK_END: 'KvK End',
-  MGE: 'MGE',
-  OSIRIS: 'Ark of Osiris',
-  WEEKLY: 'Weekly Check',
-  CUSTOM: 'Custom',
+  ...EVENT_TYPE_DISPLAY_LABELS,
 };

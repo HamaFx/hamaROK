@@ -24,9 +24,15 @@ describe('assistant action contract', () => {
       t5Kills: '500',
       deads: '250',
     });
+    const createEvent = assistantActionSchema.parse({
+      type: 'create_event',
+      name: 'KvK Launch',
+      eventType: 'KVK_START',
+    });
 
     expect(register.type).toBe('register_player');
     expect(record.type).toBe('record_profile_stats');
+    expect(createEvent.type).toBe('create_event');
   });
 
   it('rejects update_player without identifier or patch', () => {
@@ -94,6 +100,23 @@ describe('assistant action contract', () => {
     expect(() =>
       assistantReadActionSchema.parse({
         type: 'read_event_detail',
+      })
+    ).toThrow();
+  });
+
+  it('rejects create_event values outside simplified manual event set', () => {
+    expect(() =>
+      assistantActionSchema.parse({
+        type: 'create_event',
+        name: 'Weekly Auto',
+        eventType: 'WEEKLY',
+      })
+    ).toThrow();
+
+    expect(() =>
+      assistantActionSchema.parse({
+        type: 'create_event',
+        name: 'Missing Type',
       })
     ).toThrow();
   });

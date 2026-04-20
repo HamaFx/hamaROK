@@ -1,5 +1,6 @@
-import { EventType, type AssistantActionType as PrismaAssistantActionType } from '@prisma/client';
+import { type AssistantActionType as PrismaAssistantActionType } from '@prisma/client';
 import { z } from 'zod';
+import { MANUAL_EVENT_CREATE_TYPES } from '@/lib/events/policy';
 import {
   type AssistantAnalyzerMode,
   type AssistantConfig,
@@ -102,7 +103,7 @@ export const createEventActionSchema = z.object({
   type: z.literal('create_event'),
   name: z.string().min(1).max(120),
   description: z.string().max(500).optional().nullable(),
-  eventType: z.nativeEnum(EventType).optional(),
+  eventType: z.enum(MANUAL_EVENT_CREATE_TYPES),
 });
 
 export const deleteEventActionSchema = z
@@ -422,14 +423,14 @@ export const assistantActionOutputJsonSchema: Record<string, unknown> = {
           {
             type: 'object',
             additionalProperties: false,
-            required: ['type', 'name'],
+            required: ['type', 'name', 'eventType'],
             properties: {
               type: { const: 'create_event' },
               name: { type: 'string' },
               description: { type: ['string', 'null'] },
               eventType: {
                 type: 'string',
-                enum: ['KVK_START', 'KVK_END', 'MGE', 'OSIRIS', 'WEEKLY', 'CUSTOM'],
+                enum: [...MANUAL_EVENT_CREATE_TYPES],
               },
             },
           },

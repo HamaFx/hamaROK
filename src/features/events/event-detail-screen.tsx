@@ -5,7 +5,8 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { Download, Search, Upload } from 'lucide-react';
 import { useWorkspaceSession } from '@/lib/workspace-session';
-import { abbreviateNumber, EVENT_TYPE_LABELS, formatDate } from '@/lib/utils';
+import { abbreviateNumber, formatDate } from '@/lib/utils';
+import { classifyEventType, getEventTypeDisplayLabel, type EventClassification } from '@/lib/events/policy';
 import { InlineError, SessionGate } from '@/components/app/session-gate';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -35,6 +36,8 @@ interface EventDetail {
   id: string;
   name: string;
   eventType: string;
+  eventTypeDisplay?: string;
+  eventClassification?: EventClassification;
   createdAt: string;
   snapshots: SnapshotRow[];
 }
@@ -140,7 +143,18 @@ export default function EventDetailScreen() {
         subtitle="Snapshot table with sortable export-ready fields."
         badges={
           event
-            ? [EVENT_TYPE_LABELS[event.eventType] || event.eventType, `Created ${formatDate(event.createdAt)}`]
+            ? (() => {
+                const classification = event.eventClassification || classifyEventType(event.eventType);
+                return [
+                  event.eventTypeDisplay || getEventTypeDisplayLabel(event.eventType),
+                  classification === 'system'
+                    ? 'System Event'
+                    : classification === 'legacy'
+                      ? 'Legacy Event'
+                      : 'Manual Event',
+                  `Created ${formatDate(event.createdAt)}`,
+                ];
+              })()
             : undefined
         }
         actions={
@@ -207,7 +221,7 @@ export default function EventDetailScreen() {
               />
               <KpiCard
                 label="Event Type"
-                value={EVENT_TYPE_LABELS[event.eventType] || event.eventType}
+                value={event.eventTypeDisplay || getEventTypeDisplayLabel(event.eventType)}
                 hint={formatDate(event.createdAt)}
                 tone="warn"
               />

@@ -4,7 +4,13 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { CalendarPlus, Search, Trash2, Upload } from 'lucide-react';
 import { useWorkspaceSession } from '@/lib/workspace-session';
-import { formatDate, EVENT_TYPE_LABELS } from '@/lib/utils';
+import { formatDate } from '@/lib/utils';
+import {
+  MANUAL_EVENT_CREATE_OPTIONS,
+  classifyEventType,
+  getEventTypeDisplayLabel,
+  type EventClassification,
+} from '@/lib/events/policy';
 import { InlineError, SessionGate } from '@/components/app/session-gate';
 import { Button } from '@/components/ui/button';
 import {
@@ -40,6 +46,8 @@ interface EventItem {
   name: string;
   description: string | null;
   eventType: string;
+  eventTypeDisplay?: string;
+  eventClassification?: EventClassification;
   snapshotCount: number;
   createdAt: string;
 }
@@ -57,7 +65,7 @@ export default function EventsPage() {
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState('');
-  const [newType, setNewType] = useState('CUSTOM');
+  const [newType, setNewType] = useState<string>(MANUAL_EVENT_CREATE_OPTIONS[0]?.value || 'KVK_START');
   const [newDesc, setNewDesc] = useState('');
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('ALL');
@@ -131,6 +139,7 @@ export default function EventsPage() {
 
       setNewName('');
       setNewDesc('');
+      setNewType(MANUAL_EVENT_CREATE_OPTIONS[0]?.value || 'KVK_START');
       setShowCreate(false);
       await fetchEvents();
     } catch (cause) {
@@ -172,6 +181,14 @@ export default function EventsPage() {
     return ['ALL', ...distinct];
   }, [events]);
 
+  const formatTypeOptionLabel = useCallback((eventType: string) => {
+    const classification = classifyEventType(eventType);
+    const label = getEventTypeDisplayLabel(eventType);
+    if (classification === 'system') return `${label} (System)`;
+    if (classification === 'legacy') return `${label} (Legacy)`;
+    return label;
+  }, []);
+
   const filteredEvents = useMemo(() => {
     return events
       .filter((event) => {
@@ -180,7 +197,7 @@ export default function EventsPage() {
         const matchesSearch =
           q.length === 0 ||
           event.name.toLowerCase().includes(q) ||
-          String(EVENT_TYPE_LABELS[event.eventType] || event.eventType)
+          String(event.eventTypeDisplay || getEventTypeDisplayLabel(event.eventType))
             .toLowerCase()
             .includes(q);
         return matchesType && matchesSearch;
@@ -253,7 +270,7 @@ export default function EventsPage() {
                   <SelectContent className="border-[color:var(--stroke-soft)] bg-popover backdrop-blur-xl shadow-2xl text-tier-1">
                     {eventTypeOptions.map((option) => (
                       <SelectItem key={option} value={option}>
-                        {option === 'ALL' ? 'All Types' : EVENT_TYPE_LABELS[option] || option}
+                        {option === 'ALL' ? 'All Types' : formatTypeOptionLabel(option)}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -283,53 +300,69 @@ export default function EventsPage() {
             />
           ) : (
             <div className="grid gap-3">
-              {filteredEvents.map((event) => (
-                <article
-                  key={event.id}
-                  className="rounded-[20px] surface-2 p-3 min-[390px]:rounded-[22px] min-[390px]:p-3.5 sm:rounded-[24px] sm:p-4"
-                >
-                  <div className="space-y-3">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <StatusPill
-                        label={EVENT_TYPE_LABELS[event.eventType] || event.eventType}
-                        tone={event.eventType.includes('KVK') ? 'warn' : 'info'}
-                      />
-                      <StatusPill label={`${event.snapshotCount} governors`} tone="neutral" />
-                      <StatusPill label={formatDate(event.createdAt)} tone="neutral" />
+              {filteredEvents.map((event) => {
+                const eventClassification = event.eventClassification || classifyEventType(event.eventType);
+                const eventTypeDisplay = event.eventTypeDisplay || getEventTypeDisplayLabel(event.eventType);
+                const typeTone =
+                  event.eventType === 'KVK_START' || event.eventType === 'KVK_END'
+                    ? 'warn'
+                    : eventClassification === 'legacy'
+                      ? 'bad'
+                      : eventClassification === 'system'
+                        ? 'neutral'
+                        : 'info';
+
+                return (
+                  <article
+                    key={event.id}
+                    className="rounded-[20px] surface-2 p-3 min-[390px]:rounded-[22px] min-[390px]:p-3.5 sm:rounded-[24px] sm:p-4"
+                  >
+                    <div className="space-y-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <StatusPill label={eventTypeDisplay} tone={typeTone} />
+                        {eventClassification === 'system' ? (
+                          <StatusPill label="System" tone="neutral" />
+                        ) : null}
+                        {eventClassification === 'legacy' ? (
+                          <StatusPill label="Legacy" tone="warn" />
+                        ) : null}
+                        <StatusPill label={`${event.snapshotCount} governors`} tone="neutral" />
+                        <StatusPill label={formatDate(event.createdAt)} tone="neutral" />
+                      </div>
+                      <div>
+                        <p className="clamp-title-mobile font-heading text-base text-tier-1 min-[390px]:text-lg sm:text-xl" title={event.name}>{event.name}</p>
+                        {event.description ? (
+                          <p className="clamp-secondary mt-1.5 text-xs text-tier-3 min-[390px]:text-sm" title={event.description}>{event.description}</p>
+                        ) : null}
+                      </div>
                     </div>
-                    <div>
-                      <p className="clamp-title-mobile font-heading text-base text-tier-1 min-[390px]:text-lg sm:text-xl" title={event.name}>{event.name}</p>
-                      {event.description ? (
-                        <p className="clamp-secondary mt-1.5 text-xs text-tier-3 min-[390px]:text-sm" title={event.description}>{event.description}</p>
-                      ) : null}
-                    </div>
-                  </div>
-                  <ActionFooter>
-                    <Button
-                      asChild
-                      variant="outline"
-                      className="h-11 rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1"
-                    >
-                      <Link href={`/events/${event.id}`}>View</Link>
-                    </Button>
-                    <Button
-                      asChild
-                      variant="outline"
-                      className="h-11 rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1"
-                    >
-                      <Link href={`/compare?eventA=${event.id}`}>Compare</Link>
-                    </Button>
-                    <Button
-                      variant="destructive"
-                      className="h-11 rounded-full"
-                      onClick={() => deleteEvent(event.id)}
-                    >
-                      <Trash2 data-icon="inline-start" />
-                      Delete
-                    </Button>
-                  </ActionFooter>
-                </article>
-              ))}
+                    <ActionFooter>
+                      <Button
+                        asChild
+                        variant="outline"
+                        className="h-11 rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1"
+                      >
+                        <Link href={`/events/${event.id}`}>View</Link>
+                      </Button>
+                      <Button
+                        asChild
+                        variant="outline"
+                        className="h-11 rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1"
+                      >
+                        <Link href={`/compare?eventA=${event.id}`}>Compare</Link>
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        className="h-11 rounded-full"
+                        onClick={() => deleteEvent(event.id)}
+                      >
+                        <Trash2 data-icon="inline-start" />
+                        Delete
+                      </Button>
+                    </ActionFooter>
+                  </article>
+                );
+              })}
             </div>
           )}
         </Panel>
@@ -361,7 +394,7 @@ export default function EventsPage() {
                   <SelectValue placeholder="Choose type" />
                 </SelectTrigger>
                 <SelectContent className="border-[color:var(--stroke-soft)] bg-popover backdrop-blur-xl shadow-2xl text-tier-1">
-                  {Object.entries(EVENT_TYPE_LABELS).map(([value, label]) => (
+                  {MANUAL_EVENT_CREATE_OPTIONS.map(({ value, label }) => (
                     <SelectItem key={value} value={value}>
                       {label}
                     </SelectItem>

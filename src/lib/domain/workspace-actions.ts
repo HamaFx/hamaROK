@@ -23,6 +23,7 @@ import {
   enqueueEmbeddingTaskSafe,
   resolveGovernorByEmbeddingFallback,
 } from '@/lib/embeddings/service';
+import { isManualEventType } from '@/lib/events/policy';
 
 export type WorkspaceEditorRole = 'EDITOR' | 'OWNER';
 
@@ -50,7 +51,7 @@ export interface CreateEventInput {
   workspaceId: string;
   name: string;
   description?: string | null;
-  eventType?: EventType;
+  eventType: EventType;
 }
 
 export interface DeleteEventInput {
@@ -415,13 +416,20 @@ export async function createEventTx(
 }> {
   const workspaceId = assertString(input.workspaceId, 'workspaceId');
   const name = sanitizeGovernorName(assertString(input.name, 'name')).slice(0, 120);
+  if (!isManualEventType(input.eventType)) {
+    throw new ApiHttpError(
+      'VALIDATION_ERROR',
+      'eventType must be one of KVK_START, MGE, or OSIRIS for manual event creation.',
+      400
+    );
+  }
 
   const created = await tx.event.create({
     data: {
       workspaceId,
       name,
       description: input.description ? sanitizePrintable(input.description, 500) : null,
-      eventType: input.eventType || EventType.CUSTOM,
+      eventType: input.eventType,
     },
     select: {
       id: true,
