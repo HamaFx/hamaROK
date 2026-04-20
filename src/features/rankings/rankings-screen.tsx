@@ -49,6 +49,7 @@ const PRESET_NONE = '__none__';
 type RankingStatus = 'ACTIVE' | 'UNRESOLVED' | 'REJECTED';
 type RankingsViewMode = 'auto' | 'table' | 'cards';
 type MetricVisualMode = 'numeric' | 'bars';
+type RankingScopeMode = 'all_time' | 'weekly';
 
 interface CanonicalRow {
   id: string;
@@ -166,6 +167,7 @@ interface RankingsFilterPreset {
   id: string;
   name: string;
   search: string;
+  scope: RankingScopeMode;
   rankingTypeFilter: string;
   metricFilter: string;
   allianceFilter: string;
@@ -229,6 +231,7 @@ function allianceTone(tag: string | null): 'warn' | 'info' | 'neutral' {
 export default function RankingsScreen() {
   const { workspaceId, accessToken, ready, loading: sessionLoading, error: sessionError, refreshSession } = useWorkspaceSession();
   const [search, setSearch] = useState('');
+  const [scope, setScope] = useState<RankingScopeMode>('all_time');
   const [rows, setRows] = useState<CanonicalRow[]>([]);
   const [weeks, setWeeks] = useState<WeeklyEventInfo[]>([]);
   const [selectedWeekKey, setSelectedWeekKey] = useState<string>('');
@@ -335,9 +338,15 @@ export default function RankingsScreen() {
       setError(null);
 
       try {
-        const params = new URLSearchParams({ workspaceId, limit: '50', includeUnresolved: 'false' });
+        const params = new URLSearchParams({
+          workspaceId,
+          limit: '50',
+          includeUnresolved: 'false',
+          scope,
+        });
         if (search.trim()) params.set('q', search.trim());
-        const activeWeekKey = weekKeyOverride ?? (selectedWeekKey || null);
+        const activeWeekKey =
+          scope === 'weekly' ? weekKeyOverride ?? (selectedWeekKey || null) : null;
         if (activeWeekKey) params.set('weekKey', activeWeekKey);
         if (rankingTypeFilter) params.set('rankingType', rankingTypeFilter);
         if (metricFilter) params.set('metricKey', metricFilter);
@@ -363,7 +372,17 @@ export default function RankingsScreen() {
         setLoading(false);
       }
     },
-    [workspaceId, accessToken, search, ready, selectedWeekKey, rankingTypeFilter, metricFilter, allianceFilter]
+    [
+      workspaceId,
+      accessToken,
+      search,
+      ready,
+      scope,
+      selectedWeekKey,
+      rankingTypeFilter,
+      metricFilter,
+      allianceFilter,
+    ]
   );
 
   const refresh = useCallback(() => {
@@ -371,21 +390,41 @@ export default function RankingsScreen() {
       setCursorStack([null]);
       setNextCursor(null);
       const weekKey = await loadWeekOptions();
-      await Promise.all([loadWeeklyActivity(weekKey), loadData(null, weekKey)]);
+      if (scope === 'weekly') {
+        await Promise.all([loadWeeklyActivity(weekKey), loadData(null, weekKey)]);
+      } else {
+        setWeeklyActivity(null);
+        await loadData(null, null);
+      }
     };
     void run();
-  }, [loadData, loadWeekOptions, loadWeeklyActivity]);
+  }, [loadData, loadWeekOptions, loadWeeklyActivity, scope]);
 
   useEffect(() => {
     if (ready) refresh();
   }, [ready, refresh]);
 
   useEffect(() => {
-    if (!ready || !selectedWeekKey) return;
+    if (!ready) return;
     setCursorStack([null]);
     setNextCursor(null);
-    void Promise.all([loadWeeklyActivity(selectedWeekKey), loadData(null, selectedWeekKey)]);
-  }, [ready, selectedWeekKey, rankingTypeFilter, metricFilter, allianceFilter, weeks, loadWeeklyActivity, loadData]);
+    if (scope === 'weekly' && selectedWeekKey) {
+      void Promise.all([loadWeeklyActivity(selectedWeekKey), loadData(null, selectedWeekKey)]);
+      return;
+    }
+    setWeeklyActivity(null);
+    void loadData(null, null);
+  }, [
+    ready,
+    scope,
+    selectedWeekKey,
+    rankingTypeFilter,
+    metricFilter,
+    allianceFilter,
+    weeks,
+    loadWeeklyActivity,
+    loadData,
+  ]);
 
   useEffect(() => {
     if (!ready) return;
@@ -404,14 +443,22 @@ export default function RankingsScreen() {
     return () => window.clearTimeout(timer);
   }, [uiNotice]);
 
+  useEffect(() => {
+    if (scope !== 'weekly') return;
+    if (selectedWeekKey || weeks.length === 0) return;
+    setSelectedWeekKey(weeks[0].weekKey || '');
+  }, [scope, selectedWeekKey, weeks]);
+
   const currentWeekIndex = useMemo(() => weeks.findIndex((week) => week.weekKey === selectedWeekKey), [weeks, selectedWeekKey]);
 
   const goPreviousWeek = () => {
+    if (scope !== 'weekly') return;
     if (currentWeekIndex < 0 || currentWeekIndex >= weeks.length - 1) return;
     setSelectedWeekKey(weeks[currentWeekIndex + 1].weekKey || '');
   };
 
   const goNextWeek = () => {
+    if (scope !== 'weekly') return;
     if (currentWeekIndex <= 0) return;
     setSelectedWeekKey(weeks[currentWeekIndex - 1].weekKey || '');
   };
@@ -450,14 +497,31 @@ export default function RankingsScreen() {
       const pending = Number(payload?.data?.pending || 0);
       setUiNotice(`Metric sync finished. Succeeded ${succeeded}, failed ${failed}, pending ${pending}.`);
       setPendingSyncCount(pending);
-      await loadData(cursorStack[cursorStack.length - 1] || null, selectedWeekKey || null);
-      await loadWeeklyActivity(selectedWeekKey || null);
+      await loadData(
+        cursorStack[cursorStack.length - 1] || null,
+        scope === 'weekly' ? selectedWeekKey || null : null
+      );
+      if (scope === 'weekly') {
+        await loadWeeklyActivity(selectedWeekKey || null);
+      } else {
+        setWeeklyActivity(null);
+      }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Failed to run metric sync.');
     } finally {
       setSyncBusy(false);
     }
-  }, [ready, syncBusy, workspaceId, accessToken, loadData, cursorStack, selectedWeekKey, loadWeeklyActivity]);
+  }, [
+    ready,
+    syncBusy,
+    workspaceId,
+    accessToken,
+    loadData,
+    cursorStack,
+    scope,
+    selectedWeekKey,
+    loadWeeklyActivity,
+  ]);
 
   const displayRows = useMemo<DisplayRankingRow[]>(() => {
     const mapped = rows.map((row) => {
@@ -527,6 +591,7 @@ export default function RankingsScreen() {
       id,
       name,
       search,
+      scope,
       rankingTypeFilter,
       metricFilter,
       allianceFilter,
@@ -543,7 +608,21 @@ export default function RankingsScreen() {
     setPresetName('');
     localStorage.setItem(presetStorageKey, JSON.stringify(trimmed));
     setUiNotice(`Saved preset: ${name}`);
-  }, [ready, presetName, presets, search, rankingTypeFilter, metricFilter, allianceFilter, selectedWeekKey, denseRows, viewMode, metricVisualMode, presetStorageKey]);
+  }, [
+    ready,
+    presetName,
+    presets,
+    search,
+    scope,
+    rankingTypeFilter,
+    metricFilter,
+    allianceFilter,
+    selectedWeekKey,
+    denseRows,
+    viewMode,
+    metricVisualMode,
+    presetStorageKey,
+  ]);
 
   const applyPreset = useCallback(
     (presetId: string) => {
@@ -553,6 +632,7 @@ export default function RankingsScreen() {
       if (!target) return;
 
       setSearch(target.search);
+      setScope(target.scope || 'all_time');
       setRankingTypeFilter(target.rankingTypeFilter);
       setMetricFilter(target.metricFilter);
       setAllianceFilter(target.allianceFilter);
@@ -560,7 +640,7 @@ export default function RankingsScreen() {
       setViewMode(target.viewMode);
       setMetricVisualMode(target.metricVisualMode);
 
-      if (target.weekKey && weeks.some((week) => week.weekKey === target.weekKey)) {
+      if (target.scope === 'weekly' && target.weekKey && weeks.some((week) => week.weekKey === target.weekKey)) {
         setSelectedWeekKey(target.weekKey);
       }
 
@@ -587,6 +667,7 @@ export default function RankingsScreen() {
 
   const resetFilters = useCallback(() => {
     setSearch('');
+    setScope('all_time');
     setRankingTypeFilter('');
     setMetricFilter('');
     setAllianceFilter('');
@@ -635,11 +716,6 @@ export default function RankingsScreen() {
         <motion.section initial={false} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }} className="relative z-10 space-y-2">
           <div className="flex w-full items-center justify-between gap-4 pb-4">
             <div className="flex gap-2">
-              <Button asChild variant="outline" className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1">
-                <Link href="/activity">
-                  Activity
-                </Link>
-              </Button>
               <Button variant="outline" className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1" onClick={exportLeaderboardCsv} disabled={!displayRows.length}>
                 <Download data-icon="inline-start" /> CSV
               </Button>
@@ -650,24 +726,44 @@ export default function RankingsScreen() {
             </div>
           </div>
           <CompactControlRow>
-            <Button type="button" variant="outline" className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1" onClick={goPreviousWeek} disabled={loading || currentWeekIndex >= weeks.length - 1}>
-              <ArrowLeft data-icon="inline-start" /> Older
-            </Button>
-            <Select value={selectedWeekKey || ALL_VALUE} onValueChange={(value) => setSelectedWeekKey(value === ALL_VALUE ? '' : value)}>
-              <SelectTrigger className="w-[168px] rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1">
-                <SelectValue placeholder="Select week" />
-              </SelectTrigger>
-              <SelectContent className="border-[color:var(--stroke-soft)] bg-popover backdrop-blur-xl shadow-2xl text-tier-1">
-                {weeks.map((week) => (
-                  <SelectItem key={week.id} value={week.weekKey || ALL_VALUE}>
-                    {week.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button type="button" variant="outline" className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1" onClick={goNextWeek} disabled={loading || currentWeekIndex <= 0}>
-              Newer <ArrowRight data-icon="inline-end" />
-            </Button>
+            <ToggleGroup
+              type="single"
+              value={scope}
+              onValueChange={(value) => {
+                if (!value) return;
+                setScope(value as RankingScopeMode);
+              }}
+              className="rounded-full border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] p-1"
+            >
+              <ToggleGroupItem value="all_time" className="rounded-full px-3 text-xs">
+                All-Time
+              </ToggleGroupItem>
+              <ToggleGroupItem value="weekly" className="rounded-full px-3 text-xs">
+                Weekly
+              </ToggleGroupItem>
+            </ToggleGroup>
+            {scope === 'weekly' ? (
+              <>
+                <Button type="button" variant="outline" className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1" onClick={goPreviousWeek} disabled={loading || currentWeekIndex >= weeks.length - 1}>
+                  <ArrowLeft data-icon="inline-start" /> Older
+                </Button>
+                <Select value={selectedWeekKey || ALL_VALUE} onValueChange={(value) => setSelectedWeekKey(value === ALL_VALUE ? '' : value)}>
+                  <SelectTrigger className="w-[168px] rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1">
+                    <SelectValue placeholder="Select week" />
+                  </SelectTrigger>
+                  <SelectContent className="border-[color:var(--stroke-soft)] bg-popover backdrop-blur-xl shadow-2xl text-tier-1">
+                    {weeks.map((week) => (
+                      <SelectItem key={week.id} value={week.weekKey || ALL_VALUE}>
+                        {week.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button type="button" variant="outline" className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1" onClick={goNextWeek} disabled={loading || currentWeekIndex <= 0}>
+                  Newer <ArrowRight data-icon="inline-end" />
+                </Button>
+              </>
+            ) : null}
             <div className="relative w-[240px] min-w-[240px]">
               <Search className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-tier-3" />
               <Input
@@ -721,7 +817,7 @@ export default function RankingsScreen() {
               <FilterBar className="border-[color:var(--stroke-subtle)] bg-black/20">
                 {weeklyActivity ? <StatusPill label={`${weeklyActivity.summary.membersTracked} tracked`} tone="info" /> : null}
                 <StatusPill label={`Pending sync ${pendingSyncCount}`} tone={pendingSyncCount > 0 ? 'warn' : 'good'} />
-                {isHistoricalWeek ? <StatusPill label="Historical week" tone="neutral" /> : null}
+                {scope === 'weekly' && isHistoricalWeek ? <StatusPill label="Historical week" tone="neutral" /> : null}
                 {freshness ? <StatusPill label={freshness.label} tone={freshness.tone} /> : null}
                 {sourceCoverage ? <StatusPill label={`Power P${sourceCoverage.power.profile}/R${sourceCoverage.power.rankboard}`} tone="neutral" /> : null}
                 {sourceCoverage ? <StatusPill label={`KP P${sourceCoverage.killPoints.profile}/R${sourceCoverage.killPoints.rankboard}`} tone="neutral" /> : null}
@@ -822,31 +918,31 @@ export default function RankingsScreen() {
                         <div className="mt-0.5 flex items-center gap-2 text-[12px] text-tier-3">
                           {row.allianceLabel ? <span className="truncate text-tier-2 font-medium">{row.allianceLabel}</span> : <span>No Alliance</span>}
                           <span className="opacity-50">&bull;</span>
-                          <span className="truncate font-mono text-[10px] opacity-70">ID: {row.linkedGovernorId || 'Unknown'}</span>
+                          <span className="truncate font-mono text-xs opacity-70">ID: {row.linkedGovernorId || 'Unknown'}</span>
                         </div>
                       </div>
                     </div>
                     <div className="grid grid-cols-2 gap-4 sm:flex sm:w-1/2 sm:items-center sm:justify-end sm:gap-6">
                       <div className="flex flex-col items-start sm:items-end">
                         <p className="font-heading text-[17px] font-bold text-tier-1">{formatMetric(row.metricValue)}</p>
-                        <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-tier-3">{row.metricLabel}</p>
+                        <p className="text-xs font-bold uppercase tracking-[0.1em] text-tier-3">{row.metricLabel}</p>
                       </div>
 
                       <div className="flex flex-col justify-center sm:w-20">
                         <div className="h-1 w-full overflow-hidden rounded-full bg-white/5 border border-white/5">
                           <div className="h-full rounded-full bg-primary shadow-[0_0_8px_var(--primary)]" style={{ width: `${Math.max(2, row.metricRatio)}%` }} />
                         </div>
-                        <p className="mt-1 text-right text-[10px] font-bold tracking-tighter text-tier-3">{row.metricRatio.toFixed(1)}%</p>
+                        <p className="mt-1 text-right text-xs font-bold tracking-tighter text-tier-3">{row.metricRatio.toFixed(1)}%</p>
                       </div>
 
                       <div className="hidden flex-col items-end sm:flex sm:w-20">
-                        <span className="truncate text-[10px] font-bold uppercase tracking-widest text-tier-3">{row.boardLabel.split('•')[0]}</span>
+                        <span className="truncate text-xs font-bold uppercase tracking-widest text-tier-3">{row.boardLabel.split('•')[0]}</span>
                         {isConflict ? (
-                          <span className={`mt-1 whitespace-nowrap rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${row.status === 'UNRESOLVED' ? 'bg-amber-400/10 text-amber-400 border border-amber-400/20' : 'bg-rose-400/10 text-rose-400 border border-rose-400/20'}`}>
+                          <span className={`mt-1 whitespace-nowrap rounded px-1.5 py-0.5 text-xs font-bold uppercase tracking-wider ${row.status === 'UNRESOLVED' ? 'bg-amber-400/10 text-amber-400 border border-amber-400/20' : 'bg-rose-400/10 text-rose-400 border border-rose-400/20'}`}>
                             {row.status}
                           </span>
                         ) : (
-                          <span className="mt-1 flex items-center gap-1.5 text-[10px] font-bold tracking-widest text-emerald-400">
+                          <span className="mt-1 flex items-center gap-1.5 text-xs font-bold tracking-widest text-emerald-400">
                             <span className="size-1.5 rounded-full bg-emerald-400 shadow-[0_0_4px_#34d399]" />
                             VERIFIED
                           </span>
@@ -855,31 +951,33 @@ export default function RankingsScreen() {
                     </div>
                    </div>
 
-                   {(() => {
-                     const match = weeklyActivity?.rows?.find(r => r.governorId === row.linkedGovernorId);
-                     return (
-                       <div className="mt-3 flex items-center justify-between gap-2 rounded-xl bg-white/[0.02] p-3 border border-white/[0.05] shadow-inner">
-                         <div className="flex flex-1 flex-col items-center border-r border-white/5 px-2">
-                           <span className="text-[9px] font-bold uppercase tracking-widest text-tier-3/60 mb-1">Total KP</span>
-                           <span className="font-heading text-[13px] font-bold text-tier-2">
-                             {match ? formatMetric(match.currentKillPoints) : '—'}
-                           </span>
-                         </div>
-                         <div className="flex flex-1 flex-col items-center border-r border-white/5 px-2">
-                           <span className="text-[9px] font-bold uppercase tracking-widest text-tier-3/60 mb-1">Weekly Forts</span>
-                           <span className="font-heading text-[13px] font-bold text-tier-2">
-                             {match ? formatMetric(match.fortDestroying) : '—'}
-                           </span>
-                         </div>
-                         <div className="flex flex-1 flex-col items-center px-2">
-                           <span className="text-[9px] font-bold uppercase tracking-widest text-tier-3/60 mb-1">Tech Points</span>
-                           <span className="font-heading text-[13px] font-bold text-cyan-400/80">
-                             {match ? formatMetric(match.contributionPoints) : '—'}
-                           </span>
-                         </div>
-                       </div>
-                     );
-                   })()}
+                   {scope === 'weekly'
+                     ? (() => {
+                         const match = weeklyActivity?.rows?.find((r) => r.governorId === row.linkedGovernorId);
+                         return (
+                           <div className="mt-3 flex items-center justify-between gap-2 rounded-xl bg-white/[0.02] p-3 border border-white/[0.05] shadow-inner">
+                             <div className="flex flex-1 flex-col items-center border-r border-white/5 px-2">
+                               <span className="text-[9px] font-bold uppercase tracking-widest text-tier-3/60 mb-1">Total KP</span>
+                               <span className="font-heading text-[13px] font-bold text-tier-2">
+                                 {match ? formatMetric(match.currentKillPoints) : '—'}
+                               </span>
+                             </div>
+                             <div className="flex flex-1 flex-col items-center border-r border-white/5 px-2">
+                               <span className="text-[9px] font-bold uppercase tracking-widest text-tier-3/60 mb-1">Weekly Forts</span>
+                               <span className="font-heading text-[13px] font-bold text-tier-2">
+                                 {match ? formatMetric(match.fortDestroying) : '—'}
+                               </span>
+                             </div>
+                             <div className="flex flex-1 flex-col items-center px-2">
+                               <span className="text-[9px] font-bold uppercase tracking-widest text-tier-3/60 mb-1">Tech Points</span>
+                               <span className="font-heading text-[13px] font-bold text-cyan-400/80">
+                                 {match ? formatMetric(match.contributionPoints) : '—'}
+                               </span>
+                             </div>
+                           </div>
+                         );
+                       })()
+                     : null}
 
                   </article>
                 );

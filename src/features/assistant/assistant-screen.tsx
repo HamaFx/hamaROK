@@ -4,7 +4,6 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Activity,
   AlertTriangle,
   Bot,
   Check,
@@ -43,7 +42,6 @@ import {
 const NAV_LINKS = [
   { label: 'Dashboard', href: '/', icon: LayoutDashboard },
   { label: 'Governors', href: '/governors', icon: Users },
-  { label: 'Activity', href: '/activity', icon: Activity },
   { label: 'Rankings', href: '/rankings', icon: Trophy },
   { label: 'Upload', href: '/upload', icon: Upload },
   { label: 'Settings', href: '/settings', icon: Settings },
@@ -1141,7 +1139,7 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
                    {/* Suggestion Pills */}
                    {!controller.history?.messages?.length && (
                       <div className="flex flex-wrap gap-2 mb-6 justify-center animate-in fade-in slide-in-from-bottom-2 duration-1000">
-                         {['Sync stats', 'Detect outliers', 'Create weekly event', 'Compare alliances'].map(s => (
+                         {['Sync stats', 'Detect outliers', 'Create weekly event', 'Review unresolved players'].map(s => (
                             <button 
                                key={s} 
                                className="px-4 py-2 rounded-full border border-white/10 bg-white/5 backdrop-blur-md text-[11px] font-bold uppercase tracking-wider text-muted-foreground hover:bg-primary/20 hover:text-primary hover:border-primary/40 transition-all shadow-md active:scale-95"

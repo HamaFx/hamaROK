@@ -93,6 +93,7 @@ export interface CreateRankingRunInput {
 
 export interface ListCanonicalRankingsInput {
   workspaceId: string;
+  scope?: 'all_time' | 'weekly';
   eventId?: string | null;
   rankingType?: string | null;
   metricKey?: string | null;
@@ -1984,7 +1985,52 @@ export async function getRankingReviewQueueSummary(args: {
   };
 }
 
+type AllTimeMergeRow = {
+  id: string;
+  rankingType: string;
+  metricKey: string;
+  identityKey: string;
+  updatedAt: Date;
+  createdAt: Date;
+  metricValue: bigint;
+};
+
+export function selectLatestAllTimeRankingRows<T extends AllTimeMergeRow>(rows: T[]): T[] {
+  const latestByIdentity = new Map<string, T>();
+  for (const row of rows) {
+    const key = `${row.rankingType}:${row.metricKey}:${row.identityKey}`;
+    const existing = latestByIdentity.get(key);
+    if (!existing) {
+      latestByIdentity.set(key, row);
+      continue;
+    }
+    if (row.updatedAt.getTime() !== existing.updatedAt.getTime()) {
+      if (row.updatedAt.getTime() > existing.updatedAt.getTime()) {
+        latestByIdentity.set(key, row);
+      }
+      continue;
+    }
+    if (row.createdAt.getTime() !== existing.createdAt.getTime()) {
+      if (row.createdAt.getTime() > existing.createdAt.getTime()) {
+        latestByIdentity.set(key, row);
+      }
+      continue;
+    }
+    if (row.metricValue !== existing.metricValue) {
+      if (row.metricValue > existing.metricValue) {
+        latestByIdentity.set(key, row);
+      }
+      continue;
+    }
+    if (row.id > existing.id) {
+      latestByIdentity.set(key, row);
+    }
+  }
+  return [...latestByIdentity.values()];
+}
+
 export async function listCanonicalRankings(args: ListCanonicalRankingsInput) {
+  const scope = args.scope === 'weekly' ? 'weekly' : 'all_time';
   const searchRaw = args.q?.trim() || null;
   const searchNormalized = searchRaw ? normalizeGovernorAlias(searchRaw) : null;
   const searchDigits = searchRaw ? searchRaw.replace(/[^0-9]/g, '') : '';
@@ -1999,6 +2045,10 @@ export async function listCanonicalRankings(args: ListCanonicalRankingsInput) {
       ? [RANKING_TYPE_POWER, legacyProfilePowerRankingType]
       : [normalizedRankingType]
     : null;
+  const normalizedMetricKey = args.metricKey ? normalizeMetricKey(args.metricKey) : null;
+  const allowedStatuses = args.status && args.status.length > 0 ? args.status : null;
+  const allowActiveRows =
+    !allowedStatuses || allowedStatuses.includes(RankingSnapshotStatus.ACTIVE);
 
   const where: Prisma.RankingSnapshotWhereInput = {
     workspaceId: args.workspaceId,
@@ -2011,7 +2061,7 @@ export async function listCanonicalRankings(args: ListCanonicalRankingsInput) {
               : { in: rankingTypeFilters },
         }
       : {}),
-    ...(args.metricKey ? { metricKey: normalizeMetricKey(args.metricKey) } : {}),
+    ...(normalizedMetricKey ? { metricKey: normalizedMetricKey } : {}),
     ...(allianceFilters.length > 0
       ? {
           lastRow: {
@@ -2096,7 +2146,7 @@ export async function listCanonicalRankings(args: ListCanonicalRankingsInput) {
     take: 5000,
   });
 
-  const rowsForRanking =
+  let rowsForRanking: Array<(typeof rows)[number]> =
     rankingTypeFilters &&
     rankingTypeFilters.length > 1 &&
     rankingTypeFilters.includes(RANKING_TYPE_POWER) &&
@@ -2104,7 +2154,10 @@ export async function listCanonicalRankings(args: ListCanonicalRankingsInput) {
       ? (() => {
           const byIdentity = new Map<string, (typeof rows)[number]>();
           for (const row of rows) {
-            const key = `${row.workspaceId}:${row.eventId}:${row.metricKey}:${row.identityKey}`;
+            const key =
+              scope === 'all_time' && !args.eventId
+                ? `${row.workspaceId}:${row.metricKey}:${row.identityKey}`
+                : `${row.workspaceId}:${row.eventId}:${row.metricKey}:${row.identityKey}`;
             const existing = byIdentity.get(key);
             if (!existing) {
               byIdentity.set(key, row);
@@ -2135,6 +2188,223 @@ export async function listCanonicalRankings(args: ListCanonicalRankingsInput) {
           return [...byIdentity.values()];
         })()
       : rows;
+
+  if (scope === 'all_time' && !args.eventId) {
+    rowsForRanking = selectLatestAllTimeRankingRows(rowsForRanking);
+
+    const fallbackMetrics =
+      normalizedMetricKey === METRIC_KEY_POWER
+        ? [METRIC_KEY_POWER]
+        : normalizedMetricKey === METRIC_KEY_KILL_POINTS
+          ? [METRIC_KEY_KILL_POINTS]
+          : normalizedMetricKey
+            ? []
+            : [METRIC_KEY_POWER, METRIC_KEY_KILL_POINTS];
+    const rankingTypeForMetric = (metricKey: string) =>
+      metricKey === METRIC_KEY_POWER ? RANKING_TYPE_POWER : normalizeRankingType('kill_point');
+
+    if (allowActiveRows && fallbackMetrics.length > 0) {
+      const canonicalKeySet = new Set(
+        rowsForRanking
+          .filter((row) => row.governorId)
+          .map(
+            (row) =>
+              `${row.rankingType}:${row.metricKey}:${String(row.governorId || '')}`
+          )
+      );
+
+      const observationRows = await prisma.metricObservation.findMany({
+        where: {
+          workspaceId: args.workspaceId,
+          metricKey: {
+            in: fallbackMetrics,
+          },
+        },
+        select: {
+          id: true,
+          governorId: true,
+          metricKey: true,
+          metricValue: true,
+          sourceRank: true,
+          eventId: true,
+          observedAt: true,
+          governor: {
+            select: {
+              id: true,
+              governorId: true,
+              name: true,
+              alliance: true,
+            },
+          },
+        },
+        orderBy: [
+          { governorId: 'asc' },
+          { metricKey: 'asc' },
+          { observedAt: 'desc' },
+          { id: 'desc' },
+        ],
+        distinct: ['governorId', 'metricKey'],
+        take: 5000,
+      });
+
+      const snapshotRows = await prisma.snapshot.findMany({
+        where: {
+          OR: [{ workspaceId: args.workspaceId }, { event: { workspaceId: args.workspaceId } }],
+        },
+        select: {
+          id: true,
+          eventId: true,
+          governorId: true,
+          power: true,
+          killPoints: true,
+          createdAt: true,
+          governor: {
+            select: {
+              id: true,
+              governorId: true,
+              name: true,
+              alliance: true,
+            },
+          },
+        },
+        orderBy: [{ governorId: 'asc' }, { createdAt: 'desc' }, { id: 'desc' }],
+        distinct: ['governorId'],
+        take: 5000,
+      });
+
+      const observationByGovernorMetric = new Map<
+        string,
+        {
+          governorId: string;
+          governorGameId: string;
+          governorName: string;
+          alliance: string;
+          metricKey: string;
+          metricValue: bigint;
+          sourceRank: number | null;
+          eventId: string;
+          observedAt: Date;
+          sourceId: string;
+        }
+      >();
+
+      for (const row of observationRows) {
+        if (!row.governor) continue;
+        const key = `${row.governorId}:${row.metricKey}`;
+        if (observationByGovernorMetric.has(key)) continue;
+        observationByGovernorMetric.set(key, {
+          governorId: row.governor.id,
+          governorGameId: row.governor.governorId,
+          governorName: row.governor.name,
+          alliance: row.governor.alliance || '',
+          metricKey: row.metricKey,
+          metricValue: row.metricValue,
+          sourceRank: row.sourceRank,
+          eventId: row.eventId,
+          observedAt: row.observedAt,
+          sourceId: row.id,
+        });
+      }
+
+      for (const row of snapshotRows) {
+        const metrics = [
+          { metricKey: METRIC_KEY_POWER, metricValue: row.power },
+          { metricKey: METRIC_KEY_KILL_POINTS, metricValue: row.killPoints },
+        ];
+        for (const metric of metrics) {
+          if (!fallbackMetrics.includes(metric.metricKey)) continue;
+          const key = `${row.governorId}:${metric.metricKey}`;
+          if (observationByGovernorMetric.has(key)) continue;
+          observationByGovernorMetric.set(key, {
+            governorId: row.governor.id,
+            governorGameId: row.governor.governorId,
+            governorName: row.governor.name,
+            alliance: row.governor.alliance || '',
+            metricKey: metric.metricKey,
+            metricValue: metric.metricValue,
+            sourceRank: null,
+            eventId: row.eventId,
+            observedAt: row.createdAt,
+            sourceId: row.id,
+          });
+        }
+      }
+
+      const searchRawLower = searchRaw ? searchRaw.toLowerCase() : null;
+      const passesFilters = (candidate: {
+        governorName: string;
+        governorNameNormalized: string;
+        governorGameId: string;
+        alliance: string;
+      }) => {
+        if (allianceFilters.length > 0) {
+          const allianceLower = candidate.alliance.toLowerCase();
+          const match = allianceFilters.some((filter) =>
+            allianceLower.includes(filter.toLowerCase())
+          );
+          if (!match) return false;
+        }
+
+        if (!searchRaw) return true;
+        const nameLower = candidate.governorName.toLowerCase();
+        if (searchRawLower && nameLower.includes(searchRawLower)) return true;
+        if (searchNormalized && candidate.governorNameNormalized.includes(searchNormalized)) {
+          return true;
+        }
+        if (searchDigits && candidate.governorGameId.includes(searchDigits)) return true;
+        return false;
+      };
+
+      for (const row of observationByGovernorMetric.values()) {
+        const rankingType = rankingTypeForMetric(row.metricKey);
+        if (rankingTypeFilters && !rankingTypeFilters.includes(rankingType)) continue;
+        const canonicalKey = `${rankingType}:${row.metricKey}:${row.governorId}`;
+        if (canonicalKeySet.has(canonicalKey)) continue;
+
+        const governorNameRaw = String(row.governorName || '').trim() || 'Unknown';
+        const governorNameNormalized = normalizeGovernorAlias(governorNameRaw);
+        if (
+          !passesFilters({
+            governorName: governorNameRaw,
+            governorNameNormalized,
+            governorGameId: row.governorGameId,
+            alliance: row.alliance,
+          })
+        ) {
+          continue;
+        }
+
+        rowsForRanking.push({
+          id: `fallback:${row.metricKey}:${row.governorId}:${row.sourceId}`,
+          workspaceId: args.workspaceId,
+          eventId: row.eventId,
+          rankingType,
+          metricKey: row.metricKey,
+          identityKey: computeCanonicalIdentityKey({
+            governorId: row.governorId,
+            governorNameNormalized,
+          }),
+          governorId: row.governorId,
+          governorNameRaw,
+          governorNameNormalized,
+          sourceRank: row.sourceRank,
+          metricValue: row.metricValue,
+          status: RankingSnapshotStatus.ACTIVE,
+          updatedAt: row.observedAt,
+          createdAt: row.observedAt,
+          lastRunId: null,
+          lastRowId: null,
+          lastRow: {
+            allianceRaw: row.alliance || null,
+            titleRaw: null,
+          },
+          governor: {
+            alliance: row.alliance || '',
+          },
+        });
+      }
+    }
+  }
 
   const sorted = [...rowsForRanking].sort((a, b) =>
     compareRankingRows(

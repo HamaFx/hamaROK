@@ -6,6 +6,25 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   outputFileTracingRoot: __dirname,
+  async redirects() {
+    return [
+      {
+        source: '/activity',
+        destination: '/rankings?scope=weekly',
+        permanent: false,
+      },
+      {
+        source: '/compare',
+        destination: '/assistant',
+        permanent: false,
+      },
+      {
+        source: '/insights',
+        destination: '/assistant',
+        permanent: false,
+      },
+    ];
+  },
   images: {
     remotePatterns: [
       {

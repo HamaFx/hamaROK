@@ -596,7 +596,7 @@ export default function SettingsPage() {
         <div className="grid gap-6 xl:grid-cols-2">
           <Panel
             title="Combat Formula"
-            subtitle="Scoring multipliers used across compare and warrior analytics."
+            subtitle="Scoring multipliers used across weekly activity scoring and rankings."
             actions={
               <Button
                 variant="outline"

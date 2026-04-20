@@ -927,7 +927,7 @@ export default function RankingReviewPage() {
                         <Button
                           size="sm"
                           variant="outline"
-                          className="h-8 rounded-lg border-emerald-500/20 bg-emerald-500/5 text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-300 font-bold text-[11px] uppercase tracking-wider"
+                          className="h-8 rounded-lg border-emerald-500/20 bg-emerald-500/5 text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-300 font-bold text-xs uppercase tracking-wider"
                           onClick={() => void runBulkAction('accept_linked', group)}
                           disabled={!!busyRow || !hasAcceptLinkedTargets}
                         >
@@ -937,7 +937,7 @@ export default function RankingReviewPage() {
                         <Button
                           size="sm"
                           variant="outline"
-                          className="h-8 rounded-lg border-rose-500/20 bg-rose-500/5 text-rose-400 hover:bg-rose-500/10 hover:text-rose-300 font-bold text-[11px] uppercase tracking-wider"
+                          className="h-8 rounded-lg border-rose-500/20 bg-rose-500/5 text-rose-400 hover:bg-rose-500/10 hover:text-rose-300 font-bold text-xs uppercase tracking-wider"
                           onClick={() => void runBulkAction('reject_all', group)}
                           disabled={!!busyRow || !hasRowsToDelete}
                         >
@@ -1003,7 +1003,7 @@ export default function RankingReviewPage() {
                                   <div className="flex items-center gap-2 flex-wrap">
                                     <h4 className="font-heading font-bold text-tier-1 text-[16px] tracking-tight truncate drop-shadow-sm">{row.governorNameRaw}</h4>
                                     {row.allianceRaw && (
-                                      <span className="inline-flex items-center rounded-md bg-cyan-400/10 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-cyan-300 border border-cyan-400/20">
+                                      <span className="inline-flex items-center rounded-md bg-cyan-400/10 px-1.5 py-0.5 text-xs font-bold uppercase tracking-wider text-cyan-300 border border-cyan-400/20">
                                         {row.allianceRaw}
                                       </span>
                                     )}

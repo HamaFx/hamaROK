@@ -23,10 +23,12 @@ describe('frontend shell navigation', () => {
     expect(getActiveNav('/does-not-exist').href).toBe('/');
   });
 
-  it('keeps compare out of mobile primary nav and first in more nav', () => {
-    expect(PRIMARY_NAV_ITEMS.some((item) => item.href === '/compare')).toBe(true);
-    expect(MOBILE_PRIMARY_NAV.some((item) => item.href === '/compare')).toBe(false);
-    expect(MOBILE_MORE_NAV[0]?.href).toBe('/compare');
+  it('removes deprecated stats/compare/insights pages from nav surfaces', () => {
+    expect(PRIMARY_NAV_ITEMS.some((item) => item.href === '/activity')).toBe(false);
+    expect(PRIMARY_NAV_ITEMS.some((item) => item.href === '/compare')).toBe(false);
+    expect(TOOL_NAV_ITEMS.some((item) => item.href === '/insights')).toBe(false);
+    expect(MOBILE_PRIMARY_NAV.some((item) => item.href === '/activity')).toBe(false);
+    expect(MOBILE_MORE_NAV.some((item) => item.href === '/compare')).toBe(false);
   });
 
   it('keeps tools grouped as secondary nav', () => {

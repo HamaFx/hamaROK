@@ -4,6 +4,7 @@ import { authorizeWorkspaceAccess } from '@/lib/workspace-auth';
 import { fail, handleApiError, ok, parseBooleanQuery } from '@/lib/api-response';
 import { getQueryParam, parsePagination } from '@/lib/v2';
 import { prisma } from '@/lib/prisma';
+import { METRIC_KEY_KILL_POINTS, METRIC_KEY_POWER } from '@/lib/metric-sync';
 
 const SEARCH_LIMIT = 200;
 
@@ -93,6 +94,37 @@ export async function GET(request: NextRequest) {
     const snapshotCountMap = new Map(
       snapshotCounts.map((row) => [row.governorId, row._count._all])
     );
+
+    const latestMetricMap = new Map<string, { power: string; killPoints: string }>();
+    if (governorIds.length > 0) {
+      const latestObservations = await prisma.metricObservation.findMany({
+        where: {
+          workspaceId,
+          governorId: { in: governorIds },
+          metricKey: { in: [METRIC_KEY_POWER, METRIC_KEY_KILL_POINTS] },
+        },
+        orderBy: [{ observedAt: 'desc' }, { updatedAt: 'desc' }, { id: 'desc' }],
+        select: {
+          governorId: true,
+          metricKey: true,
+          metricValue: true,
+        },
+      });
+
+      const seenMetricKeys = new Set<string>();
+      for (const row of latestObservations) {
+        const key = `${row.governorId}:${row.metricKey}`;
+        if (seenMetricKeys.has(key)) continue;
+        seenMetricKeys.add(key);
+        const current = latestMetricMap.get(row.governorId) || { power: '0', killPoints: '0' };
+        if (row.metricKey === METRIC_KEY_POWER) {
+          current.power = row.metricValue.toString();
+        } else if (row.metricKey === METRIC_KEY_KILL_POINTS) {
+          current.killPoints = row.metricValue.toString();
+        }
+        latestMetricMap.set(row.governorId, current);
+      }
+    }
 
     // Fetch weekly stats if requested
     const weeklyStatsMap = new Map<string, Record<string, string>>();
@@ -190,8 +222,14 @@ export async function GET(request: NextRequest) {
         name: governor.name,
         alliance: governor.alliance || '',
         snapshotCount: snapshotCountMap.get(governor.id) || 0,
-        latestPower: governor.snapshots[0]?.power?.toString() || '0',
-        latestKillPoints: governor.snapshots[0]?.killPoints?.toString() || '0',
+        latestPower:
+          latestMetricMap.get(governor.id)?.power ||
+          governor.snapshots[0]?.power?.toString() ||
+          '0',
+        latestKillPoints:
+          latestMetricMap.get(governor.id)?.killPoints ||
+          governor.snapshots[0]?.killPoints?.toString() ||
+          '0',
         ...(includeWeekly
           ? {
               weeklyStats: weeklyStatsMap.get(governor.id) || {},

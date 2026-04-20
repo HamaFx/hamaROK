@@ -171,15 +171,14 @@ function MobileMoreNav() {
         <DrawerHeader>
           <DrawerTitle className="font-heading text-xl text-tier-1">More</DrawerTitle>
           <DrawerDescription className="text-tier-3">
-            Compare boards first, then jump into operational tools.
+            Operational pages for assistant, upload, review, and workspace setup.
           </DrawerDescription>
         </DrawerHeader>
         <div className="overflow-y-auto overscroll-contain px-4 pb-4 max-h-[60svh]">
           <div className="grid gap-3">
-            {MOBILE_MORE_NAV.map((item, index) => {
+            {MOBILE_MORE_NAV.map((item) => {
               const Icon = item.icon;
               const active = isActivePath(pathname, item.href);
-              const isCompare = index === 0;
               return (
                 <DrawerClose asChild key={item.href}>
                   <Link
@@ -192,7 +191,6 @@ function MobileMoreNav() {
                     <span
                       className={cn(
                         'rounded-2xl border border-[color:var(--stroke-soft)] bg-[color:var(--surface-4)] p-2.5 text-tier-2 transition-colors',
-                        isCompare && !active && 'border-[color:color-mix(in_oklab,var(--rank-gold)_38%,transparent)] bg-[color:color-mix(in_oklab,var(--rank-gold)_16%,transparent)] text-[color:var(--rank-gold)]',
                         active && 'text-[color:var(--primary)] border-[color:var(--primary)]'
                       )}
                     >

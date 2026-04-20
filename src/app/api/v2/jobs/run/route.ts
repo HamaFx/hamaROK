@@ -2,10 +2,6 @@ import { NextRequest } from 'next/server';
 import { WorkspaceRole } from '@prisma/client';
 import { ok, fail, handleApiError } from '@/lib/api-response';
 import { authorizeWorkspaceAccess } from '@/lib/workspace-auth';
-import {
-  processDiscordDeliveries,
-  processQueuedExports,
-} from '@/lib/background-jobs';
 import { cleanupExpiredIdempotencyKeys } from '@/lib/idempotency';
 import { archiveStaleRankingRuns } from '@/lib/rankings/service';
 import { cleanupAssistantLogs } from '@/lib/assistant/service';
@@ -30,27 +26,16 @@ export async function POST(request: NextRequest) {
       return fail(auth.code, auth.message, auth.code === 'UNAUTHORIZED' ? 401 : 403);
     }
 
-    const [
-      exportsResult,
-      deliveryResult,
-      cleanedIdempotency,
-      archivedRankings,
-      cleanedAssistant,
-      embeddingResult,
-      blobCleanup,
-    ] = await Promise.all([
-      processQueuedExports({ workspaceId, limit: 15 }),
-      processDiscordDeliveries({ workspaceId, limit: 30 }),
-      cleanupExpiredIdempotencyKeys(),
-      archiveStaleRankingRuns({ workspaceId, olderThanDays: 45, limit: 300 }),
-      cleanupAssistantLogs({ workspaceId, fallbackRetentionDays: 180 }),
-      processEmbeddingTasks({ workspaceId, limit: 36 }),
-      cleanupBlobRetention({ retentionDays: 14, maxScanned: 3000 }),
-    ]);
+    const [cleanedIdempotency, archivedRankings, cleanedAssistant, embeddingResult, blobCleanup] =
+      await Promise.all([
+        cleanupExpiredIdempotencyKeys(),
+        archiveStaleRankingRuns({ workspaceId, olderThanDays: 45, limit: 300 }),
+        cleanupAssistantLogs({ workspaceId, fallbackRetentionDays: 180 }),
+        processEmbeddingTasks({ workspaceId, limit: 36 }),
+        cleanupBlobRetention({ retentionDays: 14, maxScanned: 3000 }),
+      ]);
 
     return ok({
-      exports: exportsResult,
-      deliveries: deliveryResult,
       idempotency: {
         cleaned: cleanedIdempotency,
       },

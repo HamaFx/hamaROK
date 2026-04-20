@@ -1,6 +1,5 @@
 import type { LucideIcon } from 'lucide-react';
 import {
-  Activity,
   Bot,
   CalendarDays,
   ChevronRight,
@@ -9,11 +8,9 @@ import {
   FlaskConical,
   Home,
   ImageUp,
-  Radar,
   ShieldCheck,
   Trophy,
   Users,
-  Workflow,
 } from 'lucide-react';
 
 export type AppNavGroup = 'primary' | 'tools';
@@ -50,21 +47,6 @@ export const PRIMARY_NAV_ITEMS: AppNavItem[] = [
     icon: Users,
     group: 'primary',
   },
-  {
-    href: '/activity',
-    label: 'Stats',
-    mobileLabel: 'Stats',
-    description: 'Weekly player stats, trend movement, and alliance performance.',
-    icon: Activity,
-    group: 'primary',
-  },
-  {
-    href: '/compare',
-    label: 'Compare',
-    description: 'Head-to-head event matchups and warrior score breakdowns.',
-    icon: Workflow,
-    group: 'primary',
-  },
 ];
 
 export const TOOL_NAV_ITEMS: AppNavItem[] = [
@@ -87,13 +69,6 @@ export const TOOL_NAV_ITEMS: AppNavItem[] = [
     label: 'Events',
     description: 'Manage event windows, snapshots, and timeline anchors.',
     icon: CalendarDays,
-    group: 'tools',
-  },
-  {
-    href: '/insights',
-    label: 'Insights',
-    description: 'Cross-event analytics, trends, and shareable board views.',
-    icon: Radar,
     group: 'tools',
   },
   {
@@ -126,11 +101,8 @@ export const TOOL_NAV_ITEMS: AppNavItem[] = [
   },
 ];
 
-export const MOBILE_PRIMARY_NAV = PRIMARY_NAV_ITEMS.filter((item) => item.href !== '/compare');
-export const MOBILE_MORE_NAV = [
-  PRIMARY_NAV_ITEMS.find((item) => item.href === '/compare')!,
-  ...TOOL_NAV_ITEMS,
-];
+export const MOBILE_PRIMARY_NAV = PRIMARY_NAV_ITEMS;
+export const MOBILE_MORE_NAV = TOOL_NAV_ITEMS;
 
 export function isActivePath(pathname: string, href: string) {
   if (href === '/') return pathname === '/';

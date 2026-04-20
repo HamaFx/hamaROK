@@ -5,6 +5,7 @@ import { fail, handleApiError, ok, readJson } from '@/lib/api-response';
 import { getQueryParam } from '@/lib/v2';
 import { prisma } from '@/lib/prisma';
 import { deleteGovernorTx, updateGovernorTx } from '@/lib/domain/workspace-actions';
+import { METRIC_KEY_KILL_POINTS, METRIC_KEY_POWER } from '@/lib/metric-sync';
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -132,12 +133,40 @@ export async function GET(request: NextRequest, context: RouteContext) {
       }
     }
 
-    const snapshotCount = await prisma.snapshot.count({
-      where: {
-        governorId: governor.id,
-        OR: [{ workspaceId }, { event: { workspaceId } }],
-      },
-    });
+    const [snapshotCount, latestObservations] = await Promise.all([
+      prisma.snapshot.count({
+        where: {
+          governorId: governor.id,
+          OR: [{ workspaceId }, { event: { workspaceId } }],
+        },
+      }),
+      prisma.metricObservation.findMany({
+        where: {
+          workspaceId,
+          governorId: governor.id,
+          metricKey: { in: [METRIC_KEY_POWER, METRIC_KEY_KILL_POINTS] },
+        },
+        orderBy: [{ observedAt: 'desc' }, { updatedAt: 'desc' }, { id: 'desc' }],
+        select: {
+          metricKey: true,
+          metricValue: true,
+        },
+      }),
+    ]);
+
+    let latestPower = governor.snapshots[0]?.power?.toString() || '0';
+    let latestKillPoints = governor.snapshots[0]?.killPoints?.toString() || '0';
+    const seenLatestMetric = new Set<string>();
+    for (const observation of latestObservations) {
+      if (seenLatestMetric.has(observation.metricKey)) continue;
+      seenLatestMetric.add(observation.metricKey);
+      if (observation.metricKey === METRIC_KEY_POWER) {
+        latestPower = observation.metricValue.toString();
+      } else if (observation.metricKey === METRIC_KEY_KILL_POINTS) {
+        latestKillPoints = observation.metricValue.toString();
+      }
+      if (seenLatestMetric.size >= 2) break;
+    }
 
     return ok({
       id: governor.id,
@@ -149,8 +178,8 @@ export async function GET(request: NextRequest, context: RouteContext) {
       updatedAt: governor.updatedAt.toISOString(),
       aliases: governor.aliases,
       snapshotCount,
-      latestPower: governor.snapshots[0]?.power?.toString() || '0',
-      latestKillPoints: governor.snapshots[0]?.killPoints?.toString() || '0',
+      latestPower,
+      latestKillPoints,
       recentSnapshots: governor.snapshots.map((s) => ({
         id: s.id,
         eventId: s.eventId,

@@ -69,6 +69,9 @@ Goal: ingest rankboard screenshots, resolve identities, and maintain canonical r
   - `GET /api/v2/rankings/review`
   - `PATCH /api/v2/rankings/review/:rowId`
   - `POST /api/v2/rankings/review/bulk`
+- Scope behavior:
+  - `/api/v2/rankings` defaults to `scope=all_time`
+  - weekly filtering is available via `scope=weekly` with `weekKey`
 - Owners:
   - `src/lib/rankings/service.ts`
   - `src/lib/rankings/identity.ts`
@@ -110,7 +113,7 @@ Goal: user sends text/images, assistant proposes executable typed actions.
   - includes typed semantic search tool (`read_semantic_search`)
   - retrieval source is workspace-scoped embedding corpora
 
-## 8) Assistant Batch Flow (Manual Start)
+## 8) Assistant Batch Flow (Continuous + Step Controls)
 
 Goal: process large scan jobs one screenshot at a time.
 
@@ -118,30 +121,31 @@ Goal: process large scan jobs one screenshot at a time.
   - `POST /api/v2/assistant/batches`
   - `GET /api/v2/assistant/batches/:id`
   - `POST /api/v2/assistant/batches/:id/step`
+  - `POST /api/v2/assistant/batches/:id/run`
+  - `POST /api/v2/assistant/batches/:id/stop`
 - Rules:
   - one artifact per step
+  - continuous runner loops step execution under lease/lock
   - safe-only auto-confirm (`register_player`, `update_player`, `record_profile_stats`)
   - non-safe or ambiguous results are flagged/pending
   - batch continues after flagged items
 
-## 9) Analytics/Compare/Activity Reporting
+## 9) Weekly Activity Tracking
 
-Goal: expose decision surfaces from snapshot and ranking data.
+Goal: track and enforce weekly contribution standards.
 
 - APIs:
-  - `GET /api/v2/analytics`
-  - `GET /api/v2/compare`
-  - `GET /api/v2/stats/overview`
   - `GET /api/v2/activity/weekly`
+  - `GET /api/v2/activity/weeks`
   - `GET|PATCH /api/v2/activity/standards`
+  - `POST /api/v2/activity/broadcast`
 - Owners:
-  - `src/lib/analytics.ts`
-  - `src/lib/compare-service.ts`
   - `src/lib/activity/service.ts`
 
 ## 10) Background/Maintenance
 
 - Assistant log cleanup endpoint: `POST /api/v2/assistant/conversations/cleanup`
+- Storage cleanup endpoint (14-day retention ops): `POST /api/v2/storage/cleanup`
 - Metrics sync drain endpoint: `POST /api/v2/sync/metrics/drain`
 - Cron/ops trigger endpoint: `POST /api/v2/jobs/run`
 

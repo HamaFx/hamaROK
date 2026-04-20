@@ -53,6 +53,8 @@ All routes currently present in `src/app/api/**` with methods.
 | `/api/v2/assistant/batches` | `POST` |
 | `/api/v2/assistant/batches/[id]` | `GET` |
 | `/api/v2/assistant/batches/[id]/step` | `POST` |
+| `/api/v2/assistant/batches/[id]/run` | `POST` |
+| `/api/v2/assistant/batches/[id]/stop` | `POST` |
 
 ## Scan Jobs / Ingestion
 
@@ -79,7 +81,7 @@ All routes currently present in `src/app/api/**` with methods.
 | `/api/v2/ocr/profiles` | `GET`, `POST` |
 | `/api/v2/ocr/golden-fixtures` | `GET`, `POST` |
 
-## Governors / Events / Stats
+## Governors / Events
 
 | Route | Methods |
 |---|---|
@@ -91,7 +93,6 @@ All routes currently present in `src/app/api/**` with methods.
 | `/api/v2/events` | `GET`, `POST` |
 | `/api/v2/events/[id]` | `GET`, `DELETE` |
 | `/api/v2/events/weekly` | `GET`, `PATCH` |
-| `/api/v2/stats/overview` | `GET` |
 
 ## Review Queues
 
@@ -104,7 +105,7 @@ All routes currently present in `src/app/api/**` with methods.
 | `/api/v2/rankings/review/bulk` | `POST` |
 | `/api/v2/rankings/review/summary` | `GET` |
 
-## Rankings / Boards / Reports
+## Rankings
 
 | Route | Methods |
 |---|---|
@@ -112,30 +113,28 @@ All routes currently present in `src/app/api/**` with methods.
 | `/api/v2/rankings/runs` | `GET`, `POST` |
 | `/api/v2/rankings/runs/[id]` | `GET` |
 | `/api/v2/rankings/summary` | `GET` |
-| `/api/v2/rankboards` | `GET`, `POST` |
-| `/api/v2/rankboards/[slug]` | `GET` |
-| `/api/v2/reports/[slug]` | `GET` |
 
-## Analytics / Compare / Activity
+`/api/v2/rankings` scope query:
+- `scope=all_time|weekly` (default: `all_time`)
+- `weekKey` applies to weekly scope
+
+## Weekly Activity
 
 | Route | Methods |
 |---|---|
-| `/api/v2/analytics` | `GET` |
-| `/api/v2/compare` | `GET` |
 | `/api/v2/activity/weekly` | `GET` |
 | `/api/v2/activity/weeks` | `GET` |
 | `/api/v2/activity/standards` | `GET`, `PATCH` |
 | `/api/v2/activity/broadcast` | `POST` |
 
-## Exports / Integrations / Infra / Jobs
+## Integrations / Infra / Jobs
 
 | Route | Methods |
 |---|---|
-| `/api/v2/exports` | `GET`, `POST` |
 | `/api/v2/integrations/discord/deliveries` | `GET` |
-| `/api/v2/integrations/discord/publish` | `POST` |
 | `/api/v2/infra/aws-ocr` | `GET`, `POST` |
 | `/api/v2/jobs/run` | `POST` |
+| `/api/v2/storage/cleanup` | `POST` |
 | `/api/v2/sync/metrics/drain` | `POST` |
 
 ## API Ownership Anchors

@@ -51,8 +51,23 @@ export async function GET(request: NextRequest) {
   try {
     const url = new URL(request.url);
     const workspaceId = requireParam(url.searchParams.get('workspaceId'), 'workspaceId');
+    const scopeParam = (url.searchParams.get('scope') || '').trim().toLowerCase();
     const eventIdParam = url.searchParams.get('eventId')?.trim() || null;
     const weekKey = url.searchParams.get('weekKey')?.trim() || null;
+    const scope: 'all_time' | 'weekly' =
+      weekKey
+        ? 'weekly'
+        : scopeParam === 'weekly'
+          ? 'weekly'
+          : scopeParam === 'all_time' || !scopeParam
+            ? 'all_time'
+            : (() => {
+                throw new ApiHttpError(
+                  'VALIDATION_ERROR',
+                  'Invalid scope. Expected all_time or weekly.',
+                  400
+                );
+              })();
     const includeUnresolved = url.searchParams.get('includeUnresolved') === 'true';
     const rankingType = url.searchParams.get('rankingType')?.trim() || null;
     const metricKey = url.searchParams.get('metricKey')?.trim() || null;
@@ -73,7 +88,7 @@ export async function GET(request: NextRequest) {
     await drainMetricSyncBacklogOnRead(workspaceId, 8);
 
     let eventId = eventIdParam;
-    if (!eventId && weekKey) {
+    if (scope === 'weekly' && !eventId && weekKey) {
       const weeklyEvent = await prisma.event.findFirst({
         where: {
           workspaceId,
@@ -104,6 +119,7 @@ export async function GET(request: NextRequest) {
         weekKey,
         limit,
         cursor,
+        scope,
       }),
       {
         ttlMs: 8_000,
@@ -120,13 +136,14 @@ export async function GET(request: NextRequest) {
           metricKey,
           alliances,
           q,
-          sort,
-          status,
-          limit,
-          cursor,
-        });
+            sort,
+            status,
+            limit,
+            cursor,
+            scope,
+          });
 
-        if (weekKey && !eventIdParam && appliedEventId && result.total === 0) {
+        if (scope === 'weekly' && weekKey && !eventIdParam && appliedEventId && result.total === 0) {
           const legacyWeekly = await prisma.event.findFirst({
             where: {
               workspaceId,
@@ -156,6 +173,7 @@ export async function GET(request: NextRequest) {
               status,
               limit,
               cursor,
+              scope,
             });
           }
         }
@@ -173,6 +191,7 @@ export async function GET(request: NextRequest) {
             nextCursor: result.nextCursor,
             alliancesApplied: sortedAlliances,
             weekKeyApplied: weekKey,
+            scopeApplied: scope,
             includeUnresolved,
             sortRequested: sort || null,
             sortApplied:
@@ -198,6 +217,7 @@ export async function GET(request: NextRequest) {
       nextCursor: cached.meta.nextCursor,
       alliancesApplied: cached.meta.alliancesApplied,
       weekKeyApplied: cached.meta.weekKeyApplied,
+      scopeApplied: cached.meta.scopeApplied,
       includeUnresolved: cached.meta.includeUnresolved,
       sortRequested: cached.meta.sortRequested,
       sortApplied: cached.meta.sortApplied,

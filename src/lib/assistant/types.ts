@@ -29,8 +29,6 @@ export const ASSISTANT_READ_ACTION_TYPES = [
   'read_ranking_runs',
   'read_ranking_run_detail',
   'read_activity_weekly',
-  'read_analytics',
-  'read_compare',
   'read_semantic_search',
 ] as const;
 
@@ -270,20 +268,6 @@ export const readActivityWeeklyActionSchema = z.object({
   alliances: z.array(z.string().max(20)).max(8).optional().nullable(),
 });
 
-export const readAnalyticsActionSchema = z.object({
-  type: z.literal('read_analytics'),
-  eventA: z.string().max(60).optional().nullable(),
-  eventB: z.string().max(60).optional().nullable(),
-  topN: z.number().int().min(3).max(50).optional().nullable(),
-});
-
-export const readCompareActionSchema = z.object({
-  type: z.literal('read_compare'),
-  eventA: z.string().min(1).max(60),
-  eventB: z.string().min(1).max(60),
-  topN: z.number().int().min(3).max(50).optional().nullable(),
-});
-
 export const readSemanticSearchActionSchema = z.object({
   type: z.literal('read_semantic_search'),
   query: z.string().min(1).max(320),
@@ -311,8 +295,6 @@ export const assistantReadActionSchema = z.union([
   readRankingRunsActionSchema,
   readRankingRunDetailActionSchema,
   readActivityWeeklyActionSchema,
-  readAnalyticsActionSchema,
-  readCompareActionSchema,
   readSemanticSearchActionSchema,
 ]);
 

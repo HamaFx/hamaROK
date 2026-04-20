@@ -209,7 +209,7 @@ export default function EventsPage() {
     <div className="space-y-4 sm:space-y-5 lg:space-y-6">
       <PageHero
         title="Events"
-        subtitle="Manage event checkpoints for compare, insights, and ranking workflows."
+        subtitle="Manage event checkpoints for ranking and weekly ingestion workflows."
         actions={
           <>
             <Button
@@ -345,13 +345,6 @@ export default function EventsPage() {
                         <Link href={`/events/${event.id}`}>View</Link>
                       </Button>
                       <Button
-                        asChild
-                        variant="outline"
-                        className="h-11 rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1"
-                      >
-                        <Link href={`/compare?eventA=${event.id}`}>Compare</Link>
-                      </Button>
-                      <Button
                         variant="destructive"
                         className="h-11 rounded-full"
                         onClick={() => deleteEvent(event.id)}
@@ -373,7 +366,7 @@ export default function EventsPage() {
           <DialogHeader>
             <DialogTitle className="font-heading text-xl text-tier-1">Create Event</DialogTitle>
             <DialogDescription className="text-tier-3">
-              Add a new event checkpoint for rankings and compare surfaces.
+              Add a new event checkpoint for rankings and weekly ingestion surfaces.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-2">

@@ -47,8 +47,6 @@ import {
   updateGovernorTx,
   writeProfileStatsTx,
 } from '@/lib/domain/workspace-actions';
-import { buildWorkspaceAnalytics } from '@/lib/analytics';
-import { compareWorkspaceEvents } from '@/lib/compare-service';
 import { getWeeklyActivityReport } from '@/lib/activity/service';
 import { resolveGovernorBySimilarityTx } from '@/lib/governor-similarity';
 import {
@@ -485,41 +483,6 @@ function mistralReadTools(): MistralTool[] {
               type: ['array', 'null'],
               items: { type: 'string' },
             },
-          },
-        },
-      },
-    },
-    {
-      type: 'function',
-      function: {
-        name: 'read_analytics',
-        description: 'Read workspace analytics for event comparisons.',
-        strict: false,
-        parameters: {
-          type: 'object',
-          additionalProperties: false,
-          properties: {
-            eventA: { type: ['string', 'null'] },
-            eventB: { type: ['string', 'null'] },
-            topN: { type: ['integer', 'null'] },
-          },
-        },
-      },
-    },
-    {
-      type: 'function',
-      function: {
-        name: 'read_compare',
-        description: 'Compare two events in the workspace.',
-        strict: false,
-        parameters: {
-          type: 'object',
-          additionalProperties: false,
-          required: ['eventA', 'eventB'],
-          properties: {
-            eventA: { type: 'string' },
-            eventB: { type: 'string' },
-            topN: { type: ['integer', 'null'] },
           },
         },
       },
@@ -2870,14 +2833,7 @@ function toLeaderboardAnalysisRows(readExecutions: AssistantReadExecution[]): As
   for (const execution of readExecutions) {
     if (execution.error) continue;
     const payload = asJsonObject(execution.result);
-    const list =
-      execution.actionType === 'read_compare'
-        ? Array.isArray(payload.leaderboard)
-          ? payload.leaderboard
-          : []
-        : Array.isArray(payload.rows)
-          ? payload.rows
-          : [];
+    const list = Array.isArray(payload.rows) ? payload.rows : [];
 
     for (const entry of list.slice(0, 40)) {
       const row = asJsonObject(entry);
@@ -3705,44 +3661,6 @@ async function executeReadAction(args: {
           request: args.action,
           summary: 'Loaded weekly activity report.',
           result: report as unknown as Record<string, unknown>,
-          durationMs: Date.now() - startedAt,
-        };
-      }
-
-      case 'read_analytics': {
-        const analytics = await buildWorkspaceAnalytics({
-          workspaceId: args.workspaceId,
-          eventAId: args.action.eventA || null,
-          eventBId: args.action.eventB || null,
-          topN: clampLimit(args.action.topN, 10, 50),
-        });
-
-        return {
-          actionType: args.action.type,
-          request: args.action,
-          summary: 'Loaded analytics summary.',
-          result: analytics as unknown as Record<string, unknown>,
-          durationMs: Date.now() - startedAt,
-        };
-      }
-
-      case 'read_compare': {
-        const compared = await compareWorkspaceEvents({
-          workspaceId: args.workspaceId,
-          eventAId: args.action.eventA,
-          eventBId: args.action.eventB,
-        });
-        const topN = clampLimit(args.action.topN, 10, 50);
-
-        return {
-          actionType: args.action.type,
-          request: args.action,
-          summary: `Compared events ${args.action.eventA} vs ${args.action.eventB}.`,
-          result: {
-            ...compared,
-            leaderboard: compared.comparisons.slice(0, topN),
-            leaderboardCount: Math.min(topN, compared.comparisons.length),
-          } as unknown as Record<string, unknown>,
           durationMs: Date.now() - startedAt,
         };
       }

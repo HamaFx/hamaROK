@@ -26,9 +26,9 @@ const geistMono = localFont({
 export const metadata: Metadata = {
   title: 'HamaROK — Player Rankings and Weekly Statboards',
   description:
-    'Explore Rise of Kingdoms player rankings, weekly statboards, event comparisons, and spotlight drilldowns from OCR-powered alliance data.',
+    'Explore Rise of Kingdoms player rankings, weekly statboards, and spotlight drilldowns from OCR-powered alliance data.',
   keywords:
-    'Rise of Kingdoms, RoK rankings, player leaderboards, weekly statboards, OCR analytics, event comparison',
+    'Rise of Kingdoms, RoK rankings, player leaderboards, weekly statboards, OCR analytics',
   applicationName: 'HamaROK',
   manifest: '/manifest.webmanifest',
   appleWebApp: {
