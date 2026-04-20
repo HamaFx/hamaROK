@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { put } from '@vercel/blob';
+import { fail, handleApiError } from '@/lib/api-response';
 import { assertBlobConfigured } from '@/lib/env';
 
 const ALLOWED_IMAGE_TYPES = new Set([
@@ -28,28 +29,37 @@ function normalizeImageMimeType(raw: string, fileName?: string | null): string {
   return base;
 }
 
+function buildRequestId(): string {
+  const globalCrypto = globalThis.crypto as Crypto | undefined;
+  if (globalCrypto?.randomUUID) return globalCrypto.randomUUID();
+  return `req-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
     const file = formData.get('file') as File;
 
     if (!file) {
-      return NextResponse.json(
-        { error: { code: 'VALIDATION_ERROR', message: 'No file provided' } },
-        { status: 400 }
-      );
+      return fail('VALIDATION_ERROR', 'No file provided', 400, undefined, {
+        category: 'validation',
+        source: 'blob',
+        retryable: false,
+      });
     }
 
     const mimeType = normalizeImageMimeType(file.type, file.name);
     if (!ALLOWED_IMAGE_TYPES.has(mimeType)) {
-      return NextResponse.json(
+      return fail(
+        'VALIDATION_ERROR',
+        'Only PNG, JPEG, WEBP, HEIC, HEIF, and AVIF images are allowed',
+        400,
+        { mimeType, fileName: file.name },
         {
-          error: {
-            code: 'VALIDATION_ERROR',
-            message: 'Only PNG, JPEG, WEBP, HEIC, HEIF, and AVIF images are allowed',
-          },
-        },
-        { status: 400 }
+          category: 'validation',
+          source: 'blob',
+          retryable: false,
+        }
       );
     }
 
@@ -60,11 +70,13 @@ export async function POST(request: NextRequest) {
       contentType: mimeType,
     });
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       url: blob.url,
       size: file.size,
       uploadedAt: new Date().toISOString(),
     });
+    response.headers.set('X-Request-Id', buildRequestId());
+    return response;
   } catch (error) {
     console.error('POST /api/screenshots/upload error:', error);
     const rawMessage =
@@ -73,14 +85,22 @@ export async function POST(request: NextRequest) {
     const message = quotaExceeded
       ? 'Storage exceeds free quota (1GB). Delete older screenshots and retry.'
       : rawMessage;
-    return NextResponse.json(
-      {
-        error: {
-          code: quotaExceeded ? 'STORAGE_QUOTA_EXCEEDED' : 'INTERNAL_ERROR',
-          message,
+    if (quotaExceeded) {
+      return fail(
+        'INTERNAL_ERROR',
+        message,
+        507,
+        {
+          reason: 'STORAGE_QUOTA_EXCEEDED',
         },
-      },
-      { status: quotaExceeded ? 507 : 500 }
-    );
+        {
+          category: 'storage',
+          source: 'blob',
+          retryable: false,
+          hints: ['Run storage cleanup and retry upload.'],
+        }
+      );
+    }
+    return handleApiError(error);
   }
 }

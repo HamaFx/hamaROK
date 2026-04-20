@@ -126,7 +126,7 @@ if [[ "$ASSISTANT_PAGE_CODE" != "200" ]]; then
 fi
 echo "OK: $APP_URL/assistant returns 200"
 
-ASSISTANT_API_CODE="$(curl -s -o /tmp/rok-assistant-api.json -w '%{http_code}' "$APP_URL/api/v2/assistant/conversations?workspaceId=smoke-test-workspace")"
+ASSISTANT_API_CODE="$(curl -s -D /tmp/rok-assistant-api.headers -o /tmp/rok-assistant-api.json -w '%{http_code}' "$APP_URL/api/v2/assistant/conversations?workspaceId=smoke-test-workspace")"
 if [[ "$ASSISTANT_API_CODE" == "404" ]]; then
   echo "Assistant API route missing ($APP_URL/api/v2/assistant/conversations -> 404)." >&2
   head -c 1200 /tmp/rok-assistant-api.json >&2 || true
@@ -134,6 +134,24 @@ if [[ "$ASSISTANT_API_CODE" == "404" ]]; then
   exit 1
 fi
 echo "OK: assistant API route exists (HTTP $ASSISTANT_API_CODE)"
+
+if ! rg -qi '^x-request-id:' /tmp/rok-assistant-api.headers; then
+  echo "Assistant API response missing X-Request-Id header." >&2
+  cat /tmp/rok-assistant-api.headers >&2
+  exit 1
+fi
+echo "OK: assistant API response includes X-Request-Id"
+
+if rg -q '"error":\{' /tmp/rok-assistant-api.json; then
+  for key in '"category":' '"retryable":' '"source":' '"requestId":'; do
+    if ! rg -q "$key" /tmp/rok-assistant-api.json; then
+      echo "Assistant API error payload missing $key metadata." >&2
+      cat /tmp/rok-assistant-api.json >&2
+      exit 1
+    fi
+  done
+  echo "OK: assistant API error payload includes reliability metadata"
+fi
 
 INTERNAL_EXTRACT_CODE="$(curl -s -o /tmp/rok-internal-extract.json -w '%{http_code}' -X POST "$APP_URL/api/v2/internal/ingestion-tasks/smoke-task/extract" -H 'Content-Type: application/json' -d '{}')"
 if [[ "$INTERNAL_EXTRACT_CODE" == "404" ]]; then

@@ -131,3 +131,5 @@ Ingestion internal:
 - API catalog: `docs/04-api-catalog.md`
 - Service ownership: `docs/05-service-ownership.md`
 - Data model: `docs/06-data-model.md`
+- Testing runbook: `docs/08-testing-runbook.md`
+- Error reliability: `docs/10-error-reliability.md`

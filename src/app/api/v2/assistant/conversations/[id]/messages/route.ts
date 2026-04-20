@@ -1,7 +1,7 @@
 import { put } from '@vercel/blob';
 import { ArtifactType, Prisma, WorkspaceRole } from '@prisma/client';
 import { NextRequest } from 'next/server';
-import { fail, handleApiError, ok, requireParam } from '@/lib/api-response';
+import { ApiHttpError, fail, handleApiError, ok, requireParam } from '@/lib/api-response';
 import { withIdempotency } from '@/lib/idempotency';
 import { authorizeWorkspaceAccess } from '@/lib/workspace-auth';
 import { prisma } from '@/lib/prisma';
@@ -79,7 +79,21 @@ async function storeAssistantImage(args: {
 }): Promise<AssistantAttachmentInput> {
   const mimeType = normalizeImageMimeType(args.file.type, args.file.name);
   if (!ALLOWED_IMAGE_TYPES.has(mimeType)) {
-    throw new Error('Only PNG, JPEG, WEBP, HEIC, HEIF, and AVIF images are supported for assistant messages.');
+    throw new ApiHttpError(
+      'VALIDATION_ERROR',
+      'Only PNG, JPEG, WEBP, HEIC, HEIF, and AVIF images are supported for assistant messages.',
+      400,
+      {
+        mimeType,
+        fileName: args.file.name,
+      },
+      true,
+      {
+        source: 'blob',
+        category: 'validation',
+        retryable: false,
+      }
+    );
   }
 
   const bytes = Buffer.from(await args.file.arrayBuffer());
@@ -173,12 +187,68 @@ async function hydrateAssistantArtifactAttachment(args: {
   });
 
   if (!artifact?.url) {
-    throw new Error(`Artifact ${args.artifactId} is missing or inaccessible.`);
+    throw new ApiHttpError(
+      'NOT_FOUND',
+      `Artifact ${args.artifactId} is missing or inaccessible.`,
+      404,
+      {
+        artifactId: args.artifactId,
+      },
+      true,
+      {
+        source: 'blob',
+        category: 'not_found',
+        retryable: false,
+      }
+    );
   }
 
   const response = await fetch(artifact.url, { cache: 'no-store' });
   if (!response.ok) {
-    throw new Error(`Failed to download artifact ${args.artifactId} (${response.status}).`);
+    const retryable =
+      response.status === 408 ||
+      response.status === 429 ||
+      response.status >= 500;
+    const status =
+      response.status === 404
+        ? 404
+        : response.status === 429
+          ? 429
+          : retryable
+            ? 503
+            : 502;
+    const code =
+      response.status === 404
+        ? 'NOT_FOUND'
+        : response.status === 429
+          ? 'RATE_LIMITED'
+          : 'INTERNAL_ERROR';
+    throw new ApiHttpError(
+      code,
+      `Failed to download artifact ${args.artifactId} (${response.status}).`,
+      status,
+      {
+        artifactId: args.artifactId,
+        upstreamStatus: response.status,
+      },
+      true,
+      {
+        source: 'blob',
+        category:
+          response.status === 404
+            ? 'not_found'
+            : response.status === 429
+              ? 'rate_limit'
+              : retryable
+                ? 'storage'
+                : 'internal',
+        retryable,
+        retryAfterMs: response.status === 429 ? 1500 : retryable ? 1000 : null,
+        hints: retryable
+          ? ['Retry request with same idempotency key.']
+          : ['Verify artifact URL is reachable.'],
+      }
+    );
   }
 
   const bytes = Buffer.from(await response.arrayBuffer());
@@ -195,7 +265,21 @@ async function hydrateAssistantArtifactAttachment(args: {
   );
 
   if (!ALLOWED_IMAGE_TYPES.has(mimeType)) {
-    throw new Error(`Artifact ${args.artifactId} is not a supported assistant image type.`);
+    throw new ApiHttpError(
+      'VALIDATION_ERROR',
+      `Artifact ${args.artifactId} is not a supported assistant image type.`,
+      400,
+      {
+        artifactId: args.artifactId,
+        mimeType,
+      },
+      true,
+      {
+        source: 'blob',
+        category: 'validation',
+        retryable: false,
+      }
+    );
   }
 
   return {

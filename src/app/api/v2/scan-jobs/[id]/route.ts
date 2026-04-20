@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { IngestionTaskStatus, WorkspaceRole } from '@prisma/client';
-import { fail, handleApiError, ok } from '@/lib/api-response';
+import { ApiHttpError, fail, handleApiError, ok } from '@/lib/api-response';
 import { prisma } from '@/lib/prisma';
 import { authorizeWorkspaceAccess } from '@/lib/workspace-auth';
 import { makeServerCacheKey, withServerCache } from '@/lib/server-cache';
@@ -76,7 +76,11 @@ export async function GET(
         ]);
 
         if (!scanJob) {
-          throw new Error('Scan job not found.');
+          throw new ApiHttpError('NOT_FOUND', 'Scan job not found.', 404, undefined, true, {
+            source: 'api',
+            category: 'not_found',
+            retryable: false,
+          });
         }
 
         return {

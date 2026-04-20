@@ -5,6 +5,7 @@ import {
   PrismaClient,
   ScanJobStatus,
 } from '@prisma/client';
+import { ApiHttpError } from '@/lib/api-response';
 import { prisma } from '@/lib/prisma';
 
 type PrismaLike = PrismaClient | Prisma.TransactionClient;
@@ -57,7 +58,11 @@ export async function syncScanJobProgressWithOptions(
   ]);
 
   if (!existingScanJob) {
-    throw new Error(`Scan job ${scanJobId} not found.`);
+    throw new ApiHttpError('NOT_FOUND', `Scan job ${scanJobId} not found.`, 404, undefined, true, {
+      source: 'api',
+      category: 'not_found',
+      retryable: false,
+    });
   }
 
   const summary = toTaskSummary(grouped);

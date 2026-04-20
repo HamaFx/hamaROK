@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
-import { fail, handleApiError, ok } from '@/lib/api-response';
+import { ApiHttpError, fail, handleApiError, ok } from '@/lib/api-response';
 import { assertValidServiceRequest } from '@/lib/service-auth';
 import { getTaskWithRelations } from '@/lib/ingestion-service';
 import { prisma } from '@/lib/prisma';
@@ -84,10 +84,30 @@ export async function POST(
       cache: 'no-store',
     });
     if (!imageRes.ok) {
-      return fail(
-        'INTERNAL_ERROR',
+      const retryable =
+        imageRes.status === 408 ||
+        imageRes.status === 429 ||
+        imageRes.status >= 500;
+      const code = imageRes.status === 429 ? 'RATE_LIMITED' : 'INTERNAL_ERROR';
+      const status = imageRes.status === 429 ? 429 : retryable ? 503 : 502;
+      throw new ApiHttpError(
+        code,
         `Failed to download artifact image: ${imageRes.status}.`,
-        500
+        status,
+        {
+          artifactId: task.artifact.id,
+          upstreamStatus: imageRes.status,
+        },
+        true,
+        {
+          source: 'blob',
+          category: imageRes.status === 429 ? 'rate_limit' : retryable ? 'storage' : 'internal',
+          retryable,
+          retryAfterMs: imageRes.status === 429 ? 1500 : retryable ? 1000 : null,
+          hints: retryable
+            ? ['Retry task extraction with same task ID and idempotent worker flow.']
+            : ['Validate artifact URL and blob accessibility.'],
+        }
       );
     }
 

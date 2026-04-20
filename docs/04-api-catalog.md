@@ -7,6 +7,11 @@ All routes currently present in `src/app/api/**` with methods.
 - Success envelope: `{ data, meta, error: null }`
 - Failure envelope: `{ data: null, meta: null, error }`
 - Shared error mapper: `src/lib/api-response.ts`
+- Error payload reliability fields (additive):  
+  `error.category`, `error.retryable`, `error.retryAfterMs`, `error.source`, `error.requestId`, `error.hints`, `error.details`
+- Response headers:
+  - `X-Request-Id` on all API responses
+  - `Retry-After` on retryable throttling/temporary upstream failures
 
 ## Auth Model (high level)
 

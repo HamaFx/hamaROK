@@ -26,6 +26,11 @@ jobs:
         env:
           POSTGRES_PRISMA_URL: postgresql://user:pass@localhost:5432/db
 
+      - name: Lint
+        run: npm run lint
+        env:
+          POSTGRES_PRISMA_URL: postgresql://user:pass@localhost:5432/db
+
       - name: Typecheck
         run: npm run typecheck
         env:
@@ -33,6 +38,11 @@ jobs:
 
       - name: Test
         run: npm run test
+        env:
+          POSTGRES_PRISMA_URL: postgresql://user:pass@localhost:5432/db
+
+      - name: Test Coverage
+        run: npm run test:coverage
         env:
           POSTGRES_PRISMA_URL: postgresql://user:pass@localhost:5432/db
 

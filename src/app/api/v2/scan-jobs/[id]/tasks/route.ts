@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { IngestionTaskStatus, WorkspaceRole } from '@prisma/client';
-import { fail, handleApiError, ok } from '@/lib/api-response';
+import { ApiHttpError, fail, handleApiError, ok } from '@/lib/api-response';
 import { parsePagination } from '@/lib/v2';
 import { prisma } from '@/lib/prisma';
 import { authorizeWorkspaceAccess } from '@/lib/workspace-auth';
@@ -16,7 +16,20 @@ function parseStatuses(value: string | null): IngestionTaskStatus[] {
 
   for (const status of statuses) {
     if (!Object.values(IngestionTaskStatus).includes(status as IngestionTaskStatus)) {
-      throw new Error(`Invalid ingestion task status: ${status}`);
+      throw new ApiHttpError(
+        'VALIDATION_ERROR',
+        `Invalid ingestion task status: ${status}`,
+        400,
+        {
+          status,
+        },
+        true,
+        {
+          source: 'api',
+          category: 'validation',
+          retryable: false,
+        }
+      );
     }
   }
 
@@ -155,9 +168,6 @@ export async function GET(
 
     return ok(cached.rows, cached.meta);
   } catch (error) {
-    if (error instanceof Error && error.message.startsWith('Invalid ingestion task status')) {
-      return fail('VALIDATION_ERROR', error.message, 400);
-    }
     return handleApiError(error);
   }
 }

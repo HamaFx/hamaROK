@@ -4,6 +4,7 @@ import {
   extractConversationTextOutputs,
   extractFunctionCalls,
   extractPendingToolCalls,
+  runMistralEmbeddings,
   runMistralOcr,
   runMistralStructuredOutput,
   startMistralConversation,
@@ -133,6 +134,33 @@ describe('mistral client parsers', () => {
     });
 
     expect(fetchMock).toHaveBeenCalled();
+  });
+
+  it('captures retry-after metadata on throttled responses', async () => {
+    process.env.MISTRAL_API_KEY = 'test-key';
+    process.env.MISTRAL_BASE_URL = 'https://api.mistral.ai';
+
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ error: { message: 'too many requests' } }), {
+        status: 429,
+        headers: {
+          'Content-Type': 'application/json',
+          'Retry-After': '3',
+        },
+      })
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      runMistralEmbeddings({
+        input: 'sample',
+        maxRetries: 0,
+      })
+    ).rejects.toMatchObject({
+      name: 'MistralApiError',
+      status: 429,
+      retryAfterMs: 3000,
+    });
   });
 
   it('normalizes string inputs to message.input entries for conversations', async () => {

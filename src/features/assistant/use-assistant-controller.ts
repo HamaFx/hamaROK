@@ -223,12 +223,27 @@ function createAssistantClientMessageId(): string {
 class AssistantApiError extends Error {
   status: number;
   retryable: boolean;
+  retryAfterMs: number | null;
+  requestId: string | null;
 
-  constructor(message: string, options: { status: number; retryable?: boolean }) {
+  constructor(
+    message: string,
+    options: {
+      status: number;
+      retryable?: boolean;
+      retryAfterMs?: number | null;
+      requestId?: string | null;
+    }
+  ) {
     super(message);
     this.name = 'AssistantApiError';
     this.status = options.status;
     this.retryable = Boolean(options.retryable);
+    this.retryAfterMs =
+      Number.isFinite(Number(options.retryAfterMs)) && Number(options.retryAfterMs) >= 0
+        ? Number(options.retryAfterMs)
+        : null;
+    this.requestId = options.requestId ? String(options.requestId) : null;
   }
 }
 
@@ -416,23 +431,41 @@ export function useAssistantController(args: {
       }
 
       if (!res.ok) {
+        const payloadError =
+          payload?.error && typeof payload.error === 'object'
+            ? (payload.error as Record<string, unknown>)
+            : null;
         const errorMessage =
-          (payload?.error && typeof payload.error === 'object'
-            ? String((payload.error as Record<string, unknown>).message || '')
-            : '') ||
+          String(payloadError?.message || '') ||
           String(payload?.message || '').trim() ||
           `Assistant request failed (${res.status}).`;
+        const retryableFromPayload =
+          typeof payloadError?.retryable === 'boolean' ? payloadError.retryable : null;
+        const retryAfterMsFromPayload =
+          Number.isFinite(Number(payloadError?.retryAfterMs)) && Number(payloadError?.retryAfterMs) >= 0
+            ? Number(payloadError?.retryAfterMs)
+            : null;
+        const retryAfterHeader = res.headers.get('retry-after');
+        const retryAfterMsFromHeader =
+          retryAfterHeader && Number.isFinite(Number(retryAfterHeader))
+            ? Math.max(0, Math.floor(Number(retryAfterHeader) * 1000))
+            : null;
         const retryable =
-          res.status === 408 ||
-          res.status === 409 ||
-          res.status === 429 ||
-          res.status === 500 ||
-          res.status === 502 ||
-          res.status === 503 ||
-          res.status === 504;
+          retryableFromPayload ??
+          (res.status === 408 ||
+            res.status === 409 ||
+            res.status === 429 ||
+            res.status === 500 ||
+            res.status === 502 ||
+            res.status === 503 ||
+            res.status === 504);
         throw new AssistantApiError(errorMessage, {
           status: res.status,
           retryable,
+          retryAfterMs: retryAfterMsFromPayload ?? retryAfterMsFromHeader,
+          requestId:
+            (typeof payloadError?.requestId === 'string' && payloadError.requestId) ||
+            res.headers.get('x-request-id'),
         });
       }
 
@@ -852,7 +885,16 @@ export function useAssistantController(args: {
 
         if (transientFailure && nextAttempts < OUTBOX_MAX_ATTEMPTS) {
           const jitter = Math.floor(Math.random() * OUTBOX_RETRY_JITTER_MS);
-          const retryDelayMs = OUTBOX_RETRY_BASE_MS * 2 ** (nextAttempts - 1) + jitter;
+          const retryDelayFromError =
+            cause instanceof AssistantApiError &&
+            Number.isFinite(Number(cause.retryAfterMs)) &&
+            Number(cause.retryAfterMs) >= 0
+              ? Number(cause.retryAfterMs)
+              : null;
+          const retryDelayMs = Math.max(
+            retryDelayFromError ?? 0,
+            OUTBOX_RETRY_BASE_MS * 2 ** (nextAttempts - 1) + jitter
+          );
           setOutbox((prev) =>
             prev.map((entry) =>
               entry.clientMessageId === next.clientMessageId

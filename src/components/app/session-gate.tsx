@@ -26,12 +26,12 @@ export function SessionGate({
           subtitle="A connected workspace is required before ranking and statboard surfaces can load."
         >
           <div className="space-y-4">
-            <p className="text-sm leading-6 text-tier-2">{message}</p>
+            <p className="text-sm leading-6 text-muted-foreground font-medium">{message}</p>
             {!loading ? (
               <div className="flex flex-wrap gap-2.5">
                 <Button
                   onClick={onRetry ?? (() => window.location.reload())}
-                  className="rounded-full bg-[color:var(--primary)] text-primary-foreground hover:opacity-90 shadow-lg hover:opacity-95"
+                  className="rounded-xl bg-primary text-primary-foreground shadow-md hover:bg-primary/90 transition-all font-bold hover:opacity-90 shadow-lg hover:opacity-95"
                 >
                   <RefreshCcw data-icon="inline-start" />
                   {retryLabel}

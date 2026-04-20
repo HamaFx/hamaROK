@@ -20,6 +20,45 @@ interface IdempotencyOptions<T> {
   execute: () => Promise<T>;
 }
 
+function createIdempotencyConflictError(
+  reason: 'PAYLOAD_MISMATCH' | 'IN_PROGRESS'
+): ApiHttpError {
+  if (reason === 'PAYLOAD_MISMATCH') {
+    return new ApiHttpError(
+      'CONFLICT',
+      'Idempotency key was already used with a different request payload.',
+      409,
+      {
+        reason: 'IDEMPOTENCY_PAYLOAD_MISMATCH',
+      },
+      true,
+      {
+        source: 'idempotency',
+        retryable: false,
+        category: 'conflict',
+        hints: ['Use a new idempotency key when request payload differs.'],
+      }
+    );
+  }
+
+  return new ApiHttpError(
+    'CONFLICT',
+    'Request with this idempotency key is already in progress.',
+    409,
+    {
+      reason: 'IDEMPOTENCY_IN_PROGRESS',
+    },
+    true,
+    {
+      source: 'idempotency',
+      retryable: true,
+      retryAfterMs: 1200,
+      category: 'conflict',
+      hints: ['Retry using the same idempotency key after a short delay.'],
+    }
+  );
+}
+
 export async function withIdempotency<T>({
   workspaceId,
   scope,
@@ -75,11 +114,7 @@ export async function withIdempotency<T>({
 
     if (existing && existing.expiresAt > now) {
       if (existing.requestHash !== requestHash) {
-        throw new ApiHttpError(
-          'CONFLICT',
-          'Idempotency key was already used with a different request payload.',
-          409
-        );
+        throw createIdempotencyConflictError('PAYLOAD_MISMATCH');
       }
       if (existing.response) {
         return {
@@ -87,11 +122,7 @@ export async function withIdempotency<T>({
           replayed: true,
         };
       }
-      throw new ApiHttpError(
-        'CONFLICT',
-        'Request with this idempotency key is already in progress.',
-        409
-      );
+      throw createIdempotencyConflictError('IN_PROGRESS');
     }
 
     const reclaimed = await prisma.idempotencyKey.updateMany({
@@ -125,11 +156,7 @@ export async function withIdempotency<T>({
           replayed: true,
         };
       }
-      throw new ApiHttpError(
-        'CONFLICT',
-        'Request with this idempotency key is already in progress.',
-        409
-      );
+      throw createIdempotencyConflictError('IN_PROGRESS');
     }
   }
 
@@ -184,3 +211,5 @@ export async function cleanupExpiredIdempotencyKeys() {
 
   return result.count;
 }
+
+export { createIdempotencyConflictError };

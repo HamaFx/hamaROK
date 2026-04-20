@@ -4,13 +4,21 @@ export class MistralApiError extends Error {
   status: number;
   code?: string;
   details?: unknown;
+  retryAfterMs?: number | null;
 
-  constructor(message: string, status: number, code?: string, details?: unknown) {
+  constructor(
+    message: string,
+    status: number,
+    code?: string,
+    details?: unknown,
+    retryAfterMs?: number | null
+  ) {
     super(message);
     this.name = 'MistralApiError';
     this.status = status;
     this.code = code;
     this.details = details;
+    this.retryAfterMs = retryAfterMs ?? null;
   }
 }
 
@@ -399,16 +407,19 @@ async function requestJson<T>(options: RequestOptions): Promise<T> {
         payload,
         `Mistral request failed (${response.status}).`
       );
-      const mappedError = new MistralApiError(
-        mapped.message,
-        response.status,
-        mapped.code,
-        mapped.details
-      );
+      const retryAfter = parseRetryAfterMs(response.headers.get('retry-after'));
+      const mappedError = new MistralApiError(mapped.message, response.status, mapped.code, {
+        ...(mapped.details && typeof mapped.details === 'object'
+          ? (mapped.details as Record<string, unknown>)
+          : { details: mapped.details }),
+        path: options.path,
+        method: options.method,
+        attempt,
+        maxRetries,
+      }, retryAfter);
       lastError = mappedError;
 
       if (attempt < maxRetries && isTransientMistralStatus(response.status)) {
-        const retryAfter = parseRetryAfterMs(response.headers.get('retry-after'));
         await sleep(Math.max(retryAfter ?? 0, backoffMs(attempt)));
         continue;
       }
@@ -421,7 +432,14 @@ async function requestJson<T>(options: RequestOptions): Promise<T> {
         const timeoutError = new MistralApiError(
           `Mistral request timed out after ${timeoutMs}ms.`,
           504,
-          'REQUEST_TIMEOUT'
+          'REQUEST_TIMEOUT',
+          {
+            path: options.path,
+            method: options.method,
+            attempt,
+            maxRetries,
+            timeoutMs,
+          }
         );
         lastError = timeoutError;
         if (attempt < maxRetries) {
@@ -444,7 +462,13 @@ async function requestJson<T>(options: RequestOptions): Promise<T> {
         error instanceof Error ? error.message : 'Mistral request failed.',
         502,
         'NETWORK_ERROR',
-        { cause: error }
+        {
+          cause: error,
+          path: options.path,
+          method: options.method,
+          attempt,
+          maxRetries,
+        }
       );
     } finally {
       clearTimeout(timeout);

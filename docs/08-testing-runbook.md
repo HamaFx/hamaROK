@@ -6,8 +6,17 @@
 npm run lint
 npm run typecheck
 npm run test
+npm run test:coverage
 npm run build
 ```
+
+Coverage gate defaults:
+
+- global: `statements 25`, `branches 60`, `functions 40`, `lines 25`
+- stricter module thresholds on error/reliability-critical files:
+  - `src/lib/api-response.ts`
+  - `src/lib/mistral/client.ts`
+  - `src/lib/idempotency.ts`
 
 ## Scope-Based Test Guidance
 
@@ -82,14 +91,18 @@ Files to inspect:
 
 1. Check `/api/healthz` payload first.
 2. Check env contract in `src/lib/env.ts`.
-3. Check route-level errors using Vercel logs.
-4. Check DB migration state:
+3. Check route-level errors using `error.requestId` + `X-Request-Id` from the failing response.
+4. Use error metadata to pick the recovery path:
+- `retryable=true` and `category=rate_limit|timeout|network|upstream|storage` => retry with backoff/jitter and same idempotency key
+- `retryable=false` and `category=validation|precondition|authorization` => fix payload/config/permissions first
+- `source=prisma|blob|mistral|idempotency` => jump directly to that subsystem
+5. Check DB migration state:
 
 ```bash
 npx prisma migrate status
 ```
 
-5. Check AWS OCR queue/worker state if ingestion stalls.
+6. Check AWS OCR queue/worker state if ingestion stalls.
 
 ## Known Safety Expectations
 

@@ -15,7 +15,8 @@ Read order:
 7. `07-deployment-ops.md`
 8. `08-testing-runbook.md`
 9. `09-change-playbook.md`
-10. `ai-context.json` (machine-readable summary)
+10. `10-error-reliability.md`
+11. `ai-context.json` (machine-readable summary)
 
 Repository root companion docs:
 

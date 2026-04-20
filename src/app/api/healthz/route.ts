@@ -24,8 +24,15 @@ function toErrorMessage(error: unknown): string {
   return 'Unknown error';
 }
 
+function buildRequestId(): string {
+  const globalCrypto = globalThis.crypto as Crypto | undefined;
+  if (globalCrypto?.randomUUID) return globalCrypto.randomUUID();
+  return `req-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 export async function GET() {
   const startedAt = Date.now();
+  const requestId = buildRequestId();
   const checks: ReadinessCheck[] = [];
   let ready = true;
 
@@ -184,6 +191,7 @@ export async function GET() {
   return NextResponse.json(
     {
       status: ready ? 'ok' : 'degraded',
+      requestId,
       now: new Date().toISOString(),
       durationMs: Date.now() - startedAt,
       checks,
@@ -229,6 +237,11 @@ export async function GET() {
       },
       warnings,
     },
-    { status: ready ? 200 : 503 }
+    {
+      status: ready ? 200 : 503,
+      headers: {
+        'X-Request-Id': requestId,
+      },
+    }
   );
 }

@@ -716,10 +716,10 @@ export default function RankingReviewPage() {
               setStatusFilter(value === ALL_STATUS ? ALL_STATUSES_FILTER : value)
             }
           >
-            <SelectTrigger className="w-[196px] min-w-[196px] rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1">
+            <SelectTrigger className="w-[196px] min-w-[196px] rounded-xl border-border bg-background text-foreground shadow-sm">
               <SelectValue placeholder="Status Filter" />
             </SelectTrigger>
-            <SelectContent className="border-[color:var(--stroke-soft)] bg-popover backdrop-blur-xl shadow-2xl text-tier-1">
+            <SelectContent className="border-border bg-popover backdrop-blur-xl shadow-2xl shadow-black/80 text-foreground">
               <SelectItem value={DEFAULT_STATUS_FILTER}>Queue (Unresolved + Linked)</SelectItem>
               <SelectItem value="UNRESOLVED">Unresolved</SelectItem>
               <SelectItem value="AUTO_LINKED,MANUAL_LINKED">Linked (Auto + Manual)</SelectItem>
@@ -732,10 +732,10 @@ export default function RankingReviewPage() {
             value={rankingTypeFilter || ALL_RANKING_TYPE}
             onValueChange={(value) => setRankingTypeFilter(value === ALL_RANKING_TYPE ? '' : value)}
           >
-            <SelectTrigger className="w-[196px] min-w-[196px] rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1">
+            <SelectTrigger className="w-[196px] min-w-[196px] rounded-xl border-border bg-background text-foreground shadow-sm">
               <SelectValue placeholder="Ranking Type" />
             </SelectTrigger>
-            <SelectContent className="border-[color:var(--stroke-soft)] bg-popover backdrop-blur-xl shadow-2xl text-tier-1">
+            <SelectContent className="border-border bg-popover backdrop-blur-xl shadow-2xl shadow-black/80 text-foreground">
               <SelectItem value={ALL_RANKING_TYPE}>All Ranking Types</SelectItem>
               {RANKING_TYPE_FILTERS.filter((option) => option.value).map((option) => (
                 <SelectItem key={option.value} value={option.value}>
@@ -749,8 +749,8 @@ export default function RankingReviewPage() {
             variant={showUnresolvedOnly ? 'default' : 'outline'}
             className={
               showUnresolvedOnly
-                ? 'rounded-full bg-[color:var(--primary)] text-primary-foreground hover:opacity-90 shadow-lg hover:opacity-95'
-                : 'rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1'
+                ? 'rounded-full bg-primary text-primary-foreground hover:opacity-90 shadow-lg shadow-black/50 hover:opacity-95'
+                : 'rounded-xl border-border bg-background text-foreground shadow-sm hover:bg-muted/10 hover:text-foreground'
             }
             onClick={() => setShowUnresolvedOnly((prev) => !prev)}
           >
@@ -758,7 +758,7 @@ export default function RankingReviewPage() {
           </Button>
 
           <Button
-            className="rounded-full bg-[color:var(--primary)] text-primary-foreground hover:opacity-90 shadow-lg hover:opacity-95"
+            className="rounded-full bg-primary text-primary-foreground hover:opacity-90 shadow-lg shadow-black/50 hover:opacity-95"
             onClick={() => void loadRows()}
             disabled={loading}
           >
@@ -767,7 +767,7 @@ export default function RankingReviewPage() {
 
           <Button
             variant="outline"
-            className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1"
+            className="rounded-xl border-border bg-background text-foreground shadow-sm hover:bg-muted/10 hover:text-foreground"
             onClick={() => void runBulkAction('accept_linked')}
             disabled={loading || Boolean(busyRow) || !hasVisibleLinkTargets}
           >
@@ -791,10 +791,10 @@ export default function RankingReviewPage() {
               value={metricFilter || ALL_METRIC}
               onValueChange={(value) => setMetricFilter(value === ALL_METRIC ? '' : value)}
             >
-              <SelectTrigger className="w-full rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1">
+              <SelectTrigger className="w-full rounded-xl border-border bg-background text-foreground shadow-sm">
                 <SelectValue placeholder="Metric Key" />
               </SelectTrigger>
-              <SelectContent className="border-[color:var(--stroke-soft)] bg-popover backdrop-blur-xl shadow-2xl text-tier-1">
+              <SelectContent className="border-border bg-popover backdrop-blur-xl shadow-2xl shadow-black/80 text-foreground">
                 <SelectItem value={ALL_METRIC}>All Metrics</SelectItem>
                 {METRIC_FILTERS.filter((option) => option.value).map((option) => (
                   <SelectItem key={option.value} value={option.value}>
@@ -836,7 +836,7 @@ export default function RankingReviewPage() {
             })}
           </div>
           {summaryData?.total != null ? (
-            <p className="mt-3 text-sm text-tier-3">
+            <p className="mt-3 text-sm text-muted-foreground opacity-80">
               Total rows in selected status set: {summaryData.total.toLocaleString()}.
             </p>
           ) : null}
@@ -858,15 +858,15 @@ export default function RankingReviewPage() {
                 return (
                 <article
                   key={group.runId}
-                  className="rounded-[20px] surface-2 p-3 min-[390px]:rounded-[22px] min-[390px]:p-3.5 sm:rounded-[24px] sm:p-4"
+                  className="rounded-[20px] bg-black border border-white/10 shadow-2xl shadow-black/80 backdrop-blur-xl p-3 min-[390px]:rounded-[22px] min-[390px]:p-3.5 sm:rounded-[24px] sm:p-4"
                 >
                   <header className="space-y-3">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <h3 className="clamp-title-mobile font-heading text-base text-tier-1 min-[390px]:text-lg sm:text-xl">
+                        <h3 className="clamp-title-mobile font-heading text-base text-foreground min-[390px]:text-lg sm:text-xl">
                           {group.headerText || 'Ranking Screenshot'}
                         </h3>
-                        <p className="mt-1 text-xs text-tier-3">
+                        <p className="mt-1 text-xs text-muted-foreground opacity-80">
                           Run #{group.runId.slice(-8)} • {new Date(group.createdAt).toLocaleString()}
                         </p>
                       </div>
@@ -956,7 +956,7 @@ export default function RankingReviewPage() {
 
 
                   {group.artifact?.url ? (
-                    <div className="mt-3 overflow-hidden rounded-2xl border border-[color:var(--stroke-soft)] bg-black/20">
+                    <div className="mt-3 overflow-hidden rounded-2xl border border-border/40 bg-white/5 border border-white/5">
                       <Image
                         src={group.artifact.url}
                         alt={`Ranking screenshot ${group.runId}`}
@@ -988,21 +988,21 @@ export default function RankingReviewPage() {
                               
                               {/* Left: Identity & Rank Info */}
                               <div className="flex items-center gap-4 min-w-0 flex-1">
-                                <div className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/5 bg-black/40 font-mono text-[15px] font-bold text-tier-2 shadow-inner">
+                                <div className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/5 bg-white/[0.02] font-mono text-[15px] font-bold text-muted-foreground font-medium shadow-inner">
                                   <span className="opacity-40 text-xs absolute top-1 left-1.5 font-sans">#</span>
                                   {row.sourceRank ?? '-'}
                                 </div>
                                 <div className="min-w-0 flex-1">
                                   <div className="flex items-center gap-2 flex-wrap">
-                                    <h4 className="font-heading font-bold text-tier-1 text-[15px] tracking-tight truncate">{row.governorNameRaw}</h4>
+                                    <h4 className="font-heading font-bold text-foreground text-[15px] tracking-tight truncate">{row.governorNameRaw}</h4>
                                     {row.allianceRaw && (
                                       <span className="inline-flex items-center rounded-md bg-cyan-400/10 px-1.5 py-0.5 text-xs font-bold uppercase tracking-wider text-cyan-300 border border-cyan-400/20">
                                         {row.allianceRaw}
                                       </span>
                                     )}
                                   </div>
-                                  <div className="flex items-center gap-2 mt-1 text-[11px] font-medium text-tier-3">
-                                    <span className="font-mono text-tier-2 bg-white/5 px-1.5 py-0.5 rounded-md">{row.metricValue}</span>
+                                  <div className="flex items-center gap-2 mt-1 text-[11px] font-medium text-muted-foreground opacity-80">
+                                    <span className="font-mono text-muted-foreground font-medium bg-white/5 px-1.5 py-0.5 rounded-md">{row.metricValue}</span>
                                     <span className="opacity-60">{row.run.metricKey === "kill_points_growth" ? "KP Growth" : "Score"}</span>
                                     <span>•</span>
                                     <span className={cn(row.confidence > 90 ? "text-emerald-400/80" : "text-amber-400/80")}>
@@ -1019,7 +1019,7 @@ export default function RankingReviewPage() {
                                     key={`${row.id}:${suggestion.governorId}`}
                                     size="sm"
                                     variant="outline"
-                                    className="h-7 text-xs uppercase tracking-wider font-bold rounded-lg border-white/[0.08] bg-black/20 text-tier-2 hover:bg-white/5 hover:text-tier-1 transition-all"
+                                    className="h-7 text-xs uppercase tracking-wider font-bold rounded-lg border-white/[0.08] bg-white/5 border border-white/5 text-muted-foreground font-medium hover:bg-white/5 hover:text-foreground transition-all"
                                     disabled={!!busyRow}
                                     onClick={() => void runAction(row, "LINK_TO_GOVERNOR", { governorGameId: suggestion.governorGameId })}
                                   >
@@ -1047,7 +1047,7 @@ export default function RankingReviewPage() {
                                   <Button
                                     size="sm"
                                     variant="outline"
-                                    className="h-8 px-2.5 rounded-lg border-white/[0.08] bg-white/[0.02] text-tier-2 hover:text-tier-1"
+                                    className="h-8 px-2.5 rounded-lg border-white/[0.08] bg-white/[0.02] text-muted-foreground font-medium hover:text-foreground"
                                     onClick={() => setExpandedRowId(prev => prev === row.id ? null : row.id)}
                                   >
                                     {isExpanded ? <X className="size-3.5" /> : <Pencil className="size-3.5" />}
@@ -1068,7 +1068,7 @@ export default function RankingReviewPage() {
 
                           {/* Expanded Editor (Universal) */}
                           {isExpanded && (
-                            <div className="rounded-2xl border border-white/[0.08] bg-black/40 p-4 mx-2 md:mx-6 mb-2 shadow-2xl">
+                            <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-4 mx-2 md:mx-6 mb-2 shadow-2xl shadow-black/80">
                                <RankingReviewItemCard
                                   row={row}
                                   draft={drafts[row.id] || defaultRankingReviewDraft}
