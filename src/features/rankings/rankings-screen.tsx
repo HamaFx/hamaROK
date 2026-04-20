@@ -72,6 +72,7 @@ interface CanonicalRow {
     id: string;
     governorId: string;
     name: string;
+    alliance: string;
   } | null;
   allianceRaw?: string | null;
   titleRaw?: string | null;
@@ -467,10 +468,11 @@ export default function RankingsScreen() {
       const displayName = split.governorNameRaw || row.governorNameRaw || 'Unknown';
       const metricLabel = formatTokenLabel(row.metricKey);
       const boardLabel = `${formatTokenLabel(row.rankingType)} • ${metricLabel}`;
+      const allianceLabel = split.allianceRaw || row.allianceRaw || row.governor?.alliance || null;
       return {
         ...row,
         displayName,
-        allianceLabel: split.allianceRaw || row.allianceRaw || null,
+        allianceLabel,
         allianceTag: split.allianceTag,
         metricLabel,
         boardLabel,

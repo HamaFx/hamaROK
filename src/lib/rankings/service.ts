@@ -2087,6 +2087,11 @@ export async function listCanonicalRankings(args: ListCanonicalRankingsInput) {
           titleRaw: true,
         },
       },
+      governor: {
+        select: {
+          alliance: true,
+        },
+      },
     },
     take: 5000,
   });
