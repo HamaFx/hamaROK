@@ -1,0 +1,62 @@
+RokTracker EC2 Connection
+=========================
+Date: 2026-04-17 (UTC)
+
+Instance:
+- ID: i-09508dfad3fc1719c
+- Region: us-east-1
+- Type: m8i.xlarge
+- Public IP: 3.238.219.156
+- Public DNS: ec2-3-238-219-156.compute-1.amazonaws.com
+
+RDP:
+- Host: 3.238.219.156
+- Port: 3389
+- Username: Administrator
+- Password: uIl0jtl6D7*-X(k6hoQnPqKRN&J-Km6x
+
+Installed paths:
+- RokTracker repo: C:\RokTracker\repo
+- Python venv: C:\RokTracker\venv
+- BlueStacks: C:\Program Files\BlueStacks_nxt\HD-Player.exe
+- Setup log: C:\RokTracker\bootstrap-repair.log
+
+Configured:
+- BlueStacks ADB: enabled
+- Resolution: 1600x900
+- DPI: 450
+- CPUs: 4
+- RAM: 8192 MB
+- RokTracker config emulator: bluestacks
+- RokTracker BlueStacks instance name: Nougat32
+
+Quick start (inside RDP session):
+1) Run PowerShell as Administrator
+2) Optional ADB check:
+   powershell -ExecutionPolicy Bypass -File C:\RokTracker\Check-ADB.ps1
+3) Start BlueStacks and complete Google Play login
+4) Install and open Rise of Kingdoms, set language to English, go to top of ranking page
+5) Run scanner:
+   C:\RokTracker\venv\Scripts\python.exe C:\RokTracker\repo\kingdom_scanner_ui.py
+
+Helper scripts:
+- C:\RokTracker\Check-ADB.ps1
+- C:\RokTracker\Start-RokTracker-Kingdom.ps1
+
+Security hardening:
+- RDP inbound is now locked to: 18.234.37.195/32
+
+Tailscale setup:
+- Installed and service running
+- Login URL (one-time): https://login.tailscale.com/a/12bf088c014a1c
+- After login, connect RDP using the host's Tailscale IP (100.x.y.z)
+- Tailscale IPv4: 100.93.252.66
+- Tailscale DNS: ec2amaz-psij50j.tailcfa0d6.ts.net
+
+RDP alternate credentials:
+- Username: hama
+- Password: 8080
+
+Emergency access change:
+- RDP inbound temporarily opened to 0.0.0.0/0 at 2026-04-17T23:45:10Z
+

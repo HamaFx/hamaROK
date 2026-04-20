@@ -987,24 +987,31 @@ export default function RankingReviewPage() {
                             <div className="flex flex-col md:flex-row gap-3 items-start md:items-center justify-between p-3.5 sm:p-4">
                               
                               {/* Left: Identity & Rank Info */}
-                              <div className="flex items-center gap-4 min-w-0 flex-1">
-                                <div className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/5 bg-black/40 font-mono text-[15px] font-bold text-tier-2 shadow-inner">
+                              <div className="flex items-center gap-3.5 min-w-0 flex-1">
+                                <div className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/5 bg-black/40 font-heading text-lg font-bold text-tier-1 shadow-inner">
                                   <span className="opacity-40 text-xs absolute top-1 left-1.5 font-sans">#</span>
                                   {row.sourceRank ?? '-'}
                                 </div>
-                                <div className="min-w-0 flex-1">
+                                <div className="relative flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white/5 shadow-[inset_0_1px_rgba(255,255,255,0.1)] border border-white/10">
+                                  <img 
+                                    src={`https://api.dicebear.com/9.x/adventurer/svg?seed=${row.governorNameRaw}&backgroundColor=transparent`} 
+                                    alt="avatar" 
+                                    className="h-full w-full object-cover scale-[1.15] translate-y-[5%]" 
+                                  />
+                                </div>
+                                <div className="min-w-0 flex-1 flex flex-col justify-center">
                                   <div className="flex items-center gap-2 flex-wrap">
-                                    <h4 className="font-heading font-bold text-tier-1 text-[15px] tracking-tight truncate">{row.governorNameRaw}</h4>
+                                    <h4 className="font-heading font-bold text-tier-1 text-[16px] tracking-tight truncate drop-shadow-sm">{row.governorNameRaw}</h4>
                                     {row.allianceRaw && (
-                                      <span className="inline-flex items-center rounded-md bg-cyan-400/10 px-1.5 py-0.5 text-xs font-bold uppercase tracking-wider text-cyan-300 border border-cyan-400/20">
+                                      <span className="inline-flex items-center rounded-md bg-cyan-400/10 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-cyan-300 border border-cyan-400/20">
                                         {row.allianceRaw}
                                       </span>
                                     )}
                                   </div>
-                                  <div className="flex items-center gap-2 mt-1 text-[11px] font-medium text-tier-3">
-                                    <span className="font-mono text-tier-2 bg-white/5 px-1.5 py-0.5 rounded-md">{row.metricValue}</span>
+                                  <div className="flex items-center gap-2 mt-1 text-[12px] font-medium text-tier-3">
+                                    <span className="font-mono text-tier-2 bg-white/5 px-1.5 py-0.5 rounded-md border border-white/5 shadow-inner">{row.metricValue}</span>
                                     <span className="opacity-60">{row.run.metricKey === "kill_points_growth" ? "KP Growth" : "Score"}</span>
-                                    <span>•</span>
+                                    <span className="opacity-40">•</span>
                                     <span className={cn(row.confidence > 90 ? "text-emerald-400/80" : "text-amber-400/80")}>
                                       {row.confidence.toFixed(0)}% Match
                                     </span>

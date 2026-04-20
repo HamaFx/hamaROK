@@ -583,21 +583,25 @@ export default function PlayersScreen() {
           }
 
           return (
-            <div className="flex items-center gap-3">
-              <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-[8px] sm:rounded-[10px] border-[1.5px] border-[color:var(--rank-gold)] bg-[#1f2937] shadow-[0_0_12px_rgba(216,184,120,0.15)] ring-1 ring-black/50">
-                {/* Generic styling for commander portrait */}
-                <img src={`https://api.dicebear.com/9.x/adventurer/svg?seed=${row.governorId}&backgroundColor=transparent`} alt="avatar" className="size-full object-cover scale-[1.15] translate-y-[5%]" />
+            <div className="flex items-center gap-3.5">
+              <div className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-[10px] sm:rounded-xl border-[1.5px] border-[color:var(--rank-gold)] bg-white/5 shadow-inner relative">
+                <img 
+                  src={`https://api.dicebear.com/9.x/adventurer/svg?seed=${row.governorId}&backgroundColor=transparent`} 
+                  alt="avatar" 
+                  className="h-full w-full object-cover scale-[1.15] translate-y-[5%]" 
+                />
+                <div className="absolute inset-0 shadow-[inset_0_0_12px_rgba(0,0,0,0.4)] pointer-events-none rounded-[10px] sm:rounded-xl" />
               </div>
               <div className="min-w-0 flex flex-col justify-center">
-                <p className="truncate text-[15px] font-bold text-tier-1 tracking-tight drop-shadow-sm">{row.name}</p>
-                <p className="text-[11px] text-tier-3 font-mono opacity-80 mt-0.5">{row.governorId}</p>
+                <p className="truncate text-[16px] font-bold text-tier-1 tracking-tight drop-shadow-sm">{row.name}</p>
+                <p className="text-[12px] text-tier-3 font-mono opacity-80 mt-0.5">{row.governorId}</p>
               </div>
               <button
                 type="button"
                 onClick={() => setEditingCell({ rowId: row.id, field: 'name', value: row.name })}
                 className="shrink-0 rounded-md p-1 opacity-30 transition-opacity md:opacity-0 group-hover/row:opacity-100 hover:bg-white/5 text-tier-3 ml-2"
               >
-                <Pencil className="size-3" />
+                <Pencil className="size-3.5" />
               </button>
             </div>
           );
