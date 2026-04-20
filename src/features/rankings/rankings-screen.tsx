@@ -801,10 +801,10 @@ export default function RankingsScreen() {
                   >
                     <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex items-center gap-4 sm:w-1/2">
-                      <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border font-heading text-lg font-bold ${rankColor} ${rankGlow}`}>
+                      <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border font-heading text-base font-bold ${rankColor} ${rankGlow}`}>
                         {row.stableRank}
                       </div>
-                      <div className="relative flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white/5 shadow-inner border border-white/10">
+                      <div className="relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white/5 shadow-inner border border-white/10">
                         <img
                           src={`https://api.dicebear.com/9.x/adventurer/svg?seed=${row.linkedGovernorId || row.displayName}&backgroundColor=transparent`}
                           alt="avatar"
@@ -814,37 +814,37 @@ export default function RankingsScreen() {
                       </div>
                       <div className="flex min-w-0 flex-col justify-center">
                         <div className="flex items-center gap-2.5">
-                          <p className="truncate font-heading text-[17px] font-bold text-tier-1 drop-shadow-sm">{row.displayName}</p>
-                          {row.titleRaw && <span className="rounded px-1.5 py-0.5 text-[10px] font-bold tracking-wider text-sky-300 bg-sky-400/10 uppercase border border-sky-400/20">{row.titleRaw}</span>}
+                          <p className="truncate font-heading text-[16px] font-bold text-tier-1 drop-shadow-sm">{row.displayName}</p>
+                          {row.titleRaw && <span className="rounded px-1.5 py-0.5 text-[9px] font-bold tracking-wider text-sky-300 bg-sky-400/10 uppercase border border-sky-400/20">{row.titleRaw}</span>}
                         </div>
-                        <div className="mt-1 flex items-center gap-2 text-[13px] text-tier-3">
+                        <div className="mt-0.5 flex items-center gap-2 text-[12px] text-tier-3">
                           {row.allianceLabel ? <span className="truncate text-tier-2 font-medium">{row.allianceLabel}</span> : <span>No Alliance</span>}
                           <span className="opacity-50">&bull;</span>
-                          <span className="truncate font-mono text-[11px] opacity-80">ID: {row.linkedGovernorId || 'Unknown'}</span>
+                          <span className="truncate font-mono text-[10px] opacity-70">ID: {row.linkedGovernorId || 'Unknown'}</span>
                         </div>
                       </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-4 sm:flex sm:w-[55%] sm:items-center sm:justify-end sm:gap-6">
+                    <div className="grid grid-cols-2 gap-4 sm:flex sm:w-1/2 sm:items-center sm:justify-end sm:gap-6">
                       <div className="flex flex-col items-start sm:items-end">
-                        <p className="font-heading text-lg font-bold text-tier-1">{formatMetric(row.metricValue)}</p>
-                        <p className="text-xs uppercase tracking-wider text-tier-3">{row.metricLabel}</p>
-                      </div>
-                      
-                      <div className="flex flex-col justify-center sm:w-28">
-                        <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/5">
-                          <div className="h-full rounded-full bg-[color:var(--primary)] shadow-[0_0_8px_var(--primary)]" style={{ width: `${Math.max(2, row.metricRatio)}%` }} />
-                        </div>
-                        <p className="mt-1.5 text-right text-xs font-medium tracking-wide text-tier-3">{row.metricRatio.toFixed(1)}% / MAX</p>
+                        <p className="font-heading text-[17px] font-bold text-tier-1">{formatMetric(row.metricValue)}</p>
+                        <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-tier-3">{row.metricLabel}</p>
                       </div>
 
-                      <div className="hidden flex-col items-end sm:flex sm:w-24">
-                        <span className="truncate text-[11px] text-tier-2">{row.boardLabel}</span>
+                      <div className="flex flex-col justify-center sm:w-20">
+                        <div className="h-1 w-full overflow-hidden rounded-full bg-white/5 border border-white/5">
+                          <div className="h-full rounded-full bg-primary shadow-[0_0_8px_var(--primary)]" style={{ width: `${Math.max(2, row.metricRatio)}%` }} />
+                        </div>
+                        <p className="mt-1 text-right text-[10px] font-bold tracking-tighter text-tier-3">{row.metricRatio.toFixed(1)}%</p>
+                      </div>
+
+                      <div className="hidden flex-col items-end sm:flex sm:w-20">
+                        <span className="truncate text-[10px] font-bold uppercase tracking-widest text-tier-3">{row.boardLabel.split('•')[0]}</span>
                         {isConflict ? (
-                          <span className={`mt-1 whitespace-nowrap rounded px-1.5 py-0.5 text-xs font-bold ${row.status === 'UNRESOLVED' ? 'bg-amber-400/10 text-amber-400 border border-amber-400/20' : 'bg-rose-400/10 text-rose-400 border border-rose-400/20'}`}>
+                          <span className={`mt-1 whitespace-nowrap rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${row.status === 'UNRESOLVED' ? 'bg-amber-400/10 text-amber-400 border border-amber-400/20' : 'bg-rose-400/10 text-rose-400 border border-rose-400/20'}`}>
                             {row.status}
                           </span>
                         ) : (
-                          <span className="mt-1 flex items-center gap-1.5 text-xs font-bold tracking-wider text-emerald-400">
+                          <span className="mt-1 flex items-center gap-1.5 text-[10px] font-bold tracking-widest text-emerald-400">
                             <span className="size-1.5 rounded-full bg-emerald-400 shadow-[0_0_4px_#34d399]" />
                             VERIFIED
                           </span>
@@ -853,26 +853,26 @@ export default function RankingsScreen() {
                     </div>
                    </div>
 
-                   {weeklyActivity?.rows && weeklyActivity.rows.find(r => r.governorId === row.linkedGovernorId) && (() => {
-                     const match = weeklyActivity.rows.find(r => r.governorId === row.linkedGovernorId)!;
+                   {(() => {
+                     const match = weeklyActivity?.rows?.find(r => r.governorId === row.linkedGovernorId);
                      return (
-                       <div className="mt-3 flex flex-wrap items-center justify-between gap-y-3 gap-x-6 rounded-xl bg-white/[0.02] p-3.5 border border-white/[0.05] shadow-inner">
-                         <div className="flex flex-col">
-                           <span className="text-[9px] font-bold uppercase tracking-[0.15em] text-tier-3/70 mb-1">Kill Points</span>
-                           <span className="font-heading text-[14px] font-bold text-tier-1 tracking-tight">
-                             {formatMetric(match.currentKillPoints)}
+                       <div className="mt-3 flex items-center justify-between gap-2 rounded-xl bg-white/[0.02] p-3 border border-white/[0.05] shadow-inner">
+                         <div className="flex flex-1 flex-col items-center border-r border-white/5 px-2">
+                           <span className="text-[9px] font-bold uppercase tracking-widest text-tier-3/60 mb-1">Total KP</span>
+                           <span className="font-heading text-[13px] font-bold text-tier-2">
+                             {match ? formatMetric(match.currentKillPoints) : '—'}
                            </span>
                          </div>
-                         <div className="flex flex-col">
-                           <span className="text-[9px] font-bold uppercase tracking-[0.15em] text-tier-3/70 mb-1">Forts</span>
-                           <span className="font-heading text-[14px] font-bold text-tier-2">
-                             {formatMetric(match.fortDestroying)}
+                         <div className="flex flex-1 flex-col items-center border-r border-white/5 px-2">
+                           <span className="text-[9px] font-bold uppercase tracking-widest text-tier-3/60 mb-1">Weekly Forts</span>
+                           <span className="font-heading text-[13px] font-bold text-tier-2">
+                             {match ? formatMetric(match.fortDestroying) : '—'}
                            </span>
                          </div>
-                         <div className="flex flex-col">
-                           <span className="text-[9px] font-bold uppercase tracking-[0.15em] text-tier-3/70 mb-1">Tech Contrib.</span>
-                           <span className="font-heading text-[14px] font-bold text-cyan-300 drop-shadow-[0_0_8px_rgba(34,211,238,0.2)]">
-                             {formatMetric(match.contributionPoints)}
+                         <div className="flex flex-1 flex-col items-center px-2">
+                           <span className="text-[9px] font-bold uppercase tracking-widest text-tier-3/60 mb-1">Tech Points</span>
+                           <span className="font-heading text-[13px] font-bold text-cyan-400/80">
+                             {match ? formatMetric(match.contributionPoints) : '—'}
                            </span>
                          </div>
                        </div>
