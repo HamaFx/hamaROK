@@ -66,21 +66,41 @@ async function storeAssistantImage(args: {
   const base64 = bytes.toString('base64');
 
   let url = `data:${mimeType};base64,${base64}`;
+  let storageMode: 'inline_data_url' | 'vercel_blob' = 'inline_data_url';
+  let blobUploadError: string | null = null;
 
   if (process.env.BLOB_READ_WRITE_TOKEN) {
     const safeName = String(args.file.name || 'attachment')
       .replace(/[^A-Za-z0-9._-]+/g, '_')
       .slice(0, 100);
 
-    const blob = await put(
-      `assistant/${args.workspaceId}/${Date.now()}-${safeName || 'image'}`,
-      bytes,
-      {
-        access: 'public',
-        contentType: mimeType,
-      }
-    );
-    url = blob.url;
+    try {
+      const blob = await put(
+        `assistant/${args.workspaceId}/${Date.now()}-${safeName || 'image'}`,
+        bytes,
+        {
+          access: 'public',
+          contentType: mimeType,
+        }
+      );
+      url = blob.url;
+      storageMode = 'vercel_blob';
+    } catch (error) {
+      blobUploadError =
+        error instanceof Error
+          ? error.message.slice(0, 300)
+          : 'blob_upload_failed';
+      console.warn(
+        '[assistant] blob upload failed, falling back to inline data URL attachment',
+        {
+          workspaceId: args.workspaceId,
+          conversationId: args.conversationId,
+          fileName: args.file.name,
+          mimeType,
+          error: blobUploadError,
+        }
+      );
+    }
   }
 
   const artifact = await prisma.artifact.create({
@@ -95,6 +115,8 @@ async function storeAssistantImage(args: {
         uploadedByLinkId: args.accessLinkId,
         fileName: args.file.name,
         mimeType,
+        storageMode,
+        blobUploadError,
       } as Prisma.InputJsonValue,
     },
     select: {

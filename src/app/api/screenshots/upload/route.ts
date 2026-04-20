@@ -36,11 +36,20 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('POST /api/screenshots/upload error:', error);
-    const message =
+    const rawMessage =
       error instanceof Error ? error.message : 'Failed to upload screenshot';
+    const quotaExceeded = /quota|limit exceeded|storage exceeds/i.test(rawMessage);
+    const message = quotaExceeded
+      ? 'Storage exceeds free quota (1GB). Delete older screenshots and retry.'
+      : rawMessage;
     return NextResponse.json(
-      { error: { code: 'INTERNAL_ERROR', message } },
-      { status: 500 }
+      {
+        error: {
+          code: quotaExceeded ? 'STORAGE_QUOTA_EXCEEDED' : 'INTERNAL_ERROR',
+          message,
+        },
+      },
+      { status: quotaExceeded ? 507 : 500 }
     );
   }
 }
