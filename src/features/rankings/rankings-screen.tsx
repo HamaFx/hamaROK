@@ -40,7 +40,6 @@ import {
   formatMetric,
   formatRelativeDate,
   parseBigIntSafe,
-  toSafeBigInt,
 } from '@/features/shared/formatters';
 import type { CompactControlDrawerState } from '@/features/shared/types';
 
@@ -793,7 +792,6 @@ export default function RankingsScreen() {
                   rankGlow = 'shadow-[0_0_12px_rgba(253,186,116,0.2)]';
                 }
 
-                const initials = row.displayName.substring(0, 2).toUpperCase();
                 const isConflict = row.status !== 'ACTIVE';
 
                 return (
@@ -801,12 +799,12 @@ export default function RankingsScreen() {
                     key={row.id}
                     className={`group flex flex-col gap-3 rounded-[24px] glass-panel p-4 transition-all duration-300 hover:border-white/20 hover:shadow-[0_8px_32px_rgba(0,229,255,0.1)] hover:-translate-y-0.5 ${isConflict ? 'border-none ring-1 ring-amber-400/20 bg-amber-400/10' : ''}`}
                   >
-                   <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex items-center gap-4 sm:w-1/2">
-                      <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border font-heading text-xl font-bold ${rankColor} ${rankGlow}`}>
+                      <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border font-heading text-lg font-bold ${rankColor} ${rankGlow}`}>
                         {row.stableRank}
                       </div>
-                      <div className="relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white/5 shadow-inner border border-white/10">
+                      <div className="relative flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white/5 shadow-inner border border-white/10">
                         <img
                           src={`https://api.dicebear.com/9.x/adventurer/svg?seed=${row.linkedGovernorId || row.displayName}&backgroundColor=transparent`}
                           alt="avatar"
@@ -857,26 +855,24 @@ export default function RankingsScreen() {
 
                    {weeklyActivity?.rows && weeklyActivity.rows.find(r => r.governorId === row.linkedGovernorId) && (() => {
                      const match = weeklyActivity.rows.find(r => r.governorId === row.linkedGovernorId)!;
-                     const kpGrowth = toSafeBigInt(match.killPointsGrowth);
-                     const pwrGrowth = toSafeBigInt(match.powerGrowth);
                      return (
-                       <div className="mt-2 grid grid-cols-3 gap-2 rounded-xl bg-white/5 p-3 sm:flex sm:justify-end sm:gap-6">
+                       <div className="mt-3 flex flex-wrap items-center justify-between gap-y-3 gap-x-6 rounded-xl bg-white/[0.02] p-3.5 border border-white/[0.05] shadow-inner">
                          <div className="flex flex-col">
-                           <span className="text-xs font-medium uppercase tracking-wider text-tier-3">Weekly KP</span>
-                           <span className={`font-heading text-sm font-bold ${kpGrowth > BigInt(0) ? 'text-emerald-400' : 'text-tier-2'}`}>
-                             {match.killPointsGrowth ? '+' + formatMetric(match.killPointsGrowth) : 'N/A'}
+                           <span className="text-[9px] font-bold uppercase tracking-[0.15em] text-tier-3/70 mb-1">Kill Points</span>
+                           <span className="font-heading text-[14px] font-bold text-tier-1 tracking-tight">
+                             {formatMetric(match.currentKillPoints)}
                            </span>
                          </div>
                          <div className="flex flex-col">
-                           <span className="text-xs font-medium uppercase tracking-wider text-tier-3">Forts</span>
-                           <span className="font-heading text-sm font-bold text-tier-2">
+                           <span className="text-[9px] font-bold uppercase tracking-[0.15em] text-tier-3/70 mb-1">Forts</span>
+                           <span className="font-heading text-[14px] font-bold text-tier-2">
                              {formatMetric(match.fortDestroying)}
                            </span>
                          </div>
                          <div className="flex flex-col">
-                           <span className="text-xs font-medium uppercase tracking-wider text-tier-3">Power Growth</span>
-                           <span className={`font-heading text-sm font-bold ${pwrGrowth > BigInt(0) ? 'text-emerald-400' : pwrGrowth < BigInt(0) ? 'text-rose-400' : 'text-tier-2'}`}>
-                             {match.powerGrowth ? (pwrGrowth > BigInt(0) ? '+' : '') + formatMetric(match.powerGrowth) : 'N/A'}
+                           <span className="text-[9px] font-bold uppercase tracking-[0.15em] text-tier-3/70 mb-1">Tech Contrib.</span>
+                           <span className="font-heading text-[14px] font-bold text-cyan-300 drop-shadow-[0_0_8px_rgba(34,211,238,0.2)]">
+                             {formatMetric(match.contributionPoints)}
                            </span>
                          </div>
                        </div>
