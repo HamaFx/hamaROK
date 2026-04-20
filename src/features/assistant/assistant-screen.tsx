@@ -212,7 +212,7 @@ function MessageBubble({
     <article className={cn("group relative flex flex-col gap-2 w-full", isUser ? "items-end" : "items-start")}>
       <div
         className={cn(
-          'flex w-full max-w-[95%] sm:max-w-[85%] flex-col gap-2',
+          'flex w-full max-w-[85%] flex-col gap-2',
           isUser ? 'items-end' : 'items-start'
         )}
       >
@@ -991,11 +991,11 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
                                   <span className="text-xs font-bold uppercase text-amber-600 dark:text-amber-400 tracking-[0.06em]">Action Required</span>
                                </div>
                                <p className="text-sm font-bold text-foreground mb-5 leading-relaxed">{pendingPlan.summary}</p>
-                               <div className="flex flex-col sm:flex-row gap-3">
+                               <div className="flex gap-3">
                                   <Button size="sm" className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-xl shadow-lg h-9" onClick={() => void controller.confirmPlan(pendingPlan.id)}>
                                      Confirm Plan
                                   </Button>
-                                  <Button size="sm" variant="outline" className="flex-1 sm:flex-none text-rose-500 border-rose-500/20 rounded-xl h-9 hover:bg-rose-500/5 backdrop-blur-sm" onClick={() => void controller.denyPlan(pendingPlan.id)}>
+                                  <Button size="sm" variant="outline" className="text-rose-500 border-rose-500/20 rounded-xl h-9 hover:bg-rose-500/5 backdrop-blur-sm" onClick={() => void controller.denyPlan(pendingPlan.id)}>
                                      Deny
                                   </Button>
                                </div>
@@ -1135,16 +1135,16 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
              </div>
 
              {/* Footer Prompt Input (Fixed Bottom) */}
-             <footer className="shrink-0 w-full px-3 sm:px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:pb-8 pt-4 bg-gradient-to-t from-black via-black/95 to-transparent flex flex-col items-center z-10">
+             <footer className="shrink-0 w-full px-4 pb-8 pt-4 bg-gradient-to-t from-black via-black/95 to-transparent flex flex-col items-center z-10">
                 <div className="w-full max-w-2xl">
                    
                    {/* Suggestion Pills */}
                    {!controller.history?.messages?.length && (
-                      <div className="flex flex-wrap gap-2 mb-4 sm:mb-6 justify-center animate-in fade-in slide-in-from-bottom-2 duration-1000">
+                      <div className="flex flex-wrap gap-2 mb-6 justify-center animate-in fade-in slide-in-from-bottom-2 duration-1000">
                          {['Sync stats', 'Detect outliers', 'Create weekly event', 'Compare alliances'].map(s => (
                             <button 
                                key={s} 
-                               className="px-3 py-1.5 sm:px-4 sm:py-2 rounded-full border border-white/10 bg-white/5 backdrop-blur-md text-xs sm:text-xs font-bold uppercase tracking-wider text-muted-foreground hover:bg-primary/20 hover:text-primary hover:border-primary/40 transition-all shadow-md active:scale-95"
+                               className="px-4 py-2 rounded-full border border-white/10 bg-white/5 backdrop-blur-md text-[11px] font-bold uppercase tracking-wider text-muted-foreground hover:bg-primary/20 hover:text-primary hover:border-primary/40 transition-all shadow-md active:scale-95"
                                onClick={() => controller.setMessageText(s)}
                             >
                                {s}
@@ -1154,7 +1154,7 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
                    )}
 
                    {/* Template Input Box */}
-                   <div className="relative flex w-full flex-col overflow-hidden rounded-[1.25rem] sm:rounded-[1.5rem] border border-white/10 bg-white/5 focus-within:ring-2 focus-within:ring-primary/30 focus-within:border-primary/50 focus-within:bg-white/[0.07] transition-all duration-300 shadow-2xl backdrop-blur-xl">
+                   <div className="relative flex w-full flex-col overflow-hidden rounded-[1.5rem] border border-white/10 bg-white/5 focus-within:ring-2 focus-within:ring-primary/30 focus-within:border-primary/50 focus-within:bg-white/[0.07] transition-all duration-300 shadow-2xl backdrop-blur-xl">
                       
                       {/* Attachments Section */}
                       {(controller.messageFiles.length > 0 || controller.artifactRefs.length > 0) && (
@@ -1183,7 +1183,7 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
                         value={controller.messageText}
                         onChange={(event) => controller.setMessageText(event.target.value)}
                         rows={1}
-                        className="min-h-[56px] sm:min-h-[70px] w-full resize-none border-0 bg-transparent p-3 sm:p-5 pb-2 text-[13px] sm:text-sm focus-visible:ring-0 shadow-none text-foreground placeholder:text-muted-foreground/40 font-medium scrollbar-hide"
+                        className="min-h-[70px] w-full resize-none border-0 bg-transparent p-5 pb-2 text-sm focus-visible:ring-0 shadow-none text-foreground placeholder:text-muted-foreground/40 font-medium scrollbar-hide"
                         onKeyDown={(event) => {
                           if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
                             event.preventDefault();
@@ -1199,27 +1199,27 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
                         }}
                       />
 
-                      <div className="flex items-center justify-between p-2 sm:p-3 pt-0">
-                        <div className="flex items-center gap-1 sm:gap-1.5 pl-0 sm:pl-1">
+                      <div className="flex items-center justify-between p-3 pt-0">
+                        <div className="flex items-center gap-1.5 pl-1">
                           <Button
                             size="icon"
                             variant="ghost"
-                            className="size-8 sm:size-9 rounded-xl text-muted-foreground hover:bg-white/10 hover:text-foreground transition-colors"
+                            className="size-9 rounded-xl text-muted-foreground hover:bg-white/10 hover:text-foreground transition-colors"
                             onClick={() => fileInputRef.current?.click()}
                           >
-                            <Plus className="size-4 sm:size-5" />
+                            <Plus className="size-5" />
                           </Button>
                           <Button
                             size="icon"
                             variant="ghost"
-                            className="size-8 sm:size-9 rounded-xl text-muted-foreground hover:bg-white/10 hover:text-foreground transition-colors"
+                            className="size-9 rounded-xl text-muted-foreground hover:bg-white/10 hover:text-foreground transition-colors"
                             onClick={() => setShowMobileContext(true)}
                           >
-                            <PanelRight className="size-4 sm:size-5" />
+                            <PanelRight className="size-5" />
                           </Button>
                         </div>
 
-                        <div className="flex items-center gap-2 sm:gap-3">
+                        <div className="flex items-center gap-3">
                            <select
                               className="hidden md:block h-8 rounded-lg border border-white/10 bg-black/40 px-2 text-xs font-bold uppercase tracking-wider text-muted-foreground"
                               value={controller.composerAnalyzerMode}
@@ -1237,17 +1237,15 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
                            <span className="text-[9px] font-bold font-mono text-muted-foreground/30 hidden sm:inline-block pr-1 uppercase tracking-widest">Cmd+Enter</span>
                            <Button
                               size="icon"
-                              className="size-8 sm:size-9 rounded-full sm:rounded-2xl bg-primary text-primary-foreground shadow-[0_4px_12px_rgba(0,163,255,0.3)] hover:opacity-90 disabled:opacity-30 active:scale-95 transition-all flex items-center justify-center mr-0.5 sm:mr-1"
+                              className="size-9 rounded-2xl bg-primary text-primary-foreground shadow-[0_4px_16px_rgba(0,163,255,0.4)] hover:opacity-90 disabled:opacity-30 active:scale-95 transition-all flex items-center justify-center mr-1"
                               onClick={() => void controller.submitMessage()}
                               disabled={
                                 (!controller.messageText.trim() &&
                                   controller.messageFiles.length === 0 &&
-                                  controller.artifactRefs.length === 0) ||
-                                controller.sendingMessage ||
-                                controller.loadingHistory
+                                  controller.artifactRefs.length === 0)
                               }
                            >
-                              {controller.sendingMessage ? <RefreshCcw className="size-3.5 sm:size-4 animate-spin" /> : <Send className="size-3.5 sm:size-4" />}
+                              {controller.sendingMessage ? <RefreshCcw className="size-4 animate-spin" /> : <Send className="size-4" />}
                            </Button>
                         </div>
                       </div>
@@ -1303,7 +1301,7 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
         {showMobileConversations && (
            <div className="fixed inset-0 z-[100] flex">
               <div className="fixed inset-0 bg-black/80 backdrop-blur-sm animate-in fade-in duration-300" onClick={() => setShowMobileConversations(false)} />
-              <div className="relative w-[85vw] max-w-[320px] h-full bg-black border-r border-white/10 shadow-2xl flex flex-col p-6 animate-in slide-in-from-left duration-500 ease-out transition-all">
+              <div className="relative w-[300px] h-full bg-black border-r border-white/10 shadow-2xl flex flex-col p-6 animate-in slide-in-from-left duration-500 ease-out transition-all">
                  <div className="flex items-center justify-between mb-8">
                     <h2 className="text-xl font-bold tracking-tight">History</h2>
                     <Button variant="ghost" size="icon" className="size-10 rounded-full hover:bg-white/10" onClick={() => setShowMobileConversations(false)}>

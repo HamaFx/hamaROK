@@ -97,9 +97,9 @@ export function ReviewItemCard({
           : [];
 
         return (
-          <div key={field} className="rounded-2xl border border-border/40 bg-muted/10 p-3">
+          <div key={field} className="rounded-2xl border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] p-3">
             <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
-              <p className="text-xs font-medium  text-muted-foreground opacity-80">
+              <p className="text-xs font-medium  text-tier-3">
                 {REVIEW_FIELD_LABELS[field]}
               </p>
               <StatusPill label={formatFieldConfidence(extracted.confidence)} tone={confidenceTone(extracted.confidence)} />
@@ -107,15 +107,15 @@ export function ReviewItemCard({
             <Input
               value={draft[field]}
               onChange={(event) => onUpdateDraft(field, event.target.value)}
-              className="rounded-xl border-border/40 bg-white/5 border border-white/5 text-foreground placeholder:text-muted-foreground opacity-80"
+              className="rounded-xl border-[color:var(--stroke-soft)] bg-black/20 text-tier-1 placeholder:text-tier-3"
             />
-            <div className="mt-2.5 space-y-1.5 text-xs text-muted-foreground opacity-80">
+            <div className="mt-2.5 space-y-1.5 text-xs text-tier-3">
               <p>
-                OCR: <span className="text-muted-foreground font-medium">{extracted.value || '—'}</span>
+                OCR: <span className="text-tier-2">{extracted.value || '—'}</span>
               </p>
               {extracted.previousValue ? (
                 <p>
-                  Previous: <span className="text-muted-foreground font-medium">{extracted.previousValue}</span>
+                  Previous: <span className="text-tier-2">{extracted.previousValue}</span>
                 </p>
               ) : null}
               {candidatePreview.length > 0 ? <p>Candidates: {candidatePreview.join(' • ')}</p> : null}
@@ -127,14 +127,14 @@ export function ReviewItemCard({
   );
 
   return (
-    <article className="rounded-[20px] bg-black border border-white/10 shadow-2xl shadow-black/80 backdrop-blur-xl p-3 min-[390px]:rounded-[22px] min-[390px]:p-3.5 sm:rounded-[24px] sm:p-4">
+    <article className="rounded-[20px] surface-2 p-3 min-[390px]:rounded-[22px] min-[390px]:p-3.5 sm:rounded-[24px] sm:p-4">
       <header className="space-y-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
-            <h3 className="clamp-title-mobile font-heading text-base text-foreground min-[390px]:text-lg sm:text-xl" title={draft.governorName || item.values.governorName.value || 'Unknown Governor'}>
+            <h3 className="clamp-title-mobile font-heading text-base text-tier-1 min-[390px]:text-lg sm:text-xl" title={draft.governorName || item.values.governorName.value || 'Unknown Governor'}>
               {draft.governorName || item.values.governorName.value || 'Unknown Governor'}
             </h3>
-            <p className="mt-1 text-xs text-muted-foreground opacity-80">
+            <p className="mt-1 text-xs text-tier-3">
               Queue #{item.id.slice(-8)} • {formatWhen(item.createdAt)}
             </p>
           </div>
@@ -170,7 +170,7 @@ export function ReviewItemCard({
       </header>
 
       <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,0.88fr)_minmax(0,1.12fr)]">
-        <section className="space-y-3 rounded-2xl border border-border/40 bg-muted/10 p-3.5">
+        <section className="space-y-3 rounded-2xl border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] p-3.5">
           {item.artifact?.url ? (
             <>
               <div className="flex flex-wrap gap-2">
@@ -178,7 +178,7 @@ export function ReviewItemCard({
                   href={item.artifact.url}
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border/40 bg-white/5 border border-white/5 px-3.5 text-sm text-muted-foreground font-medium hover:bg-white/10"
+                  className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[color:var(--stroke-soft)] bg-black/20 px-3.5 text-sm text-tier-2 hover:bg-black/30"
                 >
                   <ExternalLink className="size-4" />
                   Open Screenshot
@@ -186,7 +186,7 @@ export function ReviewItemCard({
                 {onAskAssistant ? (
                   <Button
                     variant="outline"
-                    className="rounded-xl border-border/40 bg-white/5 border border-white/5 text-foreground hover:bg-muted/10 hover:text-foreground"
+                    className="rounded-full border-[color:var(--stroke-soft)] bg-black/20 text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1"
                     onClick={onAskAssistant}
                   >
                     <Sparkles data-icon="inline-start" />
@@ -194,7 +194,7 @@ export function ReviewItemCard({
                   </Button>
                 ) : null}
               </div>
-              <div className="overflow-hidden rounded-2xl border border-border/40 bg-white/5 border border-white/5">
+              <div className="overflow-hidden rounded-2xl border border-[color:var(--stroke-soft)] bg-black/20">
                 <Image
                   src={item.artifact.url}
                   alt={`OCR screenshot for ${draft.governorName || item.values.governorName.value || 'governor'}`}
@@ -206,7 +206,7 @@ export function ReviewItemCard({
               </div>
             </>
           ) : (
-            <div className="rounded-2xl border border-dashed border-border/40 bg-white/5 border border-white/5 px-4 py-8 text-center text-sm text-muted-foreground opacity-80">
+            <div className="rounded-2xl border border-dashed border-[color:var(--stroke-soft)] bg-black/20 px-4 py-8 text-center text-sm text-tier-3">
               Screenshot artifact is missing for this queue row.
             </div>
           )}
@@ -225,16 +225,16 @@ export function ReviewItemCard({
             </RowDetailDrawer>
           </div>
 
-          <div className="rounded-2xl border border-border/40 bg-muted/10 p-3.5">
+          <div className="rounded-2xl border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] p-3.5">
             <div className="grid gap-2.5 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
               <Select
                 value={rerunProfileId || AUTO_PROFILE}
                 onValueChange={(value) => onRerunProfileChange(value === AUTO_PROFILE ? '' : value)}
               >
-                <SelectTrigger className="w-full rounded-xl border-border/40 bg-white/5 border border-white/5 text-foreground">
+                <SelectTrigger className="w-full rounded-xl border-[color:var(--stroke-soft)] bg-black/20 text-tier-1">
                   <SelectValue placeholder="Auto-select OCR profile" />
                 </SelectTrigger>
-                <SelectContent className="border-border bg-popover backdrop-blur-xl shadow-2xl shadow-black/80 text-foreground">
+                <SelectContent className="border-[color:var(--stroke-soft)] bg-popover backdrop-blur-xl shadow-2xl text-tier-1">
                   <SelectItem value={AUTO_PROFILE}>Auto-select OCR profile</SelectItem>
                   {profiles.map((profile) => (
                     <SelectItem key={profile.id} value={profile.id}>
@@ -246,7 +246,7 @@ export function ReviewItemCard({
 
               <Button
                 variant="outline"
-                className="rounded-xl border-border/40 bg-white/5 border border-white/5 text-foreground hover:bg-muted/10 hover:text-foreground"
+                className="rounded-full border-[color:var(--stroke-soft)] bg-black/20 text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1"
                 onClick={onRerun}
                 disabled={busy || !item.artifact?.url}
               >
@@ -256,7 +256,7 @@ export function ReviewItemCard({
 
               <Button
                 variant="outline"
-                className="rounded-xl border-border/40 bg-white/5 border border-white/5 text-foreground hover:bg-muted/10 hover:text-foreground"
+                className="rounded-full border-[color:var(--stroke-soft)] bg-black/20 text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1"
                 onClick={onSaveGolden}
                 disabled={busy || !item.artifact?.id}
               >
@@ -265,10 +265,10 @@ export function ReviewItemCard({
               </Button>
             </div>
 
-            <ActionFooter className="mt-3 border-border/20">
+            <ActionFooter className="mt-3 border-[color:var(--stroke-subtle)]">
               <Button
                 variant="outline"
-                className="rounded-xl border-border bg-background text-foreground shadow-sm hover:bg-muted/10 hover:text-foreground"
+                className="rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1"
                 onClick={() => onSubmit('REVIEWED')}
                 disabled={busy}
               >
@@ -276,7 +276,7 @@ export function ReviewItemCard({
                 {busyReviewed ? 'Marking...' : 'Mark Reviewed'}
               </Button>
               <Button
-                className="rounded-full bg-primary text-primary-foreground hover:opacity-90 shadow-lg shadow-black/50 hover:opacity-95"
+                className="rounded-full bg-[color:var(--primary)] text-primary-foreground hover:opacity-90 shadow-lg hover:opacity-95"
                 onClick={() => onSubmit('APPROVED')}
                 disabled={busy}
               >

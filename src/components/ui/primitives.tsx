@@ -29,7 +29,7 @@ import {
 
 function toneClasses(tone: 'neutral' | 'good' | 'warn' | 'bad' | 'info') {
   return {
-    neutral: 'border-white/[0.08] bg-white/[0.03] text-muted-foreground font-medium shadow-sm',
+    neutral: 'border-white/[0.08] bg-white/[0.03] text-tier-2 shadow-sm',
     good: 'border-emerald-500/20 bg-emerald-500/10 text-emerald-100 shadow-[0_0_15px_rgba(16,185,129,0.02)]',
     warn: 'border-cyan-400/20 bg-cyan-400/10 text-cyan-50 shadow-[0_0_15px_rgba(34,211,238,0.02)]',
     bad: 'border-rose-500/20 bg-rose-500/10 text-rose-100 shadow-[0_0_15px_rgba(244,63,94,0.02)]',
@@ -101,18 +101,18 @@ export function PageHero({
         : 'text-[1.5rem] min-[390px]:text-[1.66rem] sm:text-[2.15rem] lg:text-[2.85rem]';
 
   return (
-    <section className={cn('bg-card border border-border shadow-sm relative overflow-hidden', shellDensity)}>
+    <section className={cn('surface-1 relative overflow-hidden', shellDensity)}>
       <div className="absolute inset-x-0 top-0 h-px bg-[color:var(--stroke-subtle)]" />
       <div className="absolute -right-10 -top-10 h-44 w-44 rounded-full bg-[radial-gradient(circle,color-mix(in_oklab,var(--tone-teal)_20%,transparent),transparent_65%)] blur-2xl" />
       <div className="absolute -bottom-8 left-1/3 h-32 w-32 rounded-full bg-[radial-gradient(circle,color-mix(in_oklab,var(--tone-teal)_14%,transparent),transparent_65%)] blur-2xl" />
       <div className="relative grid gap-3 min-[390px]:gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
         <div className="min-w-0">
           <p className="micro-label mb-2">Player-facing surface</p>
-          <h1 className={cn('font-heading font-semibold tracking-tight text-foreground', titleDensity)}>
+          <h1 className={cn('font-heading font-semibold tracking-tight text-tier-1', titleDensity)}>
             {title}
           </h1>
           {subtitle ? (
-            <p className="mt-2 max-w-3xl text-xs leading-5 text-muted-foreground opacity-80 min-[390px]:mt-2.5 min-[390px]:text-[13px] sm:mt-3 sm:text-sm sm:leading-6">{subtitle}</p>
+            <p className="mt-2 max-w-3xl text-xs leading-5 text-tier-3 min-[390px]:mt-2.5 min-[390px]:text-[13px] sm:mt-3 sm:text-sm sm:leading-6">{subtitle}</p>
           ) : null}
           {badges?.length ? (
             <div className="mt-3 flex flex-wrap gap-1.5 sm:gap-2">
@@ -161,12 +161,12 @@ export function Panel({
         : 'gap-2 pb-2.5 min-[390px]:gap-2.5 min-[390px]:pb-3';
 
   return (
-    <Card className={cn('bg-card border border-border shadow-sm overflow-hidden', className)}>
+    <Card className={cn('surface-1 overflow-hidden', className)}>
       {title || subtitle || actions ? (
-        <CardHeader className={cn('flex flex-col border-b border-border/20 text-left sm:flex-row sm:items-end sm:justify-between', headerDensity)}>
+        <CardHeader className={cn('flex flex-col border-b border-[color:var(--stroke-subtle)] text-left sm:flex-row sm:items-end sm:justify-between', headerDensity)}>
           <div className="space-y-1.5 pr-2 text-left">
-            {title ? <CardTitle className="font-heading text-[0.95rem] text-foreground min-[390px]:text-[1.02rem] sm:text-lg">{title}</CardTitle> : null}
-            {subtitle ? <CardDescription className="text-xs text-muted-foreground opacity-80 min-[390px]:text-[13px]">{subtitle}</CardDescription> : null}
+            {title ? <CardTitle className="font-heading text-[0.95rem] text-tier-1 min-[390px]:text-[1.02rem] sm:text-lg">{title}</CardTitle> : null}
+            {subtitle ? <CardDescription className="text-xs text-tier-3 min-[390px]:text-[13px]">{subtitle}</CardDescription> : null}
           </div>
           {actions ? <div className="flex flex-wrap gap-2">{actions}</div> : null}
         </CardHeader>
@@ -214,13 +214,13 @@ export function KpiCard({
     <Card className={cn('overflow-hidden', toneClasses(tone))}>
       <CardContent className={cn('flex h-full flex-col gap-2 relative', bodyDensity)}>
         <div className="flex items-center justify-between gap-2">
-          <p className="chip-label text-xs font-medium uppercase tracking-wider text-muted-foreground opacity-80">{label}</p>
-          {icon ? <div className="text-muted-foreground font-medium opacity-50 [&>svg]:size-4 sm:[&>svg]:size-5">{icon}</div> : null}
+          <p className="chip-label text-xs font-medium uppercase tracking-wider text-tier-3">{label}</p>
+          {icon ? <div className="text-tier-2 opacity-50 [&>svg]:size-4 sm:[&>svg]:size-5">{icon}</div> : null}
         </div>
-        <p className={cn('font-heading font-semibold tracking-tight text-foreground mt-1', valueDensity)}>
+        <p className={cn('font-heading font-semibold tracking-tight text-tier-1 mt-1', valueDensity)}>
           {animated && typeof value === 'number' ? <AnimatedCounter value={value} /> : value}
         </p>
-        {hint ? <p className="mt-auto pt-2 text-[11px] leading-snug text-muted-foreground opacity-80 opacity-80">{hint}</p> : null}
+        {hint ? <p className="mt-auto pt-2 text-[11px] leading-snug text-tier-3 opacity-80">{hint}</p> : null}
       </CardContent>
     </Card>
   );
@@ -254,7 +254,7 @@ export function KpiSquare({
   } as const;
 
   const toneIconMap = {
-    neutral: 'text-muted-foreground opacity-80',
+    neutral: 'text-tier-3',
     good: 'text-emerald-400',
     warn: 'text-amber-400',
     bad: 'text-rose-400',
@@ -264,7 +264,7 @@ export function KpiSquare({
   return (
     <Card className={cn(
       'group aspect-square relative overflow-hidden transition-all duration-300',
-      'bg-card border border-border shadow-sm/40 backdrop-blur-sm border-[1.5px]',
+      'bg-[color:var(--surface-2)]/40 backdrop-blur-sm border-[1.5px]',
       toneAccentMap[tone],
       className
     )}>
@@ -283,7 +283,7 @@ export function KpiSquare({
            {trend ? (
              <div className="flex items-center gap-1 rounded px-1.5 py-0.5 bg-white/[0.03] border border-white/5">
                 <div className={cn('size-1 rounded-full animate-pulse', toneIconMap[tone])} />
-                <span className="text-[9px] font-mono font-bold text-foreground">{trend}</span>
+                <span className="text-[9px] font-mono font-bold text-tier-1">{trend}</span>
              </div>
            ) : (
              <div className="size-1.5 rounded-full bg-white/10" />
@@ -291,14 +291,14 @@ export function KpiSquare({
         </div>
         
         <div className="mt-auto">
-          <p className="font-mono text-xl font-black tracking-tight text-foreground sm:text-2xl drop-shadow-sm">
+          <p className="font-mono text-xl font-black tracking-tight text-tier-1 sm:text-2xl drop-shadow-sm">
             {animated && typeof value === 'number' ? <AnimatedCounter value={value} /> : value}
           </p>
-          <p className="text-xs font-bold uppercase tracking-[0.1em] text-muted-foreground opacity-80 leading-tight truncate">
+          <p className="text-xs font-bold uppercase tracking-[0.1em] text-tier-3 leading-tight truncate">
             {label}
           </p>
           {subtitle ? (
-            <p className="mt-1 text-[9px] font-medium text-muted-foreground opacity-60 uppercase tracking-[0.05em] truncate">
+            <p className="mt-1 text-[9px] font-medium text-tier-4 uppercase tracking-[0.05em] truncate">
               {subtitle}
             </p>
           ) : null}
@@ -323,15 +323,15 @@ export function MetricStrip({
     gold: 'text-[color:var(--rank-gold)]',
     teal: 'text-cyan-200',
     rose: 'text-rose-200',
-    slate: 'text-muted-foreground font-medium',
+    slate: 'text-tier-2',
   } as const;
 
   return (
     <div className="flex flex-wrap gap-2">
       {items.map((item) => (
-        <div key={item.label} className="inline-flex min-w-0 items-center justify-start gap-2 rounded-lg border border-border/40 bg-card border border-border shadow-sm px-3 py-1.5 text-xs text-muted-foreground opacity-80 sm:text-sm">
+        <div key={item.label} className="inline-flex min-w-0 items-center justify-start gap-2 rounded-lg border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] px-3 py-1.5 text-xs text-tier-3 sm:text-sm">
           <span className="shrink-0">{item.label}</span>
-          <strong className={cn('min-w-0 truncate font-medium text-foreground', item.accent ? accentMap[item.accent] : null)}>{item.value}</strong>
+          <strong className={cn('min-w-0 truncate font-medium text-tier-1', item.accent ? accentMap[item.accent] : null)}>{item.value}</strong>
         </div>
       ))}
     </div>
@@ -362,7 +362,7 @@ export function FilterBar({
   return (
     <div
       className={cn(
-        'flex flex-wrap items-center border border-border/40 bg-card border border-border shadow-sm [&>*]:min-w-0 [&_button]:min-h-11 [&_input]:min-h-11 [&_[role=combobox]]:min-h-11',
+        'flex flex-wrap items-center border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] [&>*]:min-w-0 [&_button]:min-h-11 [&_input]:min-h-11 [&_[role=combobox]]:min-h-11',
         shellDensity,
         className
       )}
@@ -397,10 +397,10 @@ export function StickyControlBar({
   return (
     <div
       className={cn(
-        'sticky z-20 border border-border/20 bg-card/60 backdrop-blur-xl ring-1 ring-white/5 shadow-lg',
+        'sticky z-20 border border-[color:var(--stroke-subtle)] bg-card/60 backdrop-blur-xl ring-1 ring-white/5 shadow-lg',
         'top-[74px]',
         shellDensity,
-        'xl:static xl:border-border/20 xl:bg-transparent xl:shadow-none xl:backdrop-blur-none',
+        'xl:static xl:border-[color:var(--stroke-subtle)] xl:bg-transparent xl:shadow-none xl:backdrop-blur-none',
         stickyTopClassName,
         className
       )}
@@ -420,7 +420,7 @@ export function CompactControlRow({
   return (
     <div
       className={cn(
-        'flex items-center gap-2 overflow-x-auto rounded-[20px] border border-border/40 bg-card/80 p-2.5 backdrop-blur-xl ring-1 ring-white/5 shadow-[0_8px_18px_rgba(0,0,0,0.2)]',
+        'flex items-center gap-2 overflow-x-auto rounded-[20px] border border-[color:var(--stroke-soft)] bg-card/80 p-2.5 backdrop-blur-xl ring-1 ring-white/5 shadow-[0_8px_18px_rgba(0,0,0,0.2)]',
         'min-[390px]:rounded-[22px] min-[390px]:p-3 sm:rounded-[24px] sm:gap-2.5 sm:p-3.5',
         '[&>*]:shrink-0 [&_button]:min-h-11 [&_input]:min-h-11 [&_[role=combobox]]:min-h-11',
         className
@@ -456,17 +456,17 @@ export function CompactControlDrawer({
         <button
           type="button"
           className={cn(
-            'inline-flex min-h-11 items-center justify-center rounded-full border border-border/40 bg-card border border-border shadow-sm px-4 py-2 text-sm font-medium text-muted-foreground font-medium hover:bg-card border border-border shadow-sm',
+            'inline-flex min-h-11 items-center justify-center rounded-full border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] px-4 py-2 text-sm font-medium text-tier-2 hover:bg-[color:var(--surface-4)]',
             triggerClassName
           )}
         >
           {triggerLabel}
         </button>
       </DrawerTrigger>
-      <DrawerContent className={cn('border-border/40 bg-card/90 backdrop-blur-2xl shadow-2xl text-foreground', contentClassName)}>
+      <DrawerContent className={cn('border-[color:var(--stroke-soft)] bg-card/90 backdrop-blur-2xl shadow-2xl text-tier-1', contentClassName)}>
         <DrawerHeader>
-          <DrawerTitle className="font-heading text-xl text-foreground">{title}</DrawerTitle>
-          {description ? <DrawerDescription className="text-muted-foreground opacity-80">{description}</DrawerDescription> : null}
+          <DrawerTitle className="font-heading text-xl text-tier-1">{title}</DrawerTitle>
+          {description ? <DrawerDescription className="text-tier-3">{description}</DrawerDescription> : null}
         </DrawerHeader>
         <div className="max-h-[65svh] overflow-auto px-4 pb-4">
           <div className="space-y-4">{children}</div>
@@ -475,7 +475,7 @@ export function CompactControlDrawer({
           <DrawerClose asChild>
             <button
               type="button"
-              className="inline-flex min-h-11 items-center justify-center rounded-full border border-border/40 bg-card border border-border shadow-sm px-4 py-2 text-sm text-foreground hover:bg-card border border-border shadow-sm"
+              className="inline-flex min-h-11 items-center justify-center rounded-full border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] px-4 py-2 text-sm text-tier-1 hover:bg-[color:var(--surface-4)]"
             >
               Done
             </button>
@@ -513,8 +513,8 @@ export function SegmentedChips<T extends string>({
             className={cn(
               'inline-flex min-h-11 items-center justify-center rounded-full border px-3.5 py-2 text-xs font-medium tracking-[0.04em] transition-colors',
               active
-                ? 'border-cyan-300/26 bg-cyan-300/14 text-foreground'
-                : 'border-border/40 bg-card border border-border shadow-sm text-muted-foreground opacity-80 hover:bg-card border border-border shadow-sm hover:text-foreground'
+                ? 'border-cyan-300/26 bg-cyan-300/14 text-tier-1'
+                : 'border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-3 hover:bg-[color:var(--surface-4)] hover:text-tier-1'
             )}
           >
             {option.label}
@@ -555,7 +555,7 @@ export function CompactAlert({
   const toneClass = useMemo(
     () =>
       ({
-        neutral: 'border-border/40 bg-card border border-border shadow-sm text-foreground',
+        neutral: 'border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1',
         good: 'border-emerald-300/18 bg-emerald-400/10 text-emerald-100',
         warn: 'border-cyan-300/26 bg-cyan-300/12 text-cyan-100',
         bad: 'border-rose-300/18 bg-rose-400/10 text-rose-100',
@@ -582,10 +582,10 @@ export function EmptyState({
   action?: ReactNode;
 }) {
   return (
-    <div className="flex flex-col items-center justify-center rounded-[20px] border border-dashed border-border/40 bg-card border border-border shadow-sm px-4 py-8 text-center min-[390px]:rounded-[22px] min-[390px]:px-5 min-[390px]:py-10 sm:rounded-[24px]">
-      <div className="mb-3 size-10 rounded-full border border-border/40 bg-card border border-border shadow-sm" />
-      <h3 className="font-heading text-lg text-foreground">{title}</h3>
-      {description ? <p className="mt-2.5 max-w-lg text-sm leading-6 text-muted-foreground opacity-80">{description}</p> : null}
+    <div className="flex flex-col items-center justify-center rounded-[20px] border border-dashed border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] px-4 py-8 text-center min-[390px]:rounded-[22px] min-[390px]:px-5 min-[390px]:py-10 sm:rounded-[24px]">
+      <div className="mb-3 size-10 rounded-full border border-[color:var(--stroke-soft)] bg-[color:var(--surface-4)]" />
+      <h3 className="font-heading text-lg text-tier-1">{title}</h3>
+      {description ? <p className="mt-2.5 max-w-lg text-sm leading-6 text-tier-3">{description}</p> : null}
       {action ? <div className="mt-4 flex flex-wrap justify-center gap-2">{action}</div> : null}
     </div>
   );
@@ -595,7 +595,7 @@ export function SkeletonSet({ rows = 4 }: { rows?: number }) {
   return (
     <div className="flex flex-col gap-3">
       {Array.from({ length: rows }).map((_, idx) => (
-        <Skeleton key={idx} className="h-14 rounded-2xl bg-card border border-border shadow-sm" />
+        <Skeleton key={idx} className="h-14 rounded-2xl bg-[color:var(--surface-4)]" />
       ))}
     </div>
   );
@@ -628,7 +628,7 @@ export function ActionFooter({
   return (
     <div
       className={cn(
-        'mt-4 flex flex-col gap-2 border-t border-border/40 pt-3 sm:flex-row sm:flex-wrap sm:items-center',
+        'mt-4 flex flex-col gap-2 border-t border-[color:var(--stroke-soft)] pt-3 sm:flex-row sm:flex-wrap sm:items-center',
         className
       )}
     >
@@ -657,15 +657,15 @@ export function RowDetailDrawer({
       <DrawerTrigger asChild>
         <button
           type="button"
-          className="inline-flex min-h-11 items-center justify-center rounded-full border border-border/40 bg-card border border-border shadow-sm px-4 py-2 text-sm text-muted-foreground font-medium hover:bg-card border border-border shadow-sm"
+          className="inline-flex min-h-11 items-center justify-center rounded-full border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] px-4 py-2 text-sm text-tier-2 hover:bg-[color:var(--surface-4)]"
         >
           {triggerLabel}
         </button>
       </DrawerTrigger>
-      <DrawerContent className={cn('border-border/40 bg-card/90 backdrop-blur-2xl shadow-2xl text-foreground', className)}>
+      <DrawerContent className={cn('border-[color:var(--stroke-soft)] bg-card/90 backdrop-blur-2xl shadow-2xl text-tier-1', className)}>
         <DrawerHeader>
-          <DrawerTitle className="font-heading text-xl text-foreground">{title}</DrawerTitle>
-          {description ? <DrawerDescription className="text-muted-foreground opacity-80">{description}</DrawerDescription> : null}
+          <DrawerTitle className="font-heading text-xl text-tier-1">{title}</DrawerTitle>
+          {description ? <DrawerDescription className="text-tier-3">{description}</DrawerDescription> : null}
         </DrawerHeader>
         <div className="max-h-[60svh] overflow-auto px-4 pb-4">{children}</div>
         <DrawerFooter>
@@ -673,7 +673,7 @@ export function RowDetailDrawer({
           <DrawerClose asChild>
             <button
               type="button"
-              className="inline-flex min-h-11 items-center justify-center rounded-full border border-border/40 bg-card border border-border shadow-sm px-4 py-2 text-sm text-foreground hover:bg-card border border-border shadow-sm"
+              className="inline-flex min-h-11 items-center justify-center rounded-full border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] px-4 py-2 text-sm text-tier-1 hover:bg-[color:var(--surface-4)]"
             >
               Close
             </button>
@@ -725,14 +725,14 @@ export function DataTableLite<T>({
 }) {
   const activeDensity = density;
   const renderSortIcon = (columnKey: string) => {
-    if (sortKey !== columnKey) return <ArrowUpDown className="size-3.5 text-muted-foreground opacity-60" />;
-    return sortDir === 'desc' ? <ChevronDown className="size-3.5 text-muted-foreground opacity-80" /> : <ChevronUp className="size-3.5 text-muted-foreground opacity-80" />;
+    if (sortKey !== columnKey) return <ArrowUpDown className="size-3.5 text-tier-4" />;
+    return sortDir === 'desc' ? <ChevronDown className="size-3.5 text-tier-3" /> : <ChevronUp className="size-3.5 text-tier-3" />;
   };
 
   const tableContent = (
     <div
       className={cn(
-        'overflow-hidden bg-card border border-border shadow-sm shadow-xl',
+        'overflow-hidden surface-2 shadow-xl',
         activeDensity === 'comfortable'
           ? 'rounded-[24px]'
           : activeDensity === 'compact'
@@ -742,14 +742,14 @@ export function DataTableLite<T>({
     >
       <Table>
         <TableHeader>
-          <TableRow className="border-border/20 hover:bg-transparent">
+          <TableRow className="border-[color:var(--stroke-subtle)] hover:bg-transparent">
             {columns.map((column, index) => {
               const sortable = column.sortable && onSort;
               return (
                 <TableHead
                   key={column.key}
                   className={cn(
-                    'h-12 border-b border-border/20 bg-card border border-border shadow-sm px-3 text-xs font-semibold tracking-[0.06em] text-muted-foreground opacity-80',
+                    'h-12 border-b border-[color:var(--stroke-subtle)] bg-[color:var(--surface-3)] px-3 text-xs font-semibold tracking-[0.06em] text-tier-3',
                     column.thClassName,
                     index === 0 && stickyFirst && 'sticky left-0 z-10 bg-[color:var(--card)] shadow-[4px_0_12px_rgba(0,0,0,0.4)]'
                   )}
@@ -773,8 +773,8 @@ export function DataTableLite<T>({
         </TableHeader>
         <TableBody>
           {rows.length === 0 ? (
-            <TableRow className="border-border/20 hover:bg-transparent">
-              <TableCell colSpan={columns.length} className="py-10 text-center text-sm text-muted-foreground opacity-80">
+            <TableRow className="border-[color:var(--stroke-subtle)] hover:bg-transparent">
+              <TableCell colSpan={columns.length} className="py-10 text-center text-sm text-tier-3">
                 {emptyLabel}
               </TableCell>
             </TableRow>
@@ -783,7 +783,7 @@ export function DataTableLite<T>({
               <TableRow
                 key={rowKey(row, idx)}
                 className={cn(
-                  'border-border/20 text-muted-foreground font-medium transition-colors hover:bg-card border border-border shadow-sm',
+                  'border-[color:var(--stroke-subtle)] text-tier-2 transition-colors hover:bg-[color:var(--surface-3)]',
                   rowClassName?.(row, idx)
                 )}
               >
@@ -811,7 +811,7 @@ export function DataTableLite<T>({
   const mobileCardList = (
     <div className="grid gap-3 md:hidden">
       {rows.length === 0 ? (
-        <div className="rounded-[20px] border border-border/40 bg-card border border-border shadow-sm px-4 py-6 text-center text-sm text-muted-foreground opacity-80 min-[390px]:rounded-[22px]">{emptyLabel}</div>
+        <div className="rounded-[20px] border border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] px-4 py-6 text-center text-sm text-tier-3 min-[390px]:rounded-[22px]">{emptyLabel}</div>
       ) : (
         rows.map((row, idx) => {
           if (renderMobileCard) {
@@ -827,8 +827,8 @@ export function DataTableLite<T>({
               key={rowKey(row, idx)}
               className={cn(
                 activeDensity === 'compact'
-                  ? 'rounded-[18px] bg-card border border-border shadow-sm p-2.5 shadow-md min-[390px]:rounded-[20px] min-[390px]:p-3'
-                  : 'rounded-[20px] bg-card border border-border shadow-sm p-3 shadow-lg min-[390px]:rounded-[22px] min-[390px]:p-3.5',
+                  ? 'rounded-[18px] surface-2 p-2.5 shadow-md min-[390px]:rounded-[20px] min-[390px]:p-3'
+                  : 'rounded-[20px] surface-2 p-3 shadow-lg min-[390px]:rounded-[22px] min-[390px]:p-3.5',
                 rowClassName?.(row, idx)
               )}
             >
@@ -837,8 +837,8 @@ export function DataTableLite<T>({
                   .filter((column) => !column.mobileHidden)
                   .map((column) => (
                     <div key={`${rowKey(row, idx)}-${column.key}-mobile`} className="grid gap-1.5">
-                      <span className="text-xs font-medium tracking-[0.06em] text-muted-foreground opacity-80">{column.label}</span>
-                      <div className="text-sm text-muted-foreground font-medium">{column.render(row, idx)}</div>
+                      <span className="text-xs font-medium tracking-[0.06em] text-tier-3">{column.label}</span>
+                      <div className="text-sm text-tier-2">{column.render(row, idx)}</div>
                     </div>
                   ))}
               </div>

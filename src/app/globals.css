@@ -13,26 +13,64 @@
 }
 
 :root {
-    --background: 0 0% 3.9%;
-    --foreground: 0 0% 98%;
-    --card: 0 0% 3.9%;
-    --card-foreground: 0 0% 98%;
-    --popover: 0 0% 3.9%;
-    --popover-foreground: 0 0% 98%;
-    --primary: 199 89% 48%;
-    --primary-foreground: 0 0% 9%;
-    --secondary: 0 0% 14.9%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 0 0% 14.9%;
-    --muted-foreground: 0 0% 63.9%;
-    --accent: 0 0% 14.9%;
-    --accent-foreground: 0 0% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 14.9%;
-    --input: 0 0% 14.9%;
-    --ring: 0 0% 83.1%;
-    --radius: 0.5rem;
+  --font-heading: var(--font-outfit, "Outfit"), "Avenir Next", "Segoe UI", sans-serif;
+  --font-body: var(--font-plus-jakarta, "Plus Jakarta Sans"), "Inter", "Avenir Next", "Segoe UI", sans-serif;
+  --font-mono: var(--font-geist-mono, "Geist Mono"), "SFMono-Regular", "Menlo", "Consolas", monospace;
+
+  --background: #020308;
+  --foreground: #ffffff;
+  --card: #050505;
+  --card-foreground: #ffffff;
+  --popover: #050505;
+  --popover-foreground: #ffffff;
+  --primary: #00E5FF;
+  --primary-foreground: #000000;
+  --secondary: #111111;
+  --secondary-foreground: #ffffff;
+  --muted: #111111;
+  --muted-foreground: #a1a1aa;
+  --accent: #111111;
+  --accent-foreground: #ffffff;
+  --destructive: #ff3366;
+  --border: rgba(255, 255, 255, 0.12);
+  --input: rgba(255, 255, 255, 0.12);
+  --ring: rgba(0, 229, 255, 0.55);
+
+  --chart-1: #00E5FF;
+  --chart-2: #0088FF;
+  --chart-3: #d8b878;
+  --chart-4: #00FF99;
+  --chart-5: #f97393;
+
+  --surface-0: #000000;
+  --surface-1: #050505;
+  --surface-2: #111111;
+  --surface-3: rgba(255, 255, 255, 0.04);
+  --surface-4: rgba(255, 255, 255, 0.08);
+  --stroke-subtle: rgba(255, 255, 255, 0.06);
+  --stroke-soft: rgba(255, 255, 255, 0.10);
+  --stroke-strong: rgba(255, 255, 255, 0.16);
+  --text-1: #ffffff;
+  --text-2: #a1a1aa;
+  --text-3: #82828a; /* Improved Contrast */
+  --text-4: #52525b;
+  --tone-teal: #00E5FF;
+  --tone-teal-soft: rgba(0, 229, 255, 0.16);
+  --rank-gold: #d8b878;
+  --rok-gold: #ebb34b;
+  --rok-amber: #d97706;
+  --rok-crimson: #e11d48;
+  --glow-soft: 0 8px 24px rgba(0, 229, 255, 0.03), 0 0 8px rgba(0, 229, 255, 0.02);
+
+  --radius: 0.75rem;
+  --sidebar: #050505;
+  --sidebar-foreground: #ffffff;
+  --sidebar-primary: #00E5FF;
+  --sidebar-primary-foreground: #000000;
+  --sidebar-accent: #111111;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: rgba(255, 255, 255, 0.12);
+  --sidebar-ring: rgba(0, 229, 255, 0.55);
 }
 
 *,
