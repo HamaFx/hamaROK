@@ -199,11 +199,13 @@ export function UploadDropZonePanel({
         <p className="font-heading text-lg text-tier-1">
           {isDragging ? 'Release to queue uploads' : 'Drop screenshots here'}
         </p>
-        <p className="mt-2 text-sm text-tier-3">PNG, JPG, WEBP • Queue-first Mistral processing (no browser OCR freeze)</p>
+        <p className="mt-2 text-sm text-tier-3">
+          PNG, JPG, WEBP, HEIC, HEIF, AVIF • Queue-first Mistral extraction (no browser OCR freeze)
+        </p>
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/png,image/jpeg,image/webp"
+          accept="image/png,image/jpeg,image/webp,image/heic,image/heif,image/avif"
           multiple
           className="hidden"
           onChange={onFileChange}
@@ -211,7 +213,7 @@ export function UploadDropZonePanel({
         <input
           ref={folderInputRef}
           type="file"
-          accept="image/png,image/jpeg,image/webp"
+          accept="image/png,image/jpeg,image/webp,image/heic,image/heif,image/avif"
           multiple
           className="hidden"
           {...({
@@ -313,7 +315,7 @@ export function UploadProcessingPanel({
             className="w-full sm:w-auto rounded-full border-[color:var(--stroke-soft)] bg-[color:var(--surface-3)] text-tier-1 hover:bg-[color:var(--surface-4)] hover:text-tier-1"
             onClick={onOpenReview}
           >
-            OCR Review ({completedProfileRows})
+            Extraction Review ({completedProfileRows})
           </Button>
           <Button
             variant="outline"

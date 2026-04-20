@@ -36,64 +36,143 @@ export async function withIdempotency<T>({
   const keyHash = createScopedKeyHash(workspaceId, scope, key);
   const requestHash = hashRequestPayload(request);
   const now = new Date();
+  const expiresAt = new Date(now.getTime() + ttlHours * 60 * 60 * 1000);
 
-  const existing = await prisma.idempotencyKey.findUnique({
-    where: {
-      workspaceId_scope_keyHash: {
+  let reserved = false;
+  try {
+    await prisma.idempotencyKey.create({
+      data: {
         workspaceId,
         scope,
         keyHash,
+        requestHash,
+        response: Prisma.JsonNull,
+        expiresAt,
       },
-    },
-  });
+    });
+    reserved = true;
+  } catch (error) {
+    const prismaCode =
+      error && typeof error === 'object'
+        ? (error as { code?: unknown }).code
+        : null;
+    const isUniqueViolation = String(prismaCode || '') === 'P2002';
+    if (!isUniqueViolation) {
+      throw error;
+    }
+  }
 
-  if (existing && existing.expiresAt > now) {
-    if (existing.requestHash !== requestHash) {
+  if (!reserved) {
+    const existing = await prisma.idempotencyKey.findUnique({
+      where: {
+        workspaceId_scope_keyHash: {
+          workspaceId,
+          scope,
+          keyHash,
+        },
+      },
+    });
+
+    if (existing && existing.expiresAt > now) {
+      if (existing.requestHash !== requestHash) {
+        throw new ApiHttpError(
+          'CONFLICT',
+          'Idempotency key was already used with a different request payload.',
+          409
+        );
+      }
+      if (existing.response) {
+        return {
+          value: existing.response as T,
+          replayed: true,
+        };
+      }
       throw new ApiHttpError(
         'CONFLICT',
-        'Idempotency key was already used with a different request payload.',
+        'Request with this idempotency key is already in progress.',
         409
       );
     }
 
-    if (existing.response) {
-      return {
-        value: existing.response as T,
-        replayed: true,
-      };
-    }
-  }
-
-  const value = await execute();
-  const response = toJsonSafe(value) as Prisma.InputJsonValue;
-
-  await prisma.idempotencyKey.upsert({
-    where: {
-      workspaceId_scope_keyHash: {
+    const reclaimed = await prisma.idempotencyKey.updateMany({
+      where: {
         workspaceId,
         scope,
         keyHash,
+        expiresAt: { lte: now },
       },
-    },
-    create: {
-      workspaceId,
-      scope,
-      keyHash,
-      requestHash,
-      response,
-      expiresAt: new Date(now.getTime() + ttlHours * 60 * 60 * 1000),
-    },
-    update: {
-      requestHash,
-      response,
-      expiresAt: new Date(now.getTime() + ttlHours * 60 * 60 * 1000),
-    },
-  });
+      data: {
+        requestHash,
+        response: Prisma.JsonNull,
+        expiresAt,
+      },
+    });
+    reserved = reclaimed.count > 0;
 
-  return {
-    value,
-    replayed: false,
-  };
+    if (!reserved) {
+      const latest = await prisma.idempotencyKey.findUnique({
+        where: {
+          workspaceId_scope_keyHash: {
+            workspaceId,
+            scope,
+            keyHash,
+          },
+        },
+      });
+      if (latest?.response && latest.requestHash === requestHash && latest.expiresAt > now) {
+        return {
+          value: latest.response as T,
+          replayed: true,
+        };
+      }
+      throw new ApiHttpError(
+        'CONFLICT',
+        'Request with this idempotency key is already in progress.',
+        409
+      );
+    }
+  }
+
+  try {
+    const value = await execute();
+    const response = toJsonSafe(value) as Prisma.InputJsonValue;
+
+    await prisma.idempotencyKey.update({
+      where: {
+        workspaceId_scope_keyHash: {
+          workspaceId,
+          scope,
+          keyHash,
+        },
+      },
+      data: {
+        requestHash,
+        response,
+        expiresAt,
+      },
+    });
+
+    return {
+      value,
+      replayed: false,
+    };
+  } catch (error) {
+    await prisma.idempotencyKey.updateMany({
+      where: {
+        workspaceId,
+        scope,
+        keyHash,
+        requestHash,
+        response: {
+          equals: Prisma.JsonNull,
+        },
+      },
+      data: {
+        expiresAt: new Date(Date.now() - 1_000),
+      },
+    });
+    throw error;
+  }
 }
 
 export async function cleanupExpiredIdempotencyKeys() {

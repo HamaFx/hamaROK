@@ -24,6 +24,26 @@ const ALLOWED_IMAGE_TYPES = new Set([
   'image/avif',
 ]);
 
+function normalizeAnalyzerMode(raw: string): AssistantAnalyzerMode | null {
+  const normalized = String(raw || '')
+    .trim()
+    .toLowerCase();
+  if (!normalized) return null;
+  if (normalized === 'hybrid') return 'hybrid';
+  if (normalized === 'ocr_pipeline' || normalized === 'mistral_ocr' || normalized === 'mistral-ocr') {
+    return 'ocr_pipeline';
+  }
+  if (
+    normalized === 'vision_model' ||
+    normalized === 'mistral_large' ||
+    normalized === 'mistral-large' ||
+    normalized === 'mistral_large_vision'
+  ) {
+    return 'vision_model';
+  }
+  return null;
+}
+
 function isFileLike(value: FormDataEntryValue): value is File {
   if (typeof value === 'string') return false;
   const candidate = value as Partial<File>;
@@ -258,16 +278,14 @@ export async function POST(
       .filter(Boolean);
     const uniqueArtifactIds = [...new Set(artifactIds)];
     const idempotencyKeyRaw = String(formData.get('idempotencyKey') || '').trim();
-    const idempotencyKey = idempotencyKeyRaw ? idempotencyKeyRaw.slice(0, 120) : null;
-    const analyzerModeRaw = String(formData.get('analyzerMode') || '')
-      .trim()
-      .toLowerCase();
-    const analyzerMode: AssistantAnalyzerMode | null =
-      analyzerModeRaw === 'hybrid' ||
-      analyzerModeRaw === 'ocr_pipeline' ||
-      analyzerModeRaw === 'vision_model'
-        ? analyzerModeRaw
-        : null;
+    const clientMessageIdRaw = String(formData.get('clientMessageId') || '').trim();
+    const clientMessageId = clientMessageIdRaw
+      ? clientMessageIdRaw.replace(/[^A-Za-z0-9._-]/g, '').slice(0, 120)
+      : null;
+    const idempotencyKey = (idempotencyKeyRaw || clientMessageId)
+      ? String(idempotencyKeyRaw || clientMessageId).slice(0, 120)
+      : null;
+    const analyzerMode = normalizeAnalyzerMode(String(formData.get('analyzerMode') || ''));
 
     if (!text && files.length === 0 && artifactIds.length === 0) {
       return fail('VALIDATION_ERROR', 'text or image attachment is required.', 400);
@@ -285,6 +303,7 @@ export async function POST(
         conversationId,
         text,
         analyzerMode,
+        clientMessageId,
         artifactIds: uniqueArtifactIds,
         files: files.map((file) => ({
           name: file.name,
@@ -321,6 +340,7 @@ export async function POST(
           text,
           attachments,
           analyzerMode,
+          clientMessageId,
         });
       },
     });

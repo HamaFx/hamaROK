@@ -918,8 +918,8 @@ export default function SettingsPage() {
                 }
               >
                 <option value="hybrid">Hybrid (OCR + Vision fallback)</option>
-                <option value="ocr_pipeline">OCR Pipeline</option>
-                <option value="vision_model">Vision Model</option>
+                <option value="ocr_pipeline">Mistral OCR</option>
+                <option value="vision_model">Mistral Large Vision</option>
               </select>
             </div>
 
@@ -975,7 +975,7 @@ export default function SettingsPage() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs text-tier-3">Vision Model</label>
+              <label className="text-xs text-tier-3">Mistral Large Vision Model</label>
               <Input
                 value={config.assistantConfig.visionModel}
                 onChange={(event) => handleAssistantConfigChange('visionModel', event.target.value)}

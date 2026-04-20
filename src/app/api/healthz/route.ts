@@ -7,6 +7,7 @@ import {
 } from '@/lib/env';
 import { resolveOcrEnginePolicy } from '@/lib/ocr/engine-policy';
 import { getWeeklySchemaCapability } from '@/lib/weekly-schema-guard';
+import { getBlobRetentionDefaults } from '@/lib/blob-retention';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,6 +37,7 @@ export async function GET() {
   let embeddingInstalled: boolean | null = null;
   let embeddingConfigValid: boolean | null = null;
   let embeddingInvalidWorkspaceCount = 0;
+  const blobRetention = getBlobRetentionDefaults();
 
   try {
     env = validateRuntimeEnv();
@@ -211,6 +213,11 @@ export async function GET() {
           mistralKeyReady: Boolean(env?.MISTRAL_API_KEY),
           configValid: embeddingConfigValid,
           invalidWorkspaceCount: embeddingInvalidWorkspaceCount,
+        },
+        storage: {
+          blobConfigured: Boolean(env?.BLOB_READ_WRITE_TOKEN),
+          screenshotRetentionDays: blobRetention.retentionDays,
+          assistantRetentionDays: blobRetention.retentionDays,
         },
         weeklySchema: weeklySchema
           ? {

@@ -162,7 +162,8 @@ export function evaluateAssistantBatchAutoConfirm(actions: Array<{ type?: unknow
 
 function sanitizePrintable(value: unknown, max = 3000): string {
   return String(value ?? '')
-    .replace(/[^\x20-\x7E]/g, ' ')
+    .normalize('NFKC')
+    .replace(/\p{C}+/gu, ' ')
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, max);
@@ -1014,6 +1015,7 @@ export async function cleanupAssistantWorkspace(input: CleanupAssistantWorkspace
 }
 
 type AssistantBatchStatus = 'RUNNING' | 'COMPLETED';
+type AssistantBatchLeaseMode = 'step' | 'run';
 
 interface AssistantBatchFlag {
   artifactId: string;
@@ -1047,6 +1049,12 @@ interface AssistantBatchState {
   createdAt: string;
   updatedAt: string;
   prompt: string;
+  lease: {
+    holderId: string;
+    mode: AssistantBatchLeaseMode;
+    stopRequested: boolean;
+    expiresAt: string;
+  } | null;
 }
 
 type BatchArtifactRow = {
@@ -1087,6 +1095,27 @@ function parseAssistantBatchState(value: unknown): AssistantBatchState | null {
         .filter((entry) => entry.artifactId && entry.reason)
     : [];
 
+  const leaseRaw =
+    row.lease && typeof row.lease === 'object' && !Array.isArray(row.lease)
+      ? (row.lease as Record<string, unknown>)
+      : null;
+  const leaseHolderId = leaseRaw ? String(leaseRaw.holderId || '').trim() : '';
+  const leaseExpiresAt = leaseRaw ? String(leaseRaw.expiresAt || '').trim() : '';
+  const leaseStopRequested = leaseRaw ? Boolean(leaseRaw.stopRequested) : false;
+  const leaseMode: AssistantBatchLeaseMode =
+    leaseRaw && String(leaseRaw.mode || '').trim() === 'run'
+      ? 'run'
+      : 'step';
+  const lease =
+    leaseHolderId && leaseExpiresAt
+      ? {
+          holderId: leaseHolderId,
+          mode: leaseMode,
+          stopRequested: leaseStopRequested,
+          expiresAt: leaseExpiresAt,
+        }
+      : null;
+
   return {
     version: 1,
     scanJobId,
@@ -1110,6 +1139,7 @@ function parseAssistantBatchState(value: unknown): AssistantBatchState | null {
     createdAt: String(row.createdAt || '').trim() || new Date().toISOString(),
     updatedAt: String(row.updatedAt || '').trim() || new Date().toISOString(),
     prompt: sanitizePrintable(row.prompt || ASSISTANT_BATCH_DEFAULT_PROMPT, 2000) || ASSISTANT_BATCH_DEFAULT_PROMPT,
+    lease,
   };
 }
 
@@ -1363,6 +1393,7 @@ function serializeAssistantBatch(args: {
     pendingManualCount,
     lastProcessedArtifactId: args.batch.lastProcessedArtifactId,
     lastProcessedFileName: args.batch.lastProcessedFileName,
+    lease: args.batch.lease,
     nextArtifact: nextArtifact
       ? {
           artifactId: nextArtifact.artifactId,
@@ -1501,6 +1532,7 @@ export async function createAssistantBatchRun(args: {
       existingState?.scanJobId === args.scanJobId
         ? existingState.prompt
         : ASSISTANT_BATCH_DEFAULT_PROMPT,
+    lease: null,
   };
 
   const nextMetadata = {
@@ -1559,6 +1591,9 @@ export async function runAssistantBatchStep(args: {
   workspaceId: string;
   batchId: string;
   accessLink: AccessLink;
+  leaseHolderId?: string;
+  leaseMode?: AssistantBatchLeaseMode;
+  keepLease?: boolean;
 }) {
   if (args.accessLink.workspaceId !== args.workspaceId) {
     throw new ApiHttpError('FORBIDDEN', 'Access link is not valid for this workspace.', 403);
@@ -1575,14 +1610,75 @@ export async function runAssistantBatchStep(args: {
   if (!batch) {
     throw new ApiHttpError('NOT_FOUND', 'Assistant batch run not found.', 404);
   }
+  const requestedLeaseMode: AssistantBatchLeaseMode =
+    args.leaseMode === 'run' ? 'run' : 'step';
+  const leaseHolderId =
+    sanitizePrintable(args.leaseHolderId || '', 120) ||
+    `batch-${requestedLeaseMode}-${crypto.randomUUID()}`;
+  const keepLease = Boolean(args.keepLease);
+  const leaseActive =
+    batch.lease &&
+    Number.isFinite(Date.parse(batch.lease.expiresAt)) &&
+    Date.parse(batch.lease.expiresAt) > Date.now();
+  if (leaseActive && batch.lease && batch.lease.holderId !== leaseHolderId) {
+    throw new ApiHttpError('CONFLICT', 'Batch runner is locked by another session.', 409);
+  }
+  const acquiredLease = {
+    holderId: leaseHolderId,
+    mode: requestedLeaseMode,
+    stopRequested: Boolean(batch.lease?.stopRequested),
+    expiresAt: new Date(Date.now() + 90_000).toISOString(),
+  };
+  const workingBatch: AssistantBatchState = {
+    ...batch,
+    lease: acquiredLease,
+    updatedAt: new Date().toISOString(),
+  };
+  await prisma.assistantConversation.update({
+    where: { id: conversation.id },
+    data: {
+      metadata: {
+        ...metadata,
+        batchRun: workingBatch,
+      } as unknown as Prisma.InputJsonValue,
+      updatedAt: new Date(),
+    },
+  });
   const settings = await readAssistantSettings(args.workspaceId);
 
   const artifacts = await listBatchArtifactsForScanJob({
     workspaceId: args.workspaceId,
-    scanJobId: batch.scanJobId,
+    scanJobId: workingBatch.scanJobId,
   });
+  if (requestedLeaseMode === 'run' && acquiredLease.stopRequested) {
+    const stoppedBatch: AssistantBatchState = {
+      ...workingBatch,
+      lease: keepLease ? acquiredLease : null,
+      updatedAt: new Date().toISOString(),
+    };
+    await prisma.assistantConversation.update({
+      where: { id: conversation.id },
+      data: {
+        metadata: {
+          ...metadata,
+          batchRun: stoppedBatch,
+        } as unknown as Prisma.InputJsonValue,
+        updatedAt: new Date(),
+      },
+    });
+    return {
+      batch: serializeAssistantBatch({
+        batchId: conversation.id,
+        workspaceId: args.workspaceId,
+        conversationId: conversation.id,
+        batch: stoppedBatch,
+        artifacts,
+      }),
+      step: null,
+    };
+  }
   const artifactSet = new Set(artifacts.map((row) => row.artifactId));
-  const processedArtifactIds = batch.processedArtifactIds.filter((id) =>
+  const processedArtifactIds = workingBatch.processedArtifactIds.filter((id) =>
     artifactSet.has(id)
   );
   const processedSet = new Set(processedArtifactIds);
@@ -1591,13 +1687,14 @@ export async function runAssistantBatchStep(args: {
   if (!nextArtifact) {
     const scanJobTerminal = await isScanJobTerminal({
       workspaceId: args.workspaceId,
-      scanJobId: batch.scanJobId,
+      scanJobId: workingBatch.scanJobId,
     });
     const completedBatch: AssistantBatchState = {
-      ...batch,
+      ...workingBatch,
       status: scanJobTerminal ? 'COMPLETED' : 'RUNNING',
       totalArtifacts: artifacts.length,
       processedArtifactIds,
+      lease: keepLease ? acquiredLease : null,
       updatedAt: new Date().toISOString(),
     };
     await prisma.assistantConversation.update({
@@ -1635,16 +1732,16 @@ export async function runAssistantBatchStep(args: {
     | null = null;
 
   const nextProcessed = [...processedArtifactIds, nextArtifact.artifactId];
-  const nextFlagged = [...batch.flagged];
-  let autoConfirmedCount = batch.autoConfirmedCount;
-  let pendingManualCount = batch.pendingManualCount;
-  let nextBatchLastError = batch.lastBatchError;
+  const nextFlagged = [...workingBatch.flagged];
+  let autoConfirmedCount = workingBatch.autoConfirmedCount;
+  let pendingManualCount = workingBatch.pendingManualCount;
+  let nextBatchLastError = workingBatch.lastBatchError;
 
   try {
     let prefetchedEvidence:
       | Array<{ fileName: string; markdown: string; metadata: Record<string, unknown> }>
       | undefined;
-    if (batch.extractionMode === 'mistral_batch') {
+    if (workingBatch.extractionMode === 'mistral_batch') {
       try {
         const extracted = await extractBatchEvidenceViaMistralBatch({
           artifact: nextArtifact,
@@ -1669,10 +1766,10 @@ export async function runAssistantBatchStep(args: {
       workspaceId: args.workspaceId,
       conversationId: conversation.id,
       accessLink: args.accessLink,
-      text: batch.prompt || ASSISTANT_BATCH_DEFAULT_PROMPT,
+      text: workingBatch.prompt || ASSISTANT_BATCH_DEFAULT_PROMPT,
       attachments: [attachment],
       analyzerMode:
-        batch.extractionMode === 'mistral_batch'
+        workingBatch.extractionMode === 'mistral_batch'
           ? 'ocr_pipeline'
           : settings.assistantConfig.screenshotAnalyzerDefault,
       prefetchedEvidence,
@@ -1790,7 +1887,7 @@ export async function runAssistantBatchStep(args: {
 
   const scanJobTerminal = await isScanJobTerminal({
     workspaceId: args.workspaceId,
-    scanJobId: batch.scanJobId,
+    scanJobId: workingBatch.scanJobId,
   });
   const nextStatus: AssistantBatchStatus =
     nextProcessed.length >= artifacts.length && artifacts.length > 0 && scanJobTerminal
@@ -1798,7 +1895,7 @@ export async function runAssistantBatchStep(args: {
       : 'RUNNING';
 
   const nextBatch: AssistantBatchState = {
-    ...batch,
+    ...workingBatch,
     status: nextStatus,
     totalArtifacts: artifacts.length,
     processedArtifactIds: nextProcessed,
@@ -1808,6 +1905,7 @@ export async function runAssistantBatchStep(args: {
     lastProcessedArtifactId: nextArtifact.artifactId,
     lastProcessedFileName: nextArtifact.fileName,
     lastBatchError: nextBatchLastError,
+    lease: keepLease && nextStatus !== 'COMPLETED' ? acquiredLease : null,
     updatedAt: new Date().toISOString(),
   };
 
@@ -1840,6 +1938,163 @@ export async function runAssistantBatchStep(args: {
     }),
     step,
   };
+}
+
+async function releaseAssistantBatchLeaseIfOwned(args: {
+  workspaceId: string;
+  batchId: string;
+  holderId: string;
+}) {
+  const conversation = await prisma.assistantConversation.findUnique({
+    where: { id: args.batchId },
+    select: {
+      id: true,
+      workspaceId: true,
+      metadata: true,
+    },
+  });
+  if (!conversation || conversation.workspaceId !== args.workspaceId) return;
+  const metadata = asJsonObject(conversation.metadata);
+  const batch = parseAssistantBatchState(metadata.batchRun);
+  if (!batch?.lease || batch.lease.holderId !== args.holderId) return;
+
+  const nextBatch: AssistantBatchState = {
+    ...batch,
+    lease: null,
+    updatedAt: new Date().toISOString(),
+  };
+  await prisma.assistantConversation.update({
+    where: { id: conversation.id },
+    data: {
+      metadata: {
+        ...metadata,
+        batchRun: nextBatch,
+      } as unknown as Prisma.InputJsonValue,
+      updatedAt: new Date(),
+    },
+  });
+}
+
+export async function runAssistantBatchContinuous(args: {
+  workspaceId: string;
+  batchId: string;
+  accessLink: AccessLink;
+  maxSteps?: number;
+}) {
+  if (args.accessLink.workspaceId !== args.workspaceId) {
+    throw new ApiHttpError('FORBIDDEN', 'Access link is not valid for this workspace.', 403);
+  }
+  requireRole(args.accessLink, WorkspaceRole.EDITOR);
+
+  const holderId = `batch-run-${crypto.randomUUID()}`;
+  const maxSteps = Math.max(1, Math.min(500, Number(args.maxSteps || 120)));
+  let stepsProcessed = 0;
+  let stopped = false;
+
+  try {
+    for (let index = 0; index < maxSteps; index += 1) {
+      const result = await runAssistantBatchStep({
+        workspaceId: args.workspaceId,
+        batchId: args.batchId,
+        accessLink: args.accessLink,
+        leaseHolderId: holderId,
+        leaseMode: 'run',
+        keepLease: true,
+      });
+
+      if (result.step) {
+        stepsProcessed += 1;
+      }
+      if (!result.step || result.batch.status === 'COMPLETED') {
+        break;
+      }
+      if (result.batch.lease?.stopRequested) {
+        stopped = true;
+        break;
+      }
+    }
+  } finally {
+    await releaseAssistantBatchLeaseIfOwned({
+      workspaceId: args.workspaceId,
+      batchId: args.batchId,
+      holderId,
+    });
+  }
+
+  const refreshed = await getAssistantBatchRun({
+    workspaceId: args.workspaceId,
+    batchId: args.batchId,
+    accessLink: args.accessLink,
+  });
+
+  return {
+    batch: refreshed,
+    stepsProcessed,
+    stopped,
+  };
+}
+
+export async function stopAssistantBatchRun(args: {
+  workspaceId: string;
+  batchId: string;
+  accessLink: AccessLink;
+}) {
+  if (args.accessLink.workspaceId !== args.workspaceId) {
+    throw new ApiHttpError('FORBIDDEN', 'Access link is not valid for this workspace.', 403);
+  }
+  requireRole(args.accessLink, WorkspaceRole.EDITOR);
+
+  const conversation = await assertConversationAccess({
+    workspaceId: args.workspaceId,
+    conversationId: args.batchId,
+    accessLink: args.accessLink,
+  });
+  const metadata = asJsonObject(conversation.metadata);
+  const batch = parseAssistantBatchState(metadata.batchRun);
+  if (!batch) {
+    throw new ApiHttpError('NOT_FOUND', 'Assistant batch run not found.', 404);
+  }
+
+  const nextBatch: AssistantBatchState = {
+    ...batch,
+    lease: batch.lease
+      ? {
+          ...batch.lease,
+          stopRequested: true,
+          expiresAt: new Date(Date.now() + 90_000).toISOString(),
+        }
+      : {
+          holderId: `batch-stop-${crypto.randomUUID()}`,
+          mode: 'run',
+          stopRequested: true,
+          expiresAt: new Date(Date.now() + 90_000).toISOString(),
+        },
+    updatedAt: new Date().toISOString(),
+  };
+
+  await prisma.assistantConversation.update({
+    where: { id: conversation.id },
+    data: {
+      metadata: {
+        ...metadata,
+        batchRun: nextBatch,
+      } as unknown as Prisma.InputJsonValue,
+      updatedAt: new Date(),
+    },
+  });
+
+  const artifacts = await listBatchArtifactsForScanJob({
+    workspaceId: args.workspaceId,
+    scanJobId: nextBatch.scanJobId,
+  });
+
+  return serializeAssistantBatch({
+    batchId: conversation.id,
+    workspaceId: args.workspaceId,
+    conversationId: conversation.id,
+    batch: nextBatch,
+    artifacts,
+  });
 }
 
 async function assertConversationAccess(args: {
@@ -2632,15 +2887,27 @@ function toLeaderboardAnalysisRows(readExecutions: AssistantReadExecution[]): As
       const power = stringifyAnalysisCell(
         row.power ||
           row.currentPower ||
+          row.totalPower ||
+          row.powerRaw ||
+          row.powerValue ||
           row.deltaPower ||
-          (String(row.metricKey || '').trim() === 'power' ? row.metricValue || row.metricRaw : null)
+          (String(row.metricKey || '').trim().toLowerCase().includes('power')
+            ? row.metricValue || row.metricRaw
+            : null)
       );
       const kp = stringifyAnalysisCell(
         row.killPoints ||
           row.kp ||
+          row.killPoint ||
+          row.killpoints ||
           row.currentKillPoints ||
+          row.totalKillPoints ||
+          row.kpRaw ||
           row.deltaKillPoints ||
-          (String(row.metricKey || '').trim() === 'kill_points' ? row.metricValue || row.metricRaw : null)
+          (String(row.metricKey || '').trim().toLowerCase().includes('kill') ||
+          String(row.metricKey || '').trim().toLowerCase().includes('kp')
+            ? row.metricValue || row.metricRaw
+            : null)
       );
       const metric = stringifyAnalysisCell(
         row.metricValue ||
@@ -2677,6 +2944,10 @@ function toActionAnalysisRows(plannedActions: AssistantActionInput[]): Assistant
   return plannedActions.slice(0, 20).map((action) => {
     const request = action as unknown as Record<string, unknown>;
     const actionType = String(request.type || action.type || 'action');
+    const nestedStats =
+      request.stats && typeof request.stats === 'object' && !Array.isArray(request.stats)
+        ? (request.stats as Record<string, unknown>)
+        : {};
     const player = stringifyAnalysisCell(
       request.name || request.governorName || request.governorDbId || request.governorId
     );
@@ -2684,8 +2955,21 @@ function toActionAnalysisRows(plannedActions: AssistantActionInput[]): Assistant
       request.governorId || request.newGovernorId || request.governorDbId
     );
     const eventValue = stringifyAnalysisCell(request.eventId || request.eventName || '-');
-    const powerValue = stringifyAnalysisCell(request.power || '-');
-    const kpValue = stringifyAnalysisCell(request.killPoints || request.kp || '-');
+    const powerValue = stringifyAnalysisCell(
+      request.power ||
+        request.currentPower ||
+        nestedStats.power ||
+        nestedStats.currentPower ||
+        '-'
+    );
+    const kpValue = stringifyAnalysisCell(
+      request.killPoints ||
+        request.kp ||
+        request.killPoint ||
+        nestedStats.killPoints ||
+        nestedStats.kp ||
+        '-'
+    );
     let fields = '-';
 
     if (actionType === 'register_player') {
@@ -4834,6 +5118,7 @@ export async function postAssistantMessage(args: {
   text: string;
   attachments: AssistantAttachmentInput[];
   analyzerMode?: AssistantAnalyzerMode | null;
+  clientMessageId?: string | null;
   prefetchedEvidence?: Array<{
     fileName: string;
     markdown: string;
@@ -4930,6 +5215,7 @@ export async function postAssistantMessage(args: {
       mistralPayload: {
         stage: 'user_input',
         analyzerMode,
+        clientMessageId: sanitizePrintable(args.clientMessageId || '', 140) || null,
         instructionPreset: settings.assistantConfig.instructionPreset,
         evidenceDiagnostics: evidence.diagnostics,
         contextDiagnostics: contextPack.diagnostics,

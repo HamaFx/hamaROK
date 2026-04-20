@@ -39,6 +39,8 @@ export type MessageRow = {
   createdAt: string;
 };
 
+export type AssistantOutboxMessageState = 'sending' | 'processing' | 'failed' | 'sent';
+
 export type PlanActionRow = {
   id: string;
   actionType: string;
@@ -173,6 +175,12 @@ export type AssistantBatchRow = {
   pendingManualCount: number;
   lastProcessedArtifactId: string | null;
   lastProcessedFileName: string | null;
+  lease?: {
+    holderId: string;
+    mode: 'step' | 'run';
+    stopRequested: boolean;
+    expiresAt: string;
+  } | null;
   nextArtifact?: {
     artifactId: string;
     fileName: string;
@@ -190,6 +198,10 @@ export type ArtifactDraftRef = {
   sizeBytes?: number;
 };
 
+const OUTBOX_MAX_ATTEMPTS = 4;
+const OUTBOX_RETRY_BASE_MS = 900;
+const OUTBOX_RETRY_JITTER_MS = 500;
+
 function createAssistantMessageIdempotencyKey(): string {
   const globalCrypto =
     typeof globalThis !== 'undefined' ? (globalThis.crypto as Crypto | undefined) : undefined;
@@ -197,6 +209,82 @@ function createAssistantMessageIdempotencyKey(): string {
     return `assistant-message-${globalCrypto.randomUUID()}`;
   }
   return `assistant-message-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
+}
+
+function createAssistantClientMessageId(): string {
+  const globalCrypto =
+    typeof globalThis !== 'undefined' ? (globalThis.crypto as Crypto | undefined) : undefined;
+  if (globalCrypto?.randomUUID) {
+    return `client-${globalCrypto.randomUUID()}`;
+  }
+  return `client-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
+}
+
+class AssistantApiError extends Error {
+  status: number;
+  retryable: boolean;
+
+  constructor(message: string, options: { status: number; retryable?: boolean }) {
+    super(message);
+    this.name = 'AssistantApiError';
+    this.status = options.status;
+    this.retryable = Boolean(options.retryable);
+  }
+}
+
+type OutboxMessage = {
+  clientMessageId: string;
+  optimisticMessageId: string;
+  conversationId: string;
+  text: string;
+  files: File[];
+  artifactRefs: ArtifactDraftRef[];
+  analyzerMode: 'inherit' | 'hybrid' | 'ocr_pipeline' | 'vision_model';
+  idempotencyKey: string;
+  createdAt: string;
+  attempts: number;
+  state: AssistantOutboxMessageState;
+  lastError: string | null;
+  draftSignature: string;
+  clearComposerOnSuccess: boolean;
+};
+
+function fingerprintDraft(args: {
+  conversationId: string;
+  text: string;
+  files: File[];
+  artifactRefs: ArtifactDraftRef[];
+  analyzerMode: 'inherit' | 'hybrid' | 'ocr_pipeline' | 'vision_model';
+}) {
+  const filesFingerprint = args.files
+    .map((file) => `${file.name}:${file.size}:${file.lastModified}:${file.type}`)
+    .join('|');
+  const artifactFingerprint = args.artifactRefs
+    .map((ref) => `${ref.artifactId}:${ref.fileName || ''}:${ref.sizeBytes || 0}`)
+    .join('|');
+  return [
+    args.conversationId,
+    args.analyzerMode,
+    args.text.trim(),
+    filesFingerprint,
+    artifactFingerprint,
+  ].join('::');
+}
+
+function isTransientAssistantError(error: unknown): boolean {
+  if (error instanceof AssistantApiError) {
+    if (error.retryable) return true;
+    if (error.status === 409) {
+      return /already in progress|in progress|processing/i.test(error.message);
+    }
+    return false;
+  }
+  if (error instanceof Error) {
+    return /timed out|timeout|network|fetch|abort|503|504|502|500|429/i.test(
+      error.message
+    );
+  }
+  return false;
 }
 
 function parseCandidates(value: unknown): Array<{ governorDbId: string; governorGameId: string; governorName: string }> {
@@ -230,9 +318,9 @@ export function useAssistantController(args: {
   const [messageText, setMessageText] = useState('');
   const [messageFiles, setMessageFiles] = useState<File[]>([]);
   const [artifactRefs, setArtifactRefs] = useState<ArtifactDraftRef[]>([]);
+  const [outbox, setOutbox] = useState<OutboxMessage[]>([]);
   const [loadingConversations, setLoadingConversations] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(false);
-  const [sendingMessage, setSendingMessage] = useState(false);
   const [busyPlanId, setBusyPlanId] = useState<string | null>(null);
   const [busyPendingId, setBusyPendingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -243,6 +331,8 @@ export function useAssistantController(args: {
   const [batchScanJobId, setBatchScanJobId] = useState<string>('');
   const [startingBatch, setStartingBatch] = useState(false);
   const [steppingBatch, setSteppingBatch] = useState(false);
+  const [runningBatch, setRunningBatch] = useState(false);
+  const [stoppingBatch, setStoppingBatch] = useState(false);
   const [threadInstructionsDraft, setThreadInstructionsDraft] = useState('');
   const [threadAnalyzerOverride, setThreadAnalyzerOverride] = useState<
     'inherit' | 'hybrid' | 'ocr_pipeline' | 'vision_model'
@@ -252,6 +342,8 @@ export function useAssistantController(args: {
     'inherit' | 'hybrid' | 'ocr_pipeline' | 'vision_model'
   >('inherit');
   const sendingGuardRef = useRef(false);
+  const outboxProcessingRef = useRef<string | null>(null);
+  const outboxRetryTimersRef = useRef<Record<string, number>>({});
   const conversationsRequestRef = useRef(0);
   const historyRequestRef = useRef(0);
 
@@ -261,6 +353,22 @@ export function useAssistantController(args: {
     }),
     [args.accessToken]
   );
+  const sendingMessage = useMemo(
+    () =>
+      outbox.some(
+        (entry) => entry.state === 'sending' || entry.state === 'processing'
+      ),
+    [outbox]
+  );
+
+  useEffect(() => {
+    const timers = outboxRetryTimersRef.current;
+    return () => {
+      for (const timerId of Object.values(timers)) {
+        window.clearTimeout(timerId);
+      }
+    };
+  }, []);
 
   const apiJson = useCallback(
     async <T,>(
@@ -314,7 +422,18 @@ export function useAssistantController(args: {
             : '') ||
           String(payload?.message || '').trim() ||
           `Assistant request failed (${res.status}).`;
-        throw new Error(errorMessage);
+        const retryable =
+          res.status === 408 ||
+          res.status === 409 ||
+          res.status === 429 ||
+          res.status === 500 ||
+          res.status === 502 ||
+          res.status === 503 ||
+          res.status === 504;
+        throw new AssistantApiError(errorMessage, {
+          status: res.status,
+          retryable,
+        });
       }
 
       if (!payload || !('data' in payload)) {
@@ -488,7 +607,7 @@ export function useAssistantController(args: {
         );
         if (!cancelled) {
           setBatchRun(row);
-          setBatchScanJobId(row.scanJobId || batchScanJobId);
+          setBatchScanJobId((prev) => prev || row.scanJobId || '');
         }
       } catch {
         if (!cancelled) {
@@ -498,10 +617,14 @@ export function useAssistantController(args: {
     };
 
     void loadBatchForConversation();
+    const interval = window.setInterval(() => {
+      void loadBatchForConversation();
+    }, 3500);
     return () => {
       cancelled = true;
+      window.clearInterval(interval);
     };
-  }, [args.workspaceReady, args.workspaceId, selectedConversationId, apiJson, batchScanJobId]);
+  }, [args.workspaceReady, args.workspaceId, selectedConversationId, apiJson]);
 
   const syncHistoryAfterTransientFailure = useCallback(
     async (conversationId: string) => {
@@ -517,6 +640,351 @@ export function useAssistantController(args: {
     [loadHistory, loadConversations]
   );
 
+  const upsertOptimisticMessageMeta = useCallback(
+    (args: {
+      conversationId: string;
+      optimisticMessageId: string;
+      state: AssistantOutboxMessageState;
+      attempts?: number;
+      error?: string | null;
+    }) => {
+      setHistory((prev) => {
+        if (!prev || prev.conversation?.id !== args.conversationId) return prev;
+        return {
+          ...prev,
+          messages: prev.messages.map((message) => {
+            if (message.id !== args.optimisticMessageId) return message;
+            return {
+              ...message,
+              meta: {
+                ...(message.meta || {}),
+                optimistic: true,
+                syncState: args.state,
+                attempts: args.attempts ?? 0,
+                error: args.error || null,
+              },
+            };
+          }),
+        };
+      });
+    },
+    []
+  );
+
+  const applyMessageResponseToHistory = useCallback(
+    (args: {
+      conversationId: string;
+      optimisticMessageId: string;
+      response: PostAssistantMessageResponse;
+    }) => {
+      setHistory((prev) => {
+        if (!prev || prev.conversation?.id !== args.conversationId) return prev;
+        const nextMessages = prev.messages.filter(
+          (message) => message.id !== args.optimisticMessageId
+        );
+        if (
+          args.response.userMessage &&
+          !nextMessages.some((message) => message.id === args.response.userMessage?.id)
+        ) {
+          nextMessages.push({
+            id: args.response.userMessage.id,
+            role: args.response.userMessage.role,
+            content: args.response.userMessage.content,
+            attachments: args.response.userMessage.attachments || [],
+            model: null,
+            meta: null,
+            createdAt: args.response.userMessage.createdAt,
+          });
+        }
+        if (
+          args.response.assistantMessage &&
+          !nextMessages.some(
+            (message) => message.id === args.response.assistantMessage?.id
+          )
+        ) {
+          nextMessages.push({
+            id: args.response.assistantMessage.id,
+            role: args.response.assistantMessage.role,
+            content: args.response.assistantMessage.content,
+            attachments: [],
+            model: args.response.assistantMessage.model || null,
+            meta: args.response.assistantMessage.meta || null,
+            createdAt: args.response.assistantMessage.createdAt,
+          });
+        }
+        nextMessages.sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
+
+        const nextPlans = [...(prev.plans || [])];
+        if (
+          args.response.plan &&
+          !nextPlans.some((plan) => plan.id === args.response.plan?.id)
+        ) {
+          const createdAt =
+            args.response.assistantMessage?.createdAt || new Date().toISOString();
+          nextPlans.push({
+            id: args.response.plan.id,
+            summary: args.response.plan.summary,
+            status: args.response.plan.status,
+            actionsJson: null,
+            actions: args.response.plan.actions.map((action) => ({
+              id: action.id,
+              actionType: action.actionType,
+              actionIndex: action.actionIndex,
+              status: action.status,
+              request: action.request,
+              result: null,
+              error: null,
+            })),
+            createdAt,
+            updatedAt: createdAt,
+          });
+        }
+
+        return {
+          ...prev,
+          conversation: args.response.conversation
+            ? {
+                ...prev.conversation,
+                title: args.response.conversation.title,
+                model: args.response.conversation.model,
+                status: args.response.conversation.status,
+                updatedAt: args.response.conversation.updatedAt,
+              }
+            : prev.conversation,
+          messages: nextMessages,
+          plans: nextPlans.sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt)),
+        };
+      });
+    },
+    []
+  );
+
+  useEffect(() => {
+    if (!args.workspaceReady || outboxProcessingRef.current) return;
+    const next = outbox.find((entry) => entry.state === 'sending');
+    if (!next) return;
+
+    outboxProcessingRef.current = next.clientMessageId;
+    let cancelled = false;
+
+    const send = async () => {
+      try {
+        upsertOptimisticMessageMeta({
+          conversationId: next.conversationId,
+          optimisticMessageId: next.optimisticMessageId,
+          state: 'sending',
+          attempts: next.attempts,
+          error: null,
+        });
+
+        const formData = new FormData();
+        formData.set('workspaceId', args.workspaceId);
+        formData.set('text', next.text);
+        formData.set('idempotencyKey', next.idempotencyKey);
+        formData.set('clientMessageId', next.clientMessageId);
+        if (next.analyzerMode !== 'inherit') {
+          formData.set('analyzerMode', next.analyzerMode);
+        }
+        for (const file of next.files) {
+          formData.append('file', file);
+        }
+        for (const ref of next.artifactRefs) {
+          formData.append('artifactId', ref.artifactId);
+        }
+
+        const response = await apiJson<PostAssistantMessageResponse>(
+          `/api/v2/assistant/conversations/${next.conversationId}/messages`,
+          {
+            method: 'POST',
+            body: formData,
+          },
+          {
+            timeoutMs: 240_000,
+            timeoutMessage:
+              'Assistant took too long to respond. Message will retry automatically.',
+          }
+        );
+
+        if (cancelled) return;
+        applyMessageResponseToHistory({
+          conversationId: next.conversationId,
+          optimisticMessageId: next.optimisticMessageId,
+          response,
+        });
+        if (outboxRetryTimersRef.current[next.clientMessageId]) {
+          window.clearTimeout(outboxRetryTimersRef.current[next.clientMessageId]);
+          delete outboxRetryTimersRef.current[next.clientMessageId];
+        }
+        setOutbox((prev) =>
+          prev.filter((entry) => entry.clientMessageId !== next.clientMessageId)
+        );
+
+        const currentDraftSignature = fingerprintDraft({
+          conversationId: selectedConversationId || next.conversationId,
+          text: messageText,
+          files: messageFiles,
+          artifactRefs,
+          analyzerMode: composerAnalyzerMode,
+        });
+        if (
+          next.clearComposerOnSuccess &&
+          selectedConversationId === next.conversationId &&
+          currentDraftSignature === next.draftSignature
+        ) {
+          setMessageText('');
+          setMessageFiles([]);
+          setArtifactRefs([]);
+          setHandoffContext(null);
+          setComposerAnalyzerMode('inherit');
+        }
+
+        await Promise.all([
+          loadConversations(),
+          loadHistory(next.conversationId, { background: true }),
+        ]);
+        setNotice('Message processed. Review the latest plan below before confirming.');
+      } catch (cause) {
+        if (cancelled) return;
+        const errorMessage =
+          cause instanceof Error ? cause.message : 'Failed to send assistant message.';
+        const transientFailure = isTransientAssistantError(cause);
+        const nextAttempts = next.attempts + 1;
+
+        if (transientFailure && nextAttempts < OUTBOX_MAX_ATTEMPTS) {
+          const jitter = Math.floor(Math.random() * OUTBOX_RETRY_JITTER_MS);
+          const retryDelayMs = OUTBOX_RETRY_BASE_MS * 2 ** (nextAttempts - 1) + jitter;
+          setOutbox((prev) =>
+            prev.map((entry) =>
+              entry.clientMessageId === next.clientMessageId
+                ? {
+                    ...entry,
+                    attempts: nextAttempts,
+                    state: 'processing',
+                    lastError: errorMessage,
+                  }
+                : entry
+            )
+          );
+          upsertOptimisticMessageMeta({
+            conversationId: next.conversationId,
+            optimisticMessageId: next.optimisticMessageId,
+            state: 'processing',
+            attempts: nextAttempts,
+            error: errorMessage,
+          });
+          setNotice(
+            `Transient send issue. Retrying in ${(retryDelayMs / 1000).toFixed(1)}s (attempt ${nextAttempts + 1}/${OUTBOX_MAX_ATTEMPTS}).`
+          );
+
+          if (outboxRetryTimersRef.current[next.clientMessageId]) {
+            window.clearTimeout(outboxRetryTimersRef.current[next.clientMessageId]);
+          }
+          outboxRetryTimersRef.current[next.clientMessageId] = window.setTimeout(() => {
+            setOutbox((prev) =>
+              prev.map((entry) =>
+                entry.clientMessageId === next.clientMessageId &&
+                entry.state === 'processing'
+                  ? { ...entry, state: 'sending' }
+                  : entry
+              )
+            );
+            delete outboxRetryTimersRef.current[next.clientMessageId];
+          }, retryDelayMs);
+          void syncHistoryAfterTransientFailure(next.conversationId);
+          return;
+        }
+
+        setOutbox((prev) =>
+          prev.map((entry) =>
+            entry.clientMessageId === next.clientMessageId
+              ? {
+                  ...entry,
+                  attempts: nextAttempts,
+                  state: 'failed',
+                  lastError: errorMessage,
+                }
+              : entry
+          )
+        );
+        upsertOptimisticMessageMeta({
+          conversationId: next.conversationId,
+          optimisticMessageId: next.optimisticMessageId,
+          state: 'failed',
+          attempts: nextAttempts,
+          error: errorMessage,
+        });
+        setError(errorMessage);
+        if (outboxRetryTimersRef.current[next.clientMessageId]) {
+          window.clearTimeout(outboxRetryTimersRef.current[next.clientMessageId]);
+          delete outboxRetryTimersRef.current[next.clientMessageId];
+        }
+        await loadHistory(next.conversationId, { background: true });
+      } finally {
+        if (outboxProcessingRef.current === next.clientMessageId) {
+          outboxProcessingRef.current = null;
+        }
+      }
+    };
+
+    void send();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    apiJson,
+    applyMessageResponseToHistory,
+    args.workspaceId,
+    args.workspaceReady,
+    artifactRefs,
+    composerAnalyzerMode,
+    loadConversations,
+    loadHistory,
+    messageFiles,
+    messageText,
+    outbox,
+    selectedConversationId,
+    syncHistoryAfterTransientFailure,
+    upsertOptimisticMessageMeta,
+  ]);
+
+  const retryFailedOutboxMessage = useCallback((clientMessageId: string) => {
+    if (outboxRetryTimersRef.current[clientMessageId]) {
+      window.clearTimeout(outboxRetryTimersRef.current[clientMessageId]);
+      delete outboxRetryTimersRef.current[clientMessageId];
+    }
+    setOutbox((prev) =>
+      prev.map((entry) =>
+        entry.clientMessageId === clientMessageId && entry.state === 'failed'
+          ? { ...entry, state: 'sending', lastError: null }
+          : entry
+      )
+    );
+    setHistory((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        messages: prev.messages.map((message) => {
+          const meta = message.meta && typeof message.meta === 'object'
+            ? (message.meta as Record<string, unknown>)
+            : null;
+          if (!meta || String(meta.clientMessageId || '') !== clientMessageId) {
+            return message;
+          }
+          return {
+            ...message,
+            meta: {
+              ...meta,
+              syncState: 'sending',
+              error: null,
+            },
+          };
+        }),
+      };
+    });
+    setError(null);
+    setNotice('Retrying failed message.');
+  }, []);
+
   const submitMessage = useCallback(async () => {
     if (sendingGuardRef.current) return;
     if (!args.workspaceReady || !args.workspaceId) {
@@ -530,20 +998,51 @@ export function useAssistantController(args: {
     }
 
     sendingGuardRef.current = true;
-    setSendingMessage(true);
     setError(null);
     setNotice(null);
-    let conversationId = selectedConversationId;
-    let optimisticMessageId: string | null = null;
 
     try {
-      conversationId = selectedConversationId || (await createConversation());
-      const idempotencyKey = createAssistantMessageIdempotencyKey();
-      const optimisticCreatedAt = new Date().toISOString();
-      optimisticMessageId = `temp-user-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const conversationId = selectedConversationId || (await createConversation());
+      const draftSignature = fingerprintDraft({
+        conversationId,
+        text: trimmedText,
+        files: messageFiles,
+        artifactRefs,
+        analyzerMode: composerAnalyzerMode,
+      });
+      const duplicateQueued = outbox.some(
+        (entry) =>
+          entry.draftSignature === draftSignature &&
+          entry.state !== 'sent'
+      );
+      if (duplicateQueued) {
+        setNotice('This draft is already queued for delivery.');
+        return;
+      }
+
+      const clientMessageId = createAssistantClientMessageId();
+      const optimisticMessageId = `optimistic-${clientMessageId}`;
+      const createdAt = new Date().toISOString();
+      const outboxMessage: OutboxMessage = {
+        clientMessageId,
+        optimisticMessageId,
+        conversationId,
+        text: trimmedText,
+        files: [...messageFiles],
+        artifactRefs: [...artifactRefs],
+        analyzerMode: composerAnalyzerMode,
+        idempotencyKey: createAssistantMessageIdempotencyKey(),
+        createdAt,
+        attempts: 0,
+        state: 'sending',
+        lastError: null,
+        draftSignature,
+        clearComposerOnSuccess: true,
+      };
+
       setHistory((prev) => {
         const optimisticMessage: MessageRow = {
-          id: optimisticMessageId!,
+          id: optimisticMessageId,
           role: 'USER',
           content: trimmedText || '[image message]',
           attachments: [
@@ -564,8 +1063,10 @@ export function useAssistantController(args: {
           meta: {
             optimistic: true,
             syncState: 'sending',
+            clientMessageId,
+            attempts: 0,
           },
-          createdAt: optimisticCreatedAt,
+          createdAt,
         };
 
         if (!prev || prev.conversation?.id !== conversationId) {
@@ -577,8 +1078,8 @@ export function useAssistantController(args: {
               status: 'ACTIVE',
               model: null,
               threadConfig: null,
-              createdAt: optimisticCreatedAt,
-              updatedAt: optimisticCreatedAt,
+              createdAt,
+              updatedAt: createdAt,
             },
             messages: [optimisticMessage],
             plans: [],
@@ -592,167 +1093,26 @@ export function useAssistantController(args: {
         };
       });
 
-      const formData = new FormData();
-      formData.set('workspaceId', args.workspaceId);
-      formData.set('text', trimmedText);
-      formData.set('idempotencyKey', idempotencyKey);
-      if (composerAnalyzerMode !== 'inherit') {
-        formData.set('analyzerMode', composerAnalyzerMode);
-      }
-      for (const file of messageFiles) {
-        formData.append('file', file);
-      }
-      for (const ref of artifactRefs) {
-        formData.append('artifactId', ref.artifactId);
-      }
-
-      const response = await apiJson<PostAssistantMessageResponse>(
-        `/api/v2/assistant/conversations/${conversationId}/messages`,
-        {
-          method: 'POST',
-          body: formData,
-        },
-        {
-          timeoutMs: 240_000,
-          timeoutMessage: 'Assistant took too long to respond. Retrying history sync…',
-        }
-      );
-
-      setHistory((prev) => {
-        if (!prev || prev.conversation?.id !== conversationId) return prev;
-        const nextMessages = prev.messages.filter((message) => message.id !== optimisticMessageId);
-        if (response.userMessage && !nextMessages.some((message) => message.id === response.userMessage?.id)) {
-          nextMessages.push({
-            id: response.userMessage.id,
-            role: response.userMessage.role,
-            content: response.userMessage.content,
-            attachments: response.userMessage.attachments || [],
-            model: null,
-            meta: null,
-            createdAt: response.userMessage.createdAt,
-          });
-        }
-        if (
-          response.assistantMessage &&
-          !nextMessages.some((message) => message.id === response.assistantMessage?.id)
-        ) {
-          nextMessages.push({
-            id: response.assistantMessage.id,
-            role: response.assistantMessage.role,
-            content: response.assistantMessage.content,
-            attachments: [],
-            model: response.assistantMessage.model || null,
-            meta: response.assistantMessage.meta || null,
-            createdAt: response.assistantMessage.createdAt,
-          });
-        }
-        nextMessages.sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
-
-        const nextPlans = [...(prev.plans || [])];
-        if (response.plan && !nextPlans.some((plan) => plan.id === response.plan?.id)) {
-          const createdAt = response.assistantMessage?.createdAt || new Date().toISOString();
-          nextPlans.push({
-            id: response.plan.id,
-            summary: response.plan.summary,
-            status: response.plan.status,
-            actionsJson: null,
-            actions: response.plan.actions.map((action) => ({
-              id: action.id,
-              actionType: action.actionType,
-              actionIndex: action.actionIndex,
-              status: action.status,
-              request: action.request,
-              result: null,
-              error: null,
-            })),
-            createdAt,
-            updatedAt: createdAt,
-          });
-        }
-
-        return {
-          ...prev,
-          conversation: response.conversation
-            ? {
-                ...prev.conversation,
-                title: response.conversation.title,
-                model: response.conversation.model,
-                status: response.conversation.status,
-                updatedAt: response.conversation.updatedAt,
-              }
-            : prev.conversation,
-          messages: nextMessages,
-          plans: nextPlans.sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt)),
-        };
-      });
-
-      setMessageText('');
-      setMessageFiles([]);
-      setArtifactRefs([]);
-      setHandoffContext(null);
-      setComposerAnalyzerMode('inherit');
-      await Promise.all([loadConversations(), loadHistory(conversationId, { background: true })]);
-      setNotice('Message processed. Review the latest plan below before confirming.');
+      setOutbox((prev) => [...prev, outboxMessage]);
+      setSelectedConversationId(conversationId);
+      setNotice('Message queued. Sending now...');
     } catch (cause) {
-      const errorMessage = cause instanceof Error ? cause.message : 'Failed to send assistant message.';
-      const transientFailure =
-        /timed out|timeout|network|fetch|abort|temporary|temporarily|503|504/i.test(errorMessage);
-      if (optimisticMessageId) {
-        if (transientFailure) {
-          setHistory((prev) => {
-            if (!prev) return prev;
-            return {
-              ...prev,
-              messages: prev.messages.map((message) =>
-                message.id === optimisticMessageId
-                  ? {
-                      ...message,
-                      meta: {
-                        ...(message.meta || {}),
-                        optimistic: true,
-                        syncState: 'processing',
-                      },
-                    }
-                  : message
-              ),
-            };
-          });
-        } else {
-          setHistory((prev) => {
-            if (!prev) return prev;
-            return {
-              ...prev,
-              messages: prev.messages.filter((message) => message.id !== optimisticMessageId),
-            };
-          });
-        }
-      }
-      setError(errorMessage);
-      if (conversationId) {
-        if (transientFailure) {
-          setNotice('Message may still be processing on the server. Syncing this conversation automatically.');
-          void syncHistoryAfterTransientFailure(conversationId);
-        } else {
-          void loadHistory(conversationId, { background: true });
-        }
-      }
+      setError(cause instanceof Error ? cause.message : 'Failed to queue assistant message.');
     } finally {
-      setSendingMessage(false);
-      sendingGuardRef.current = false;
+      window.setTimeout(() => {
+        sendingGuardRef.current = false;
+      }, 150);
     }
   }, [
     args.workspaceReady,
     args.workspaceId,
     artifactRefs,
+    composerAnalyzerMode,
+    createConversation,
     messageFiles,
     messageText,
-    composerAnalyzerMode,
+    outbox,
     selectedConversationId,
-    createConversation,
-    apiJson,
-    loadConversations,
-    loadHistory,
-    syncHistoryAfterTransientFailure,
   ]);
 
   const confirmPlan = useCallback(async (planId: string) => {
@@ -922,7 +1282,7 @@ export function useAssistantController(args: {
         setSelectedConversationId(row.conversationId);
         await loadConversations();
         await loadHistory(row.conversationId);
-        setNotice('AI batch run is ready. Use Run Next Step to process one screenshot.');
+        setNotice('AI batch run is ready. Start continuous run or process one step manually.');
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : 'Failed to start AI batch run.');
       } finally {
@@ -939,6 +1299,91 @@ export function useAssistantController(args: {
       loadHistory,
     ]
   );
+
+  const runBatchContinuous = useCallback(async () => {
+    if (!args.workspaceId) return;
+    if (!batchRun?.id) {
+      setError('No active AI batch run to start.');
+      return;
+    }
+
+    setRunningBatch(true);
+    setError(null);
+    setNotice(null);
+
+    try {
+      const result = await apiJson<{
+        batch: AssistantBatchRow;
+        stepsProcessed: number;
+        stopped: boolean;
+      }>(`/api/v2/assistant/batches/${batchRun.id}/run`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          workspaceId: args.workspaceId,
+        }),
+      });
+
+      setBatchRun(result.batch);
+      if (result.stopped) {
+        setNotice(`Batch run stopped after ${result.stepsProcessed} step(s).`);
+      } else if (result.batch.status === 'COMPLETED') {
+        setNotice(`Batch run completed (${result.stepsProcessed} step(s) in this run).`);
+      } else {
+        setNotice(`Batch run progressed ${result.stepsProcessed} step(s).`);
+      }
+      if (selectedConversationId) {
+        await loadHistory(selectedConversationId, { background: true });
+      }
+      await loadConversations();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Failed to run continuous batch.');
+    } finally {
+      setRunningBatch(false);
+    }
+  }, [
+    apiJson,
+    args.workspaceId,
+    batchRun?.id,
+    selectedConversationId,
+    loadConversations,
+    loadHistory,
+  ]);
+
+  const stopBatchContinuous = useCallback(async () => {
+    if (!args.workspaceId) return;
+    if (!batchRun?.id) {
+      setError('No active AI batch run to stop.');
+      return;
+    }
+
+    setStoppingBatch(true);
+    setError(null);
+    setNotice(null);
+
+    try {
+      const result = await apiJson<{ batch: AssistantBatchRow }>(
+        `/api/v2/assistant/batches/${batchRun.id}/stop`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            workspaceId: args.workspaceId,
+          }),
+        }
+      );
+      setBatchRun(result.batch);
+      setNotice('Stop requested for batch runner.');
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Failed to stop batch runner.');
+    } finally {
+      setStoppingBatch(false);
+    }
+  }, [apiJson, args.workspaceId, batchRun?.id]);
 
   const runBatchStep = useCallback(async () => {
     if (!args.workspaceId) return;
@@ -1028,6 +1473,7 @@ export function useAssistantController(args: {
     setMessageFiles,
     artifactRefs,
     setArtifactRefs,
+    outbox,
     loadingConversations,
     loadingHistory,
     sendingMessage,
@@ -1045,6 +1491,8 @@ export function useAssistantController(args: {
     setBatchScanJobId,
     startingBatch,
     steppingBatch,
+    runningBatch,
+    stoppingBatch,
     threadInstructionsDraft,
     setThreadInstructionsDraft,
     threadAnalyzerOverride,
@@ -1056,10 +1504,13 @@ export function useAssistantController(args: {
     latestPendingPlan,
     createConversation,
     submitMessage,
+    retryFailedOutboxMessage,
     confirmPlan,
     denyPlan,
     resolvePendingIdentity,
     startBatchRun,
+    runBatchContinuous,
+    stopBatchContinuous,
     runBatchStep,
     refreshConversation: loadConversations,
     reloadHistory: loadHistory,

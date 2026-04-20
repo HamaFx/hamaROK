@@ -93,6 +93,18 @@ if ! rg -q '"locked":' /tmp/rok-health.json; then
 fi
 echo "OK: OCR policy diagnostics are present"
 
+if ! rg -q '"storage":' /tmp/rok-health.json; then
+  echo "Health payload missing storage diagnostics." >&2
+  cat /tmp/rok-health.json >&2
+  exit 1
+fi
+if ! rg -q '"screenshotRetentionDays":14' /tmp/rok-health.json; then
+  echo "Health payload missing 14-day screenshot retention diagnostics." >&2
+  cat /tmp/rok-health.json >&2
+  exit 1
+fi
+echo "OK: storage retention diagnostics are present"
+
 if ! rg -q '"name":"embedding"' /tmp/rok-health.json; then
   echo "Health payload missing embedding readiness check." >&2
   cat /tmp/rok-health.json >&2

@@ -2,6 +2,32 @@ import { NextRequest, NextResponse } from 'next/server';
 import { put } from '@vercel/blob';
 import { assertBlobConfigured } from '@/lib/env';
 
+const ALLOWED_IMAGE_TYPES = new Set([
+  'image/png',
+  'image/jpeg',
+  'image/webp',
+  'image/heic',
+  'image/heif',
+  'image/avif',
+]);
+
+function normalizeImageMimeType(raw: string, fileName?: string | null): string {
+  const normalized = String(raw || '')
+    .trim()
+    .toLowerCase();
+  const base = normalized.split(';', 1)[0].trim();
+  if (base === 'image/jpg') return 'image/jpeg';
+  if (ALLOWED_IMAGE_TYPES.has(base)) return base;
+  const name = String(fileName || '').toLowerCase();
+  if (name.endsWith('.png')) return 'image/png';
+  if (name.endsWith('.jpg') || name.endsWith('.jpeg')) return 'image/jpeg';
+  if (name.endsWith('.webp')) return 'image/webp';
+  if (name.endsWith('.heic')) return 'image/heic';
+  if (name.endsWith('.heif')) return 'image/heif';
+  if (name.endsWith('.avif')) return 'image/avif';
+  return base;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
@@ -14,11 +40,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate file type
-    const allowedTypes = ['image/png', 'image/jpeg', 'image/webp'];
-    if (!allowedTypes.includes(file.type)) {
+    const mimeType = normalizeImageMimeType(file.type, file.name);
+    if (!ALLOWED_IMAGE_TYPES.has(mimeType)) {
       return NextResponse.json(
-        { error: { code: 'VALIDATION_ERROR', message: 'Only PNG, JPEG, and WEBP images are allowed' } },
+        {
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'Only PNG, JPEG, WEBP, HEIC, HEIF, and AVIF images are allowed',
+          },
+        },
         { status: 400 }
       );
     }
@@ -27,6 +57,7 @@ export async function POST(request: NextRequest) {
 
     const blob = await put(`screenshots/${Date.now()}-${file.name}`, file, {
       access: 'public',
+      contentType: mimeType,
     });
 
     return NextResponse.json({

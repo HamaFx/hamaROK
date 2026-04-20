@@ -145,6 +145,24 @@ function getAnalyzerMode(meta: MessageRow['meta']): string {
   return String((meta as Record<string, unknown>).analyzerMode || '').trim();
 }
 
+function formatAnalyzerModeLabel(mode: string): string {
+  const normalized = String(mode || '').trim().toLowerCase();
+  if (normalized === 'hybrid') return 'Hybrid';
+  if (normalized === 'ocr_pipeline' || normalized === 'mistral_ocr') return 'Mistral OCR';
+  if (normalized === 'vision_model' || normalized === 'mistral_large') return 'Mistral Large Vision';
+  return normalized ? normalized : '';
+}
+
+function getMessageSyncState(meta: MessageRow['meta']): string {
+  if (!meta || typeof meta !== 'object') return '';
+  return String((meta as Record<string, unknown>).syncState || '').trim().toLowerCase();
+}
+
+function getClientMessageId(meta: MessageRow['meta']): string {
+  if (!meta || typeof meta !== 'object') return '';
+  return String((meta as Record<string, unknown>).clientMessageId || '').trim();
+}
+
 function getAnalysisTables(meta: MessageRow['meta']): AnalysisTable[] {
   if (!meta || typeof meta !== 'object') return [];
   const rows = (meta as Record<string, unknown>).analysisTables;
@@ -174,12 +192,20 @@ function getAnalysisTables(meta: MessageRow['meta']): AnalysisTable[] {
     .filter((entry): entry is AnalysisTable => Boolean(entry));
 }
 
-function MessageBubble({ message }: { message: MessageRow }) {
+function MessageBubble({
+  message,
+  onRetryOutboxMessage,
+}: {
+  message: MessageRow;
+  onRetryOutboxMessage?: (clientMessageId: string) => void;
+}) {
   const isUser = message.role === 'USER';
   const isAssistant = message.role === 'ASSISTANT';
   const readExecutions = getReadExecutions(message.meta);
   const suggestions = getSuggestions(message.meta);
-  const analyzerMode = getAnalyzerMode(message.meta);
+  const analyzerMode = formatAnalyzerModeLabel(getAnalyzerMode(message.meta));
+  const syncState = getMessageSyncState(message.meta);
+  const clientMessageId = getClientMessageId(message.meta);
   const analysisTables = getAnalysisTables(message.meta);
 
   return (
@@ -348,6 +374,31 @@ function MessageBubble({ message }: { message: MessageRow }) {
                 </div>
               ) : null}
             </div>
+
+            {isUser && syncState ? (
+              <div className="mt-1 flex items-center gap-2 text-[11px]">
+                <StatusPill
+                  label={syncState}
+                  tone={
+                    syncState === 'failed'
+                      ? 'bad'
+                      : syncState === 'sent'
+                        ? 'good'
+                        : 'warn'
+                  }
+                />
+                {syncState === 'failed' && clientMessageId && onRetryOutboxMessage ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-6 rounded-full px-2 text-xs"
+                    onClick={() => onRetryOutboxMessage(clientMessageId)}
+                  >
+                    Retry
+                  </Button>
+                ) : null}
+              </div>
+            ) : null}
             
             <div className={cn("text-xs text-muted-foreground/60 flex items-center gap-2 font-mono uppercase tracking-widest", isUser ? "flex-row-reverse" : "flex-row")}>
               {message.model ? <span>{message.model}</span> : null}
@@ -748,8 +799,8 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
             >
               <option value="inherit">Inherit Workspace Default</option>
               <option value="hybrid">Hybrid</option>
-              <option value="ocr_pipeline">OCR Pipeline</option>
-              <option value="vision_model">Vision Model</option>
+              <option value="ocr_pipeline">Mistral OCR</option>
+              <option value="vision_model">Mistral Large Vision</option>
             </select>
           </div>
 
@@ -887,8 +938,30 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
                 <div className="w-full max-w-2xl flex flex-col gap-8 pb-32">
                    
                    {/* Operational Status (Pinned top of thread if active) */}
-                   {(controller.error || controller.notice || controller.batchRun || controller.batchScanJobId || controller.handoffContext || pendingPlan) && (
+                   {(controller.error ||
+                     controller.notice ||
+                     controller.batchRun ||
+                     controller.batchScanJobId ||
+                     controller.handoffContext ||
+                     pendingPlan ||
+                     controller.outbox.length > 0) && (
                       <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-top-2 duration-700">
+                         {controller.outbox.length > 0 ? (
+                           <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-xs shadow-sm backdrop-blur-sm">
+                              <p className="font-bold uppercase tracking-[0.06em] text-muted-foreground">Message Outbox</p>
+                              <p className="mt-1 text-muted-foreground">
+                                Pending:{' '}
+                                {
+                                  controller.outbox.filter(
+                                    (row) => row.state === 'sending' || row.state === 'processing'
+                                  ).length
+                                }{' '}
+                                • Failed:{' '}
+                                {controller.outbox.filter((row) => row.state === 'failed').length}
+                              </p>
+                           </div>
+                         ) : null}
+
                          {controller.error && (
                             <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-xs shadow-sm backdrop-blur-sm">
                                <p className="font-bold uppercase tracking-[0.06em] text-rose-300">Assistant Error</p>
@@ -953,6 +1026,12 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
                                      <p className="text-xs uppercase tracking-wider text-muted-foreground">
                                        Extraction: {controller.batchRun.extractionMode || 'sequential'}
                                      </p>
+                                     {controller.batchRun.lease ? (
+                                       <p className="text-xs text-muted-foreground">
+                                         Runner: {controller.batchRun.lease.mode === 'run' ? 'continuous' : 'step'} •{' '}
+                                         {controller.batchRun.lease.stopRequested ? 'stop requested' : 'active'}
+                                       </p>
+                                     ) : null}
                                      <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden border border-white/10">
                                        <div className="h-full bg-primary transition-all duration-700 ease-out shadow-[0_0_10px_rgba(0,163,255,0.4)]" style={{ width: `${Math.max(0, Math.min(100, (controller.batchRun.processedCount / Math.max(1, controller.batchRun.totalArtifacts)) * 100))}%` }} />
                                      </div>
@@ -991,8 +1070,31 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
                                      size="sm"
                                      variant="outline"
                                      className="h-8 text-xs font-bold uppercase tracking-wider rounded-lg px-4 border-white/10 hover:bg-white/5"
+                                     onClick={() => void controller.runBatchContinuous()}
+                                     disabled={controller.runningBatch || !controller.batchRun}
+                                   >
+                                     {controller.runningBatch ? 'Running...' : 'Run Continuous'}
+                                   </Button>
+                                   <Button
+                                     size="sm"
+                                     variant="outline"
+                                     className="h-8 text-xs font-bold uppercase tracking-wider rounded-lg px-4 border-white/10 hover:bg-white/5"
+                                     onClick={() => void controller.stopBatchContinuous()}
+                                     disabled={controller.stoppingBatch || !controller.batchRun}
+                                   >
+                                     {controller.stoppingBatch ? 'Stopping...' : 'Stop'}
+                                   </Button>
+                                   <Button
+                                     size="sm"
+                                     variant="outline"
+                                     className="h-8 text-xs font-bold uppercase tracking-wider rounded-lg px-4 border-white/10 hover:bg-white/5"
                                      onClick={() => void controller.runBatchStep()}
-                                     disabled={controller.steppingBatch || !controller.batchRun}
+                                     disabled={
+                                       controller.steppingBatch ||
+                                       controller.runningBatch ||
+                                       controller.stoppingBatch ||
+                                       !controller.batchRun
+                                     }
                                    >
                                      {controller.steppingBatch ? 'Processing...' : 'Run Next Step'}
                                    </Button>
@@ -1019,7 +1121,15 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
                          <p className="text-sm text-muted-foreground max-w-sm font-medium leading-relaxed">Ask about governor progression, upload statboard screenshots, or request automated weekly reports.</p>
                       </div>
                    ) : (
-                      controller.history.messages.map((msg) => <MessageBubble key={msg.id} message={msg} />)
+                      controller.history.messages.map((msg) => (
+                        <MessageBubble
+                          key={msg.id}
+                          message={msg}
+                          onRetryOutboxMessage={(clientMessageId) =>
+                            controller.retryFailedOutboxMessage(clientMessageId)
+                          }
+                        />
+                      ))
                    )}
                 </div>
              </div>
@@ -1078,7 +1188,6 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
                           if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
                             event.preventDefault();
                             if (
-                              controller.sendingMessage ||
                               (!controller.messageText.trim() &&
                                 controller.messageFiles.length === 0 &&
                                 controller.artifactRefs.length === 0)
@@ -1122,8 +1231,8 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
                            >
                               <option value="inherit">Analyzer: Inherit</option>
                               <option value="hybrid">Analyzer: Hybrid</option>
-                              <option value="ocr_pipeline">Analyzer: OCR</option>
-                              <option value="vision_model">Analyzer: Vision</option>
+                              <option value="ocr_pipeline">Analyzer: Mistral OCR</option>
+                              <option value="vision_model">Analyzer: Mistral Large Vision</option>
                            </select>
                            <span className="text-[9px] font-bold font-mono text-muted-foreground/30 hidden sm:inline-block pr-1 uppercase tracking-widest">Cmd+Enter</span>
                            <Button
@@ -1131,7 +1240,6 @@ export default function AssistantScreen({ handoffToken }: { handoffToken?: strin
                               className="size-9 rounded-2xl bg-primary text-primary-foreground shadow-[0_4px_16px_rgba(0,163,255,0.4)] hover:opacity-90 disabled:opacity-30 active:scale-95 transition-all flex items-center justify-center mr-1"
                               onClick={() => void controller.submitMessage()}
                               disabled={
-                                controller.sendingMessage ||
                                 (!controller.messageText.trim() &&
                                   controller.messageFiles.length === 0 &&
                                   controller.artifactRefs.length === 0)

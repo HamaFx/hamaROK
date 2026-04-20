@@ -10,6 +10,7 @@ import { cleanupExpiredIdempotencyKeys } from '@/lib/idempotency';
 import { archiveStaleRankingRuns } from '@/lib/rankings/service';
 import { cleanupAssistantLogs } from '@/lib/assistant/service';
 import { processEmbeddingTasks } from '@/lib/embeddings/service';
+import { cleanupBlobRetention } from '@/lib/blob-retention';
 
 export async function POST(request: NextRequest) {
   try {
@@ -36,6 +37,7 @@ export async function POST(request: NextRequest) {
       archivedRankings,
       cleanedAssistant,
       embeddingResult,
+      blobCleanup,
     ] = await Promise.all([
       processQueuedExports({ workspaceId, limit: 15 }),
       processDiscordDeliveries({ workspaceId, limit: 30 }),
@@ -43,6 +45,7 @@ export async function POST(request: NextRequest) {
       archiveStaleRankingRuns({ workspaceId, olderThanDays: 45, limit: 300 }),
       cleanupAssistantLogs({ workspaceId, fallbackRetentionDays: 180 }),
       processEmbeddingTasks({ workspaceId, limit: 36 }),
+      cleanupBlobRetention({ retentionDays: 14, maxScanned: 3000 }),
     ]);
 
     return ok({
@@ -54,6 +57,7 @@ export async function POST(request: NextRequest) {
       rankings: archivedRankings,
       assistant: cleanedAssistant,
       embeddings: embeddingResult,
+      blobCleanup,
     });
   } catch (error) {
     return handleApiError(error);

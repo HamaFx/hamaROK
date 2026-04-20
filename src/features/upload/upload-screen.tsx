@@ -28,6 +28,13 @@ const UPLOAD_CONCURRENCY = 4;
 const MAX_RETRIES = 3;
 const LARGE_BATCH_THRESHOLD = 60;
 const LARGE_BATCH_INTERFILE_DELAY_MS = 140;
+const REQUEST_TIMEOUT_MS = 45_000;
+const FINALIZE_TIMEOUT_MS = 90_000;
+const SCAN_JOB_POLL_TIMEOUT_MS = 20_000;
+const RETRY_BASE_DELAY_MS = 350;
+const RETRY_JITTER_MAX_MS = 300;
+const STALL_CHECK_INTERVAL_MS = 10_000;
+const STALL_TIMEOUT_MS = 120_000;
 
 class UploadRequestError extends Error {
   retryable: boolean;
@@ -47,6 +54,58 @@ function delay(ms: number) {
   });
 }
 
+function parseJsonSafe(value: string): Record<string, unknown> | null {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeUploadErrorMessage(message: string, status: number | null): string {
+  const normalized = String(message || '').trim();
+  const normalizedLower = normalized.toLowerCase();
+  if (!normalized) {
+    if (status === 507) return 'Storage quota exceeded. Delete older screenshots and retry.';
+    if (status === 429) return 'Upload rate-limited by server. Retrying automatically.';
+    if (status === 408 || status === 504) return 'Upload request timed out. Row marked retryable.';
+    if (status && status >= 500) return `Server upload error (${status}).`;
+    return 'Upload request failed.';
+  }
+  if (status === 507 || normalizedLower.includes('quota') || normalizedLower.includes('storage exceeds')) {
+    return 'Storage quota exceeded. Delete older screenshots and retry.';
+  }
+  if (
+    status === 429 ||
+    normalizedLower.includes('rate limit') ||
+    normalizedLower.includes('too many request')
+  ) {
+    return 'Upload rate-limited by server. Row will retry automatically.';
+  }
+  if (
+    status === 408 ||
+    status === 504 ||
+    normalizedLower.includes('timed out') ||
+    normalizedLower.includes('timeout') ||
+    normalizedLower.includes('abort')
+  ) {
+    return 'Upload request timed out. Row marked retryable.';
+  }
+  if (
+    normalizedLower.includes('network') ||
+    normalizedLower.includes('fetch failed') ||
+    normalizedLower.includes('connection')
+  ) {
+    return 'Network upload error. Row marked retryable.';
+  }
+  if (status === 400 || normalizedLower.includes('validation')) {
+    return normalized || 'Upload validation failed for this file.';
+  }
+  return normalized;
+}
+
 function toManifestEntry(entry: UploadQueueEntry): UploadFinalizeManifestEntry {
   return {
     rowId: entry.id,
@@ -57,6 +116,32 @@ function toManifestEntry(entry: UploadQueueEntry): UploadFinalizeManifestEntry {
     idempotencyKey: entry.idempotencyKey,
     error: entry.error,
   };
+}
+
+function isSupportedImageFile(file: File): boolean {
+  const mime = String(file.type || '').toLowerCase().trim();
+  if (
+    mime === 'image/png' ||
+    mime === 'image/jpeg' ||
+    mime === 'image/jpg' ||
+    mime === 'image/webp' ||
+    mime === 'image/heic' ||
+    mime === 'image/heif' ||
+    mime === 'image/avif'
+  ) {
+    return true;
+  }
+
+  const name = String(file.name || '').toLowerCase();
+  return (
+    name.endsWith('.png') ||
+    name.endsWith('.jpg') ||
+    name.endsWith('.jpeg') ||
+    name.endsWith('.webp') ||
+    name.endsWith('.heic') ||
+    name.endsWith('.heif') ||
+    name.endsWith('.avif')
+  );
 }
 
 export default function UploadPage() {
@@ -94,6 +179,48 @@ export default function UploadPage() {
   const completionNotifiedRef = useRef<string | null>(null);
   const localFilesRef = useRef<Record<string, File>>({});
   const entriesRef = useRef<UploadQueueEntry[]>([]);
+
+  const fetchJsonWithTimeout = useCallback(
+    async (
+      input: RequestInfo | URL,
+      init: RequestInit,
+      options?: { timeoutMs?: number; timeoutMessage?: string }
+    ): Promise<{ status: number; payload: Record<string, unknown> | null }> => {
+      const timeoutMs = Math.max(1_000, Number(options?.timeoutMs || REQUEST_TIMEOUT_MS));
+      const controller = new AbortController();
+      const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
+
+      let response: Response;
+      try {
+        response = await fetch(input, {
+          ...init,
+          signal: controller.signal,
+        });
+      } catch (error) {
+        if (error instanceof Error && error.name === 'AbortError') {
+          throw new UploadRequestError(
+            options?.timeoutMessage || 'Request timed out while processing upload.',
+            { retryable: true, status: null }
+          );
+        }
+        throw new UploadRequestError(
+          error instanceof Error
+            ? error.message
+            : 'Network failure while processing upload request.',
+          { retryable: true, status: null }
+        );
+      } finally {
+        window.clearTimeout(timeout);
+      }
+
+      const bodyText = await response.text();
+      return {
+        status: response.status,
+        payload: parseJsonSafe(bodyText),
+      };
+    },
+    []
+  );
 
   const getPersistedJobKey = useCallback((id: string) => `upload:activeScanJob:${id}`, []);
   const getPersistedManifestKey = useCallback(
@@ -229,21 +356,46 @@ export default function UploadPage() {
 
     const loadJobState = async () => {
       try {
-        const [tasksRes, jobRes] = await Promise.all([
-          fetch(`/api/v2/scan-jobs/${scanJobId}/tasks?limit=400`, {
-            headers: { 'x-access-token': accessToken },
-          }),
-          fetch(`/api/v2/scan-jobs/${scanJobId}`, {
-            headers: { 'x-access-token': accessToken },
-          }),
+        const [tasksResponse, jobResponse] = await Promise.all([
+          fetchJsonWithTimeout(
+            `/api/v2/scan-jobs/${scanJobId}/tasks?limit=400`,
+            {
+              headers: { 'x-access-token': accessToken },
+            },
+            {
+              timeoutMs: SCAN_JOB_POLL_TIMEOUT_MS,
+              timeoutMessage: 'Timed out loading scan tasks.',
+            }
+          ),
+          fetchJsonWithTimeout(
+            `/api/v2/scan-jobs/${scanJobId}`,
+            {
+              headers: { 'x-access-token': accessToken },
+            },
+            {
+              timeoutMs: SCAN_JOB_POLL_TIMEOUT_MS,
+              timeoutMessage: 'Timed out loading scan job state.',
+            }
+          ),
         ]);
 
-        const [tasksPayload, jobPayload] = await Promise.all([tasksRes.json(), jobRes.json()]);
+        const tasksPayload = tasksResponse.payload;
+        const jobPayload = jobResponse.payload;
 
         if (cancelled) return;
 
-        if (!tasksRes.ok || !jobRes.ok) {
-          if (tasksRes.status === 404 || tasksRes.status === 403 || jobRes.status === 404 || jobRes.status === 403) {
+        if (
+          tasksResponse.status < 200 ||
+          tasksResponse.status >= 300 ||
+          jobResponse.status < 200 ||
+          jobResponse.status >= 300
+        ) {
+          if (
+            tasksResponse.status === 404 ||
+            tasksResponse.status === 403 ||
+            jobResponse.status === 404 ||
+            jobResponse.status === 403
+          ) {
             setScanJobId(null);
             setScanJobState(null);
             setEntries([]);
@@ -369,7 +521,43 @@ export default function UploadPage() {
     loadAwsOcrControl,
     getPersistedJobKey,
     clearPersistedManifest,
+    fetchJsonWithTimeout,
   ]);
+
+  useEffect(() => {
+    if (!scanJobId) return;
+
+    const interval = window.setInterval(() => {
+      const now = Date.now();
+      let hasChanges = false;
+      setEntries((prev) => {
+        const next = prev.map((entry) => {
+          if (!(entry.status === 'uploading' || entry.status === 'queued' || entry.status === 'processing')) {
+            return entry;
+          }
+          const hasTaskAssigned = Boolean(entry.taskId);
+          if (hasTaskAssigned) {
+            return entry;
+          }
+          const updatedAtTs = Date.parse(entry.updatedAt);
+          if (!Number.isFinite(updatedAtTs)) return entry;
+          if (now - updatedAtTs < STALL_TIMEOUT_MS) return entry;
+          hasChanges = true;
+          return {
+            ...entry,
+            status: 'failed' as const,
+            error: 'Queue watchdog marked this row retryable after stall timeout.',
+            updatedAt: new Date().toISOString(),
+          };
+        });
+        return hasChanges ? next : prev;
+      });
+    }, STALL_CHECK_INTERVAL_MS);
+
+    return () => {
+      window.clearInterval(interval);
+    };
+  }, [scanJobId]);
 
   const triggerAwsOcrControl = useCallback(
     async (action: 'START' | 'STOP', source: 'manual' | 'auto' = 'manual', force = false) => {
@@ -414,54 +602,91 @@ export default function UploadPage() {
 
   const createScanJob = useCallback(
     async (totalFiles: number, eventId?: string | null) => {
-      const res = await fetch('/api/v2/scan-jobs', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-access-token': accessToken,
+      const response = await fetchJsonWithTimeout(
+        '/api/v2/scan-jobs',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-access-token': accessToken,
+          },
+          body: JSON.stringify({
+            workspaceId,
+            eventId: eventId || undefined,
+            source: 'MANUAL_UPLOAD',
+            totalFiles,
+            notes: `Queue-first upload batch at ${new Date().toISOString()}`,
+            idempotencyKey: `queue-first-${eventId || weeklyEvent?.weekKey || 'weekly'}-${Date.now()}`,
+          }),
         },
-        body: JSON.stringify({
-          workspaceId,
-          eventId: eventId || undefined,
-          source: 'MANUAL_UPLOAD',
-          totalFiles,
-          notes: `Queue-first upload batch at ${new Date().toISOString()}`,
-          idempotencyKey: `queue-first-${eventId || weeklyEvent?.weekKey || 'weekly'}-${Date.now()}`,
-        }),
-      });
+        {
+          timeoutMs: REQUEST_TIMEOUT_MS,
+          timeoutMessage: 'Timed out while creating scan job.',
+        }
+      );
 
-      const payload = await res.json();
-      if (!res.ok) {
-        throw new Error(payload?.error?.message || 'Failed to create scan job.');
+      const payload = response.payload;
+      if (response.status < 200 || response.status >= 300) {
+        const message = normalizeUploadErrorMessage(
+          String(
+            (payload?.error && typeof payload.error === 'object'
+              ? (payload.error as Record<string, unknown>).message
+              : payload?.message) || 'Failed to create scan job.'
+          ),
+          response.status
+        );
+        throw new UploadRequestError(message, {
+          retryable: response.status === 429 || response.status >= 500,
+          status: response.status,
+        });
       }
 
       return payload?.data as ScanJobResponse;
     },
-    [workspaceId, accessToken, weeklyEvent?.weekKey]
+    [workspaceId, accessToken, weeklyEvent?.weekKey, fetchJsonWithTimeout]
   );
 
   const uploadScreenshotArtifact = useCallback(async (file: File): Promise<string> => {
     const formData = new FormData();
     formData.append('file', file);
 
-    const res = await fetch('/api/screenshots/upload', {
-      method: 'POST',
-      body: formData,
-    });
+    const response = await fetchJsonWithTimeout(
+      '/api/screenshots/upload',
+      {
+        method: 'POST',
+        body: formData,
+      },
+      {
+        timeoutMs: REQUEST_TIMEOUT_MS,
+        timeoutMessage: `Timed out while uploading ${file.name}.`,
+      }
+    );
 
-    const payload = await res.json();
-    if (!res.ok || !payload?.url) {
+    const payload = response.payload;
+    if (response.status < 200 || response.status >= 300 || !payload?.url) {
+      const message = normalizeUploadErrorMessage(
+        String(
+          (payload?.error && typeof payload.error === 'object'
+            ? (payload.error as Record<string, unknown>).message
+            : payload?.message) || `Failed to upload ${file.name}.`
+        ),
+        response.status
+      );
       throw new UploadRequestError(
-        payload?.error?.message || `Failed to upload ${file.name}.`,
+        message,
         {
-          retryable: res.status === 429 || res.status >= 500,
-          status: res.status,
+          retryable:
+            response.status === 429 ||
+            response.status === 408 ||
+            response.status === 504 ||
+            response.status >= 500,
+          status: response.status,
         }
       );
     }
 
-    return payload.url as string;
-  }, []);
+    return String(payload.url);
+  }, [fetchJsonWithTimeout]);
 
   const enqueueArtifactTask = useCallback(
     async (args: {
@@ -473,30 +698,49 @@ export default function UploadPage() {
       bytes: number;
       idempotencyKey: string;
     }) => {
-      const res = await fetch(`/api/v2/scan-jobs/${args.scanJobId}/artifacts`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-access-token': accessToken,
+      const response = await fetchJsonWithTimeout(
+        `/api/v2/scan-jobs/${args.scanJobId}/artifacts`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-access-token': accessToken,
+          },
+          body: JSON.stringify({
+            workspaceId,
+            eventId: args.eventId,
+            artifactUrl: args.artifactUrl,
+            artifactType: 'SCREENSHOT',
+            fileName: args.fileName,
+            bytes: args.bytes,
+            idempotencyKey: args.idempotencyKey,
+          }),
         },
-        body: JSON.stringify({
-          workspaceId,
-          eventId: args.eventId,
-          artifactUrl: args.artifactUrl,
-          artifactType: 'SCREENSHOT',
-          fileName: args.fileName,
-          bytes: args.bytes,
-          idempotencyKey: args.idempotencyKey,
-        }),
-      });
+        {
+          timeoutMs: REQUEST_TIMEOUT_MS,
+          timeoutMessage: `Timed out while queueing ${args.fileName}.`,
+        }
+      );
 
-      const payload = await res.json();
-      if (!res.ok) {
+      const payload = response.payload;
+      if (response.status < 200 || response.status >= 300) {
+        const message = normalizeUploadErrorMessage(
+          String(
+            (payload?.error && typeof payload.error === 'object'
+              ? (payload.error as Record<string, unknown>).message
+              : payload?.message) || `Failed to enqueue ${args.fileName}.`
+          ),
+          response.status
+        );
         throw new UploadRequestError(
-          payload?.error?.message || `Failed to enqueue ${args.fileName}.`,
+          message,
           {
-            retryable: res.status === 429 || res.status >= 500,
-            status: res.status,
+            retryable:
+              response.status === 429 ||
+              response.status === 408 ||
+              response.status === 504 ||
+              response.status >= 500,
+            status: response.status,
           }
         );
       }
@@ -510,7 +754,7 @@ export default function UploadPage() {
         };
       };
     },
-    [accessToken, workspaceId]
+    [accessToken, workspaceId, fetchJsonWithTimeout]
   );
 
   const isRetryableUploadError = useCallback((error: unknown): boolean => {
@@ -528,6 +772,7 @@ export default function UploadPage() {
         message.includes('fetch') ||
         message.includes('429') ||
         message.includes('503') ||
+        message.includes('504') ||
         message.includes('502') ||
         message.includes('500')
       );
@@ -547,7 +792,8 @@ export default function UploadPage() {
           break;
         }
         if (attempt >= MAX_RETRIES) break;
-        await delay(250 * 2 ** (attempt - 1));
+        const jitter = Math.floor(Math.random() * RETRY_JITTER_MAX_MS);
+        await delay(RETRY_BASE_DELAY_MS * 2 ** (attempt - 1) + jitter);
       }
     }
     throw lastError instanceof Error ? lastError : new Error('Operation failed after retries.');
@@ -562,22 +808,44 @@ export default function UploadPage() {
         : entriesRef.current
       ).map((entry) => toManifestEntry(entry));
 
-      const res = await fetch(`/api/v2/scan-jobs/${args.scanJobId}/finalize-upload`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-access-token': accessToken,
+      const response = await fetchJsonWithTimeout(
+        `/api/v2/scan-jobs/${args.scanJobId}/finalize-upload`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-access-token': accessToken,
+          },
+          body: JSON.stringify({
+            workspaceId,
+            expectedTotal: args.expectedTotal,
+            manifest: manifestRows,
+          }),
         },
-        body: JSON.stringify({
-          workspaceId,
-          expectedTotal: args.expectedTotal,
-          manifest: manifestRows,
-        }),
-      });
+        {
+          timeoutMs: FINALIZE_TIMEOUT_MS,
+          timeoutMessage: 'Timed out while finalizing upload batch.',
+        }
+      );
 
-      const payload = await res.json();
-      if (!res.ok) {
-        throw new Error(payload?.error?.message || 'Failed to finalize upload batch.');
+      const payload = response.payload;
+      if (response.status < 200 || response.status >= 300) {
+        const message = normalizeUploadErrorMessage(
+          String(
+            (payload?.error && typeof payload.error === 'object'
+              ? (payload.error as Record<string, unknown>).message
+              : payload?.message) || 'Failed to finalize upload batch.'
+          ),
+          response.status
+        );
+        throw new UploadRequestError(message, {
+          retryable:
+            response.status === 429 ||
+            response.status === 408 ||
+            response.status === 504 ||
+            response.status >= 500,
+          status: response.status,
+        });
       }
 
       const data = payload?.data as
@@ -604,7 +872,7 @@ export default function UploadPage() {
 
       return data || null;
     },
-    [workspaceReady, accessToken, workspaceId]
+    [workspaceReady, accessToken, workspaceId, fetchJsonWithTimeout]
   );
 
   const processQueueEntry = useCallback(
@@ -704,7 +972,7 @@ export default function UploadPage() {
 
   const handleFiles = useCallback(
     async (files: File[], options?: { fromFolder?: boolean }) => {
-      const imageFiles = files.filter((f) => f.type.startsWith('image/'));
+      const imageFiles = files.filter((f) => isSupportedImageFile(f));
       if (imageFiles.length === 0) return;
 
       if (!workspaceReady) {

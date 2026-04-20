@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { IngestionTaskStatus } from '@prisma/client';
+import { IngestionTaskStatus, Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { fail, handleApiError, ok } from '@/lib/api-response';
 import {
@@ -59,6 +59,10 @@ export async function POST(
     }
 
     const attemptCount = Math.max(task.attemptCount, body.attempt || 0);
+    const baseMetadata =
+      task.metadata && typeof task.metadata === 'object' && !Array.isArray(task.metadata)
+        ? (task.metadata as Record<string, unknown>)
+        : {};
 
     const updatedTask = await prisma.$transaction(async (tx) => {
       const updated = await tx.ingestionTask.update({
@@ -68,17 +72,16 @@ export async function POST(
           attemptCount,
           startedAt: task.startedAt || new Date(),
           lastError: null,
-          metadata:
-            body.workerId || body.queueMessageId || body.metadata
-              ? {
-                  ...(task.metadata && typeof task.metadata === 'object' && !Array.isArray(task.metadata)
-                    ? task.metadata
-                    : {}),
-                  ...(body.metadata || {}),
-                  workerId: body.workerId || undefined,
-                  queueMessageId: body.queueMessageId || undefined,
-                }
-              : task.metadata || undefined,
+          metadata: {
+            ...baseMetadata,
+            ...(body.metadata || {}),
+            ...(body.workerId ? { workerId: body.workerId } : {}),
+            ...(body.queueMessageId ? { queueMessageId: body.queueMessageId } : {}),
+            ocrEngineRequested: ocrPolicy.requested,
+            ocrEngineEffective: ocrPolicy.effective,
+            ocrEngineLocked: ocrPolicy.locked,
+            ocrEnginePolicyReason: ocrPolicy.reason,
+          } as Prisma.InputJsonValue,
         },
         include: {
           artifact: {

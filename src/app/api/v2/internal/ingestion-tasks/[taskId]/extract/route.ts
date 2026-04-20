@@ -5,7 +5,8 @@ import { assertValidServiceRequest } from '@/lib/service-auth';
 import { getTaskWithRelations } from '@/lib/ingestion-service';
 import { prisma } from '@/lib/prisma';
 import { runMistralIngestionExtraction } from '@/lib/ocr/mistral-extraction';
-import { getOcrEngine } from '@/lib/env';
+import { getEnv } from '@/lib/env';
+import { resolveOcrEnginePolicy } from '@/lib/ocr/engine-policy';
 
 const extractSchema = z.object({
   attempt: z.number().int().min(1).max(20).optional(),
@@ -15,7 +16,14 @@ const extractSchema = z.object({
 
 function normalizeMimeType(value: string | null): string {
   const normalized = String(value || '').toLowerCase().trim();
-  if (normalized === 'image/png' || normalized === 'image/jpeg' || normalized === 'image/webp') {
+  if (
+    normalized === 'image/png' ||
+    normalized === 'image/jpeg' ||
+    normalized === 'image/webp' ||
+    normalized === 'image/heic' ||
+    normalized === 'image/heif' ||
+    normalized === 'image/avif'
+  ) {
     return normalized;
   }
   return 'image/png';
@@ -40,22 +48,37 @@ export async function POST(
       return fail('VALIDATION_ERROR', 'Task artifact URL is missing.', 400);
     }
 
-    if (getOcrEngine() === 'legacy') {
-      return fail(
-        'PRECONDITION_FAILED',
-        'Internal Mistral extraction endpoint is disabled when OCR_ENGINE=legacy.',
-        412
-      );
-    }
-
     const settings = await prisma.workspaceSettings.findUnique({
       where: { workspaceId: task.workspaceId },
       select: {
+        ocrEngine: true,
         ocrModel: true,
         assistantModel: true,
         assistantConfig: true,
       },
     });
+    const env = getEnv();
+    const policy = resolveOcrEnginePolicy({
+      envRequested: env.OCR_ENGINE,
+      allowLegacy: env.ALLOW_LEGACY_OCR,
+      workspaceRequested: settings?.ocrEngine || null,
+    });
+    const taskMetadata =
+      task.metadata && typeof task.metadata === 'object' && !Array.isArray(task.metadata)
+        ? (task.metadata as Record<string, unknown>)
+        : {};
+    const taskEngineRaw = String(taskMetadata.ocrEngineEffective || '').trim().toLowerCase();
+    const taskEngine = taskEngineRaw === 'legacy' || taskEngineRaw === 'mistral'
+      ? taskEngineRaw
+      : policy.effective;
+
+    if (taskEngine === 'legacy') {
+      return fail(
+        'PRECONDITION_FAILED',
+        'Internal Mistral extraction endpoint is disabled for tasks resolved to legacy OCR.',
+        412
+      );
+    }
 
     const imageRes = await fetch(task.artifact.url, {
       cache: 'no-store',
@@ -91,6 +114,9 @@ export async function POST(
         ...extraction.metadata,
         workerId: body.workerId || null,
         attempt: body.attempt || null,
+        ocrEngineUsed: taskEngine,
+        ocrEngineRequested: policy.requested,
+        ocrEnginePolicyReason: policy.reason,
       },
     });
   } catch (error) {

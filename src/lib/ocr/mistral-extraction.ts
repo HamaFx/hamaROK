@@ -147,7 +147,8 @@ const extractionJsonSchema: Record<string, unknown> = {
 
 function sanitizePrintable(value: unknown, max = 120): string {
   const cleaned = String(value ?? '')
-    .replace(/[^\x20-\x7E]/g, ' ')
+    .normalize('NFKC')
+    .replace(/\p{C}+/gu, ' ')
     .replace(/\s+/g, ' ')
     .trim();
   return cleaned.slice(0, max);
