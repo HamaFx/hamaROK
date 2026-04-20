@@ -25,6 +25,7 @@ export interface UploadQueueEntry {
 
 export interface TaskRow {
   id: string;
+  idempotencyKey?: string | null;
   status: 'QUEUED' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
   artifactId: string;
   archetypeHint: string | null;

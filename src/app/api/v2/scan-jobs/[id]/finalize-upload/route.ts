@@ -73,15 +73,22 @@ export async function POST(
     ]);
 
     const expectedTotal = Math.max(scanJob.totalFiles, body.expectedTotal);
-    const manifestMissing = body.manifest.filter((entry) => !entry.taskId);
+    const manifestMissing = body.manifest.filter(
+      (entry) =>
+        !entry.taskId &&
+        (String(entry.status || '').toLowerCase() === 'failed' || Boolean(entry.error))
+    );
     const shortfall = Math.max(0, expectedTotal - taskCount);
-    const missingCount = Math.max(shortfall, manifestMissing.length);
-    const missing = manifestMissing.slice(0, 200).map((entry) => ({
-      rowId: entry.rowId,
-      fileName: entry.fileName || null,
-      status: entry.status || 'failed',
-      reason: entry.error || 'not-enqueued',
-    }));
+    const missingCount = shortfall > 0 ? Math.max(shortfall, manifestMissing.length) : 0;
+    const missing =
+      missingCount > 0
+        ? manifestMissing.slice(0, 200).map((entry) => ({
+            rowId: entry.rowId,
+            fileName: entry.fileName || null,
+            status: entry.status || 'failed',
+            reason: entry.error || 'not-enqueued',
+          }))
+        : [];
 
     let updatedStatus = scanJob.status;
     let updatedError: string | null = null;

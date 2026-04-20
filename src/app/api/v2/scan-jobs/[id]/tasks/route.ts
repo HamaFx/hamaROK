@@ -127,6 +127,7 @@ export async function GET(
                   }
                 : null,
             id: task.id,
+            idempotencyKey: task.idempotencyKey,
             workspaceId: task.workspaceId,
             scanJobId: task.scanJobId,
             artifactId: task.artifactId,

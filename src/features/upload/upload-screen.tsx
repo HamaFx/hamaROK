@@ -35,6 +35,7 @@ const RETRY_BASE_DELAY_MS = 350;
 const RETRY_JITTER_MAX_MS = 300;
 const STALL_CHECK_INTERVAL_MS = 10_000;
 const STALL_TIMEOUT_MS = 120_000;
+const IN_PROGRESS_STATUSES = new Set(['uploading', 'queued', 'processing']);
 
 class UploadRequestError extends Error {
   retryable: boolean;
@@ -144,6 +145,91 @@ function isSupportedImageFile(file: File): boolean {
   );
 }
 
+function getFileRelativePath(file: File): string {
+  const withRelativePath = file as File & { webkitRelativePath?: string };
+  return String(withRelativePath.webkitRelativePath || '').trim();
+}
+
+function buildFileFingerprint(file: File): string {
+  const name = String(file.name || '').trim().toLocaleLowerCase();
+  const size = Number(file.size || 0);
+  const lastModified = Number(file.lastModified || 0);
+  const relativePath = getFileRelativePath(file).toLocaleLowerCase();
+  return `${name}|${size}|${lastModified}|${relativePath}`;
+}
+
+function getEntryFingerprint(entry: UploadQueueEntry): string {
+  if (entry.metadata && typeof entry.metadata === 'object' && !Array.isArray(entry.metadata)) {
+    const raw = (entry.metadata as Record<string, unknown>).fingerprint;
+    if (typeof raw === 'string') {
+      return raw.trim().toLocaleLowerCase();
+    }
+  }
+  return '';
+}
+
+function mergeQueueEntries(
+  existing: UploadQueueEntry[],
+  fetched: UploadQueueEntry[]
+): UploadQueueEntry[] {
+  const fetchedTaskIds = new Set(
+    fetched
+      .map((entry) => entry.taskId)
+      .filter((taskId): taskId is string => typeof taskId === 'string' && taskId.length > 0)
+  );
+  const fetchedByIdempotency = new Set(
+    fetched
+      .map((entry) => entry.idempotencyKey)
+      .filter((key): key is string => typeof key === 'string' && key.length > 0)
+  );
+  const fetchedByArtifactId = new Set(
+    fetched
+      .map((entry) => entry.artifactId)
+      .filter((artifactId): artifactId is string => typeof artifactId === 'string' && artifactId.length > 0)
+  );
+
+  const localOnlyRows = existing.filter((entry) => {
+    if (entry.taskId && fetchedTaskIds.has(entry.taskId)) {
+      return false;
+    }
+    if (entry.idempotencyKey && fetchedByIdempotency.has(entry.idempotencyKey)) {
+      return false;
+    }
+    if (entry.artifactId && fetchedByArtifactId.has(entry.artifactId)) {
+      return false;
+    }
+    return !entry.taskId;
+  });
+
+  const inFlightMissingFromPoll = existing.filter((entry) => {
+    if (!entry.taskId || fetchedTaskIds.has(entry.taskId)) return false;
+    return IN_PROGRESS_STATUSES.has(entry.status);
+  });
+
+  const merged = [...localOnlyRows, ...inFlightMissingFromPoll, ...fetched];
+  const deduped = new Map<string, UploadQueueEntry>();
+
+  for (const entry of merged) {
+    const identity =
+      (entry.taskId && `task:${entry.taskId}`) ||
+      (entry.idempotencyKey && `idem:${entry.idempotencyKey}`) ||
+      (entry.artifactId && `artifact:${entry.artifactId}`) ||
+      `row:${entry.id}`;
+    const existingEntry = deduped.get(identity);
+    if (!existingEntry) {
+      deduped.set(identity, entry);
+      continue;
+    }
+    const existingTime = Date.parse(existingEntry.updatedAt || '');
+    const nextTime = Date.parse(entry.updatedAt || '');
+    if (Number.isFinite(nextTime) && (!Number.isFinite(existingTime) || nextTime >= existingTime)) {
+      deduped.set(identity, entry);
+    }
+  }
+
+  return Array.from(deduped.values());
+}
+
 export default function UploadPage() {
   const router = useRouter();
   const {
@@ -179,6 +265,7 @@ export default function UploadPage() {
   const completionNotifiedRef = useRef<string | null>(null);
   const localFilesRef = useRef<Record<string, File>>({});
   const entriesRef = useRef<UploadQueueEntry[]>([]);
+  const uploadRunInFlightRef = useRef(false);
 
   const fetchJsonWithTimeout = useCallback(
     async (
@@ -435,6 +522,7 @@ export default function UploadPage() {
                 ? Number(mergedMetadata.bytes)
                 : 0,
             taskId: task.id,
+            idempotencyKey: task.idempotencyKey || undefined,
             artifactId: task.artifactId,
             artifactUrl: task.artifact?.url,
             updatedAt: task.updatedAt,
@@ -444,21 +532,7 @@ export default function UploadPage() {
           };
         });
 
-        setEntries((prev) => {
-          const localOnlyRows = prev.filter((entry) => !entry.taskId);
-          const fetchedTaskIds = new Set(
-            fromTasks
-              .map((entry) => entry.taskId)
-              .filter((taskId): taskId is string => typeof taskId === 'string' && taskId.length > 0)
-          );
-          const inFlightMissingFromPoll = prev.filter(
-            (entry) =>
-              Boolean(entry.taskId) &&
-              !fetchedTaskIds.has(entry.taskId as string) &&
-              (entry.status === 'uploading' || entry.status === 'queued' || entry.status === 'processing')
-          );
-          return [...localOnlyRows, ...inFlightMissingFromPoll, ...fromTasks];
-        });
+        setEntries((prev) => mergeQueueEntries(prev, fromTasks));
 
         const jobData = jobPayload?.data as
           | {
@@ -532,7 +606,7 @@ export default function UploadPage() {
       let hasChanges = false;
       setEntries((prev) => {
         const next = prev.map((entry) => {
-          if (!(entry.status === 'uploading' || entry.status === 'queued' || entry.status === 'processing')) {
+          if (!IN_PROGRESS_STATUSES.has(entry.status)) {
             return entry;
           }
           const hasTaskAssigned = Boolean(entry.taskId);
@@ -806,7 +880,9 @@ export default function UploadPage() {
       const manifestRows = (args.rowIds && args.rowIds.length > 0
         ? entriesRef.current.filter((entry) => args.rowIds?.includes(entry.id))
         : entriesRef.current
-      ).map((entry) => toManifestEntry(entry));
+      )
+        .filter((entry) => entry.status === 'failed' || Boolean(entry.taskId))
+        .map((entry) => toManifestEntry(entry));
 
       const response = await fetchJsonWithTimeout(
         `/api/v2/scan-jobs/${args.scanJobId}/finalize-upload`,
@@ -975,6 +1051,14 @@ export default function UploadPage() {
       const imageFiles = files.filter((f) => isSupportedImageFile(f));
       if (imageFiles.length === 0) return;
 
+      if (uploadRunInFlightRef.current) {
+        setSubmitMessage({
+          type: 'error',
+          text: 'An upload batch is already running. Wait for it to finish before starting another batch.',
+        });
+        return;
+      }
+
       if (!workspaceReady) {
         if (!sessionLoading) {
           void refreshSession();
@@ -983,6 +1067,41 @@ export default function UploadPage() {
         return;
       }
 
+      const dedupedSelection: Array<{ file: File; fingerprint: string; relativePath: string }> = [];
+      const selectionSeen = new Set<string>();
+      for (const file of imageFiles) {
+        const fingerprint = buildFileFingerprint(file);
+        if (!fingerprint) continue;
+        if (selectionSeen.has(fingerprint)) continue;
+        selectionSeen.add(fingerprint);
+        dedupedSelection.push({
+          file,
+          fingerprint,
+          relativePath: getFileRelativePath(file),
+        });
+      }
+
+      const existingFingerprints = new Set(
+        entriesRef.current
+          .map((entry) => getEntryFingerprint(entry))
+          .filter((fingerprint) => Boolean(fingerprint))
+      );
+      const uploadItems = dedupedSelection.filter((item) => !existingFingerprints.has(item.fingerprint));
+      const skippedInSelection = Math.max(0, imageFiles.length - dedupedSelection.length);
+      const skippedAsExisting = Math.max(0, dedupedSelection.length - uploadItems.length);
+
+      if (uploadItems.length === 0) {
+        setSubmitMessage({
+          type: 'error',
+          text:
+            skippedInSelection > 0 || skippedAsExisting > 0
+              ? 'No new screenshots to upload. Selected files were duplicates of existing queue items.'
+              : 'No valid screenshots were selected.',
+        });
+        return;
+      }
+
+      uploadRunInFlightRef.current = true;
       setIsUploading(true);
       setSubmitMessage(null);
 
@@ -992,7 +1111,7 @@ export default function UploadPage() {
           activeWeekly = await loadWeeklyEvent();
         }
 
-        const job = await createScanJob(imageFiles.length, activeWeekly?.id || null);
+        const job = await createScanJob(uploadItems.length, activeWeekly?.id || null);
         setScanJobId(job.id);
         setScanJobState(job);
         if (typeof window !== 'undefined') {
@@ -1000,7 +1119,8 @@ export default function UploadPage() {
         }
 
         const baseTime = Date.now();
-        const newRows: UploadQueueEntry[] = imageFiles.map((file, index) => {
+        const newRows: UploadQueueEntry[] = uploadItems.map((item, index) => {
+          const file = item.file;
           const rowId = `${baseTime}-${index}`;
           const idempotencyKey = `task-${job.id}-${rowId}`;
           localFilesRef.current[rowId] = file;
@@ -1011,17 +1131,22 @@ export default function UploadPage() {
             sizeBytes: file.size,
             idempotencyKey,
             updatedAt: new Date().toISOString(),
+            metadata: {
+              fingerprint: item.fingerprint,
+              relativePath: item.relativePath || null,
+            },
           };
         });
 
         setEntries(newRows);
 
-        const largeBatchMode = Boolean(options?.fromFolder) || imageFiles.length >= LARGE_BATCH_THRESHOLD;
+        const largeBatchMode = Boolean(options?.fromFolder) || uploadItems.length >= LARGE_BATCH_THRESHOLD;
         const uploadConcurrency = largeBatchMode ? 1 : UPLOAD_CONCURRENCY;
         const interFileDelayMs = largeBatchMode ? LARGE_BATCH_INTERFILE_DELAY_MS : 0;
 
         const jobs = newRows.map((row, index) => async () => {
-          const file = imageFiles[index];
+          const file = uploadItems[index]?.file;
+          if (!file) return;
           await processQueueEntry({
             scanJobId: job.id,
             eventId: job.eventId || activeWeekly?.id || null,
@@ -1041,7 +1166,7 @@ export default function UploadPage() {
 
         const finalizeResult = await finalizeUploadBatch({
           scanJobId: job.id,
-          expectedTotal: imageFiles.length,
+          expectedTotal: uploadItems.length,
           rowIds: newRows.map((row) => row.id),
         });
 
@@ -1052,12 +1177,16 @@ export default function UploadPage() {
         if (finalizeResult?.finalized === false) {
           setSubmitMessage({
             type: 'error',
-            text: `Upload finalized with mismatch: expected ${imageFiles.length}, enqueued ${finalizeResult.enqueuedCount}. Missing ${finalizeResult.missingCount}.`,
+            text: `Upload finalized with mismatch: expected ${uploadItems.length}, enqueued ${finalizeResult.enqueuedCount}. Missing ${finalizeResult.missingCount}.`,
           });
         } else {
+          const skippedSuffix =
+            skippedInSelection > 0 || skippedAsExisting > 0
+              ? ` Skipped duplicates: ${skippedInSelection + skippedAsExisting}.`
+              : '';
           setSubmitMessage({
             type: 'success',
-            text: `Queued ${imageFiles.length} screenshot(s). Mistral extraction now runs in the EC2 worker queue.`,
+            text: `Queued ${uploadItems.length} screenshot(s). Mistral extraction now runs in the EC2 worker queue.${skippedSuffix}`,
           });
         }
       } catch (error) {
@@ -1066,6 +1195,7 @@ export default function UploadPage() {
           text: error instanceof Error ? error.message : 'Failed to start upload queue.',
         });
       } finally {
+        uploadRunInFlightRef.current = false;
         setIsUploading(false);
       }
     },
@@ -1176,6 +1306,7 @@ export default function UploadPage() {
     setSubmitMessage(null);
     setScanJobId(null);
     setScanJobState(null);
+    uploadRunInFlightRef.current = false;
     localFilesRef.current = {};
     if (typeof window !== 'undefined' && workspaceId) {
       localStorage.removeItem(getPersistedJobKey(workspaceId));
